@@ -6,6 +6,11 @@ import { IconBubble } from "@/components/IconBubble";
 import { Pill } from "@/components/Pill";
 import { getConnectionStatus } from "@/lib/settings/status";
 
+// Connection status depends on server-only environment variables. It must be
+// evaluated for each request so a container restart or runtime secret update is
+// reflected without baking stale status into the production build.
+export const dynamic = "force-dynamic";
+
 function ConnectionCard({
   title,
   meta,
