@@ -1,0 +1,49 @@
+{
+  "name": "ai-fluency",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "vitest run",
+    "test:integration": "node scripts/run-qa-integration.mjs",
+    "test:e2e": "playwright test",
+    "test:smoke": "node scripts/production-smoke.mjs",
+    "test:phase8:host": "node scripts/verify-production-host.mjs",
+    "test:phase8:origin": "node scripts/verify-production-origin.mjs",
+    "test:phase8:evidence": "node scripts/verify-phase8-evidence.mjs",
+    "test:phase8": "npm run test:release && npm run test:phase8:host && npm run test:phase8:origin && npm run test:phase8:evidence",
+    "test:qa:seed": "node scripts/qa-fixture.mjs --env .env.qa.local",
+    "test:qa:cleanup": "node scripts/qa-cleanup-latest.mjs --env .env.qa.local",
+    "test:release": "npm run lint && npm run typecheck && npm run test:unit && npm run build && npm run security:bundle && npm run test:integration && npm run test:e2e && npm run test:smoke && npm run qa:verify-empty",
+    "qa:validate": "node scripts/validate-qa-environment.mjs",
+    "qa:fixture": "node scripts/qa-fixture.mjs",
+    "qa:cleanup": "node scripts/qa-cleanup.mjs",
+    "qa:recover": "node scripts/qa-recover-fixture.mjs",
+    "qa:verify-empty": "node scripts/qa-verify-empty.mjs",
+    "scope:audit": "node scripts/backfill-learning-scope.mjs",
+    "scope:inspect": "node scripts/inspect-learning-scope.mjs",
+    "scope:backup": "node scripts/backup-learning-data.mjs",
+    "scope:reset-test-data": "node scripts/reset-personal-test-data.mjs",
+    "security:bundle": "node scripts/verify-client-secrets.mjs"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "eslint": "^9.0.0",
+    "eslint-config-next": "^15.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.10"
+  }
+}

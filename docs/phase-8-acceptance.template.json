@@ -1,0 +1,67 @@
+{
+  "testedAt": "",
+  "appVersion": "0.1.0",
+  "origin": "",
+  "release": {
+    "deployedRevision": "",
+    "nodeVersion": ""
+  },
+  "automated": {
+    "releaseGate": "pending",
+    "productionHost": "pending",
+    "httpsOrigin": "pending",
+    "qaEmpty": "pending"
+  },
+  "devices": {
+    "android": {
+      "model": "",
+      "osVersion": "",
+      "browser": "Chrome",
+      "browserVersion": "",
+      "checks": {
+        "pwaInstall": "pending",
+        "standaloneLaunch": "pending",
+        "offlineHome": "pending",
+        "offlineChat": "pending",
+        "sttDenial": "pending",
+        "kokoroPlayback": "pending",
+        "textFallback": "pending"
+      },
+      "sttLanguages": { "en": "pending", "es": "pending", "fr": "pending", "it": "pending" }
+    },
+    "ios": {
+      "model": "",
+      "osVersion": "",
+      "browser": "Safari",
+      "browserVersion": "",
+      "checks": {
+        "pwaInstall": "pending",
+        "standaloneLaunch": "pending",
+        "offlineHome": "pending",
+        "offlineChat": "pending",
+        "sttDenial": "pending",
+        "kokoroPlayback": "pending",
+        "textFallback": "pending"
+      },
+      "sttLanguages": { "en": "pending", "es": "pending", "fr": "pending", "it": "pending" }
+    }
+  },
+  "manual": {
+    "privateAccessOutsideNetwork": { "status": "pending", "evidence": "" },
+    "fullLearningLoop": { "status": "pending", "evidence": "" },
+    "teableCrossScreenConsistency": { "status": "pending", "evidence": "" },
+    "privacyInspection": { "status": "pending", "evidence": "" },
+    "persistentPrivateAudioCache": { "status": "pending", "evidence": "" }
+  },
+  "learningLoop": {
+    "conversationId": "",
+    "feedbackDate": "",
+    "correctionCount": 0,
+    "wordCount": 0,
+    "calendarEvidence": "",
+    "wordsEvidence": "",
+    "progressEvidence": ""
+  },
+  "acceptedLimitations": [],
+  "acceptedBy": ""
+}
