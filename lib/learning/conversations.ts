@@ -323,14 +323,15 @@ export async function runConversationQuickAction(conversationId: string, action:
     ],
     { temperature: 0.45, maxTokens: 520 }
   );
+  const quickActionReply = safeTutorReply(ai.content, context.profile);
   const now = new Date().toISOString();
   const assistantMessage = await getTeableClient().createRecord<MessageFields>("messages", {
-    Name: ai.content.slice(0, 80),
+    Name: quickActionReply.slice(0, 80),
     conversation_id: context.conversation.id,
     role: "assistant",
-    text: ai.content,
+    text: quickActionReply,
     audio_url: "",
-    transcript_text: ai.content,
+    transcript_text: quickActionReply,
     language_detected: context.profile?.fields.language_code ?? "",
     tokens_used: ai.tokensUsed,
     created_at: now
@@ -433,9 +434,7 @@ async function createAnalyzedAssistantTurn(
   );
 
   const analysis = parseLearningAnalysis(ai.content);
-  const assistantReply =
-    analysis.assistant_reply?.trim() ||
-    "Good answer. Let's keep practicing with one more question: can you say that in a little more detail?";
+  const assistantReply = safeTutorReply(analysis.assistant_reply, profile);
   const now = new Date().toISOString();
   const expectedCorrectionCount = (analysis.corrections ?? []).filter(
     (correction) => correction.original?.trim() && correction.corrected?.trim()
@@ -491,22 +490,23 @@ async function createAssistantMessage(
         ? [
             {
               role: "user" as const,
-              content: "Start the lesson with a friendly first question."
+              content: "Start the lesson like a natural conversation partner: greet the learner, introduce a small thought related to the topic, and offer an easy opening for them to respond. A question is optional."
             }
           ]
         : [])
     ],
     { temperature: 0.5, maxTokens: 220 }
   );
+  const assistantReply = safeTutorReply(ai.content, profile);
 
   const now = new Date().toISOString();
   return client.createRecord<MessageFields>("messages", {
-    Name: ai.content.slice(0, 80),
+    Name: assistantReply.slice(0, 80),
     conversation_id: conversation.id,
     role: "assistant",
-    text: ai.content,
+    text: assistantReply,
     audio_url: "",
-    transcript_text: ai.content,
+    transcript_text: assistantReply,
     language_detected: profile?.fields.language_code ?? "",
     tokens_used: ai.tokensUsed,
     created_at: now
@@ -534,8 +534,12 @@ export function buildTutorSystemPrompt(
     `Estilo de correção: ${correctionStyle}.`,
     tutorContext ? formatTutorContext(tutorContext) : "",
     "Converse principalmente no idioma alvo, com frases naturais e adequadas ao nível.",
-    "Use uma ou duas frases curtas por turno para manter ritmo de conversa real.",
-    "Faça uma pergunta por vez para manter a conversa fluida.",
+    "Aja como um professor de conversação presente na conversa, não como um entrevistador ou questionário.",
+    "Primeiro reaja ao que o aluno disse; depois contribua com uma observação, opinião, exemplo curto ou experiência relacionada ao tema.",
+    "Use de uma a três frases curtas por turno para manter o ritmo de conversa real.",
+    "Perguntas são opcionais. Faça no máximo uma quando ela surgir naturalmente e alterne perguntas com comentários que permitam ao aluno reagir livremente.",
+    "Evite sequências de perguntas, perguntas genéricas repetidas e mudanças bruscas de assunto.",
+    "Mantenha o diálogo conectado ao tema proposto e retome detalhes que o aluno acabou de mencionar.",
     "Quando o usuário errar, nesta fase dê no máximo uma correção curta e explique em português de forma amigável.",
     "Não devolva JSON. Responda como mensagem de chat."
   ].join("\n");
@@ -562,10 +566,14 @@ export function buildStructuredTutorPrompt(
     `Estilo de correção: ${correctionStyle}.`,
     tutorContext ? formatTutorContext(tutorContext) : "",
     "Analise a última mensagem do usuário e continue a conversa com ritmo natural.",
+    "Aja como professor de conversação e parceiro de diálogo, não como entrevistador.",
+    "Comece reagindo ao conteúdo do aluno e acrescente uma contribuição real: comentário, opinião, exemplo ou experiência curta ligada ao tema.",
+    "Perguntas são opcionais e limitadas a no máximo uma por turno. Não termine toda resposta com pergunta e não faça sequências de perguntas.",
+    "Retome palavras ou detalhes do aluno para demonstrar escuta e manter o mesmo fio de conversa.",
     "Responda somente JSON válido, sem markdown, sem texto fora do JSON.",
     "Use esta estrutura:",
     JSON.stringify({
-      assistant_reply: "one or two short natural sentences in the target language, ending with one question",
+      assistant_reply: "one to three short natural sentences in the target language; react to the learner, add a meaningful conversational contribution, and include at most one optional question",
       corrections: [
         {
           original: "wrong fragment",
@@ -588,7 +596,7 @@ export function buildStructuredTutorPrompt(
       ]
     }),
     "Se não houver erro, use corrections: [].",
-    "Mantenha assistant_reply curto para uma conversa falada fluida.",
+    "Mantenha assistant_reply curto para uma conversa falada fluida e variada.",
     "Extraia no máximo 3 palavras úteis da mensagem do usuário e/ou da resposta da IA.",
     "error_type deve ser um de: grammar, vocabulary, pronunciation, tense, preposition, word_order, naturalness, spelling.",
     "severity deve ser um de: low, medium, high."
@@ -668,13 +676,29 @@ function sanitizeWord(value: unknown): LearningWord | undefined {
 function tutorOnlyFallback(rawContent: string): LearningAnalysis {
   const trimmed = rawContent.trim();
   const isJsonLike = trimmed.startsWith("{") || trimmed.startsWith("[") || trimmed.startsWith("```");
+  const isTechnicalError = /the string did not match the expected pattern|invalidstateerror|failed to fetch|networkerror/i.test(trimmed);
   return {
-    assistant_reply: !isJsonLike && trimmed
+    assistant_reply: !isJsonLike && !isTechnicalError && trimmed
       ? trimmed
-      : "Great effort. Let's keep practicing: can you tell me a little more?",
+      : "That makes sense. We can keep exploring this topic together.",
     corrections: [],
     words: []
   };
+}
+
+function safeTutorReply(reply: string | undefined, profile: TeableRecord<LanguageProfileFields> | null) {
+  const trimmed = reply?.trim() ?? "";
+  if (trimmed && !/the string did not match the expected pattern|invalidstateerror|failed to fetch|networkerror/i.test(trimmed)) {
+    return trimmed;
+  }
+
+  const fallbacks: Record<string, string> = {
+    en: "That makes sense. We can keep exploring this topic together.",
+    es: "Tiene sentido. Podemos seguir explorando este tema juntos.",
+    fr: "C'est intéressant. Nous pouvons continuer à explorer ce sujet ensemble.",
+    it: "È interessante. Possiamo continuare a esplorare questo argomento insieme."
+  };
+  return fallbacks[profile?.fields.language_code?.toLowerCase() ?? ""] ?? fallbacks.en;
 }
 
 async function saveCorrections(

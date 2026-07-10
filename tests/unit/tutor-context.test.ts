@@ -17,6 +17,9 @@ describe("tutor personalization context", () => {
     expect(prompt).toContain("tense (I go -> I went)");
     expect(prompt).toContain("Viagem, Trabalho remoto");
     expect(prompt).toContain("Praticar passado simples.");
+    expect(prompt).toContain("não como entrevistador");
+    expect(prompt).toContain("Perguntas são opcionais");
+    expect(prompt).not.toContain("ending with one question");
   });
 
   it("does not add calendar context when it is disabled upstream", () => {
@@ -45,8 +48,14 @@ describe("structured tutor output", () => {
 
   it("uses a tutor-only fallback for malformed JSON without inventing learning records", () => {
     const analysis = parseLearningAnalysis('{"assistant_reply":');
-    expect(analysis.assistant_reply).toContain("Great effort");
+    expect(analysis.assistant_reply).toContain("exploring this topic together");
     expect(analysis.corrections).toEqual([]);
     expect(analysis.words).toEqual([]);
+  });
+
+  it("never exposes a technical pattern error as the tutor reply", () => {
+    const analysis = parseLearningAnalysis("The string did not match the expected pattern");
+    expect(analysis.assistant_reply).not.toMatch(/expected pattern/i);
+    expect(analysis.corrections).toEqual([]);
   });
 });

@@ -136,10 +136,14 @@ test("native speech keeps typed text, announces its language, and can stop safel
 
   await page.goto(`/chat?conversationId=${fixtureConversationId()}`);
   const composer = page.getByRole("textbox", { name: "Mensagem para a IA" });
+  expect(await composer.evaluate((element) => element.tagName)).toBe("TEXTAREA");
   await composer.fill("Texto existente");
   await page.getByRole("button", { name: "Falar mensagem" }).click();
   await expect(page.getByText("Ouvindo em inglês (Estados Unidos). Pressione o microfone novamente para parar.")).toBeVisible();
-  expect(await page.evaluate(() => Boolean((window as unknown as { __qaRecognition?: unknown }).__qaRecognition))).toBe(true);
+  expect(await page.evaluate(() => {
+    const recognition = (window as unknown as { __qaRecognition?: { continuous?: boolean } }).__qaRecognition;
+    return recognition?.continuous;
+  })).toBe(true);
 
   await page.evaluate(() => {
     const recognition = (window as unknown as { __qaRecognition: { onresult: ((event: unknown) => void) | null } }).__qaRecognition;
@@ -150,7 +154,53 @@ test("native speech keeps typed text, announces its language, and can stop safel
   });
   await expect(composer).toHaveValue("Texto existente hello world");
   await page.getByRole("button", { name: "Parar transcrição" }).click();
+  await expect(composer).toHaveValue("Texto existente hello world.");
   await expect(page.getByText("Reconhecimento de voz: inglês (Estados Unidos).")).toBeVisible();
+});
+
+test("technical chat errors keep the draft and offer a successful retry", async ({ page }) => {
+  let attempts = 0;
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    attempts += 1;
+    const body = route.request().postDataJSON() as { text: string };
+    if (attempts === 1) {
+      await route.fulfill({
+        status: 500,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "The string did not match the expected pattern" })
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        userMessage: {
+          id: "retried-user-message",
+          fields: { conversation_id: fixtureConversationId(), role: "user", text: body.text, created_at: new Date().toISOString() }
+        },
+        assistantMessage: {
+          id: "retried-assistant-message",
+          fields: { conversation_id: fixtureConversationId(), role: "assistant", text: "That reminds me of a similar experience.", created_at: new Date().toISOString() }
+        },
+        corrections: [],
+        words: []
+      })
+    });
+  });
+
+  await page.goto(`/chat?conversationId=${fixtureConversationId()}`);
+  const composer = page.getByRole("textbox", { name: "Mensagem para a IA" });
+  await composer.fill("I enjoy learning this way");
+  await page.getByRole("button", { name: "Enviar mensagem" }).click();
+  const chatRecovery = page.locator(".chat-recovery");
+  await expect(chatRecovery).toContainText("Sua mensagem foi preservada");
+  await expect(chatRecovery).not.toContainText("expected pattern");
+  await expect(composer).toHaveValue("I enjoy learning this way");
+  await page.getByRole("button", { name: "Tentar novamente" }).click();
+  await expect(page.getByText("That reminds me of a similar experience.")).toBeVisible();
+  await expect(composer).toHaveValue("");
 });
 
 test("assistant and learner messages can be translated to Portuguese", async ({ page }) => {

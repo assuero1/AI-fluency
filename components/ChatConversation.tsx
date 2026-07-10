@@ -12,7 +12,7 @@ import { TranslationButton } from "./TranslationButton";
 import { ScreenHeader } from "./ScreenHeader";
 import { VoiceButton } from "./VoiceButton";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields } from "@/lib/learning/conversations";
-import { speechLanguageName, speechLocale, speechRecognitionErrorMessage } from "@/lib/learning/speech";
+import { joinSpeechSegments, speechLanguageName, speechLocale, speechRecognitionErrorMessage } from "@/lib/learning/speech";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 import type { TeableRecord } from "@/lib/teable/client";
 import type { ConversationQuickAction } from "@/lib/learning/quick-actions";
@@ -82,8 +82,14 @@ export function ChatConversation({
   const [isListening, setIsListening] = useState(false);
   const [speechSupport, setSpeechSupport] = useState<"checking" | "supported" | "unsupported">("checking");
   const [error, setError] = useState<string | null>(null);
+  const [failedMessage, setFailedMessage] = useState<string | null>(null);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const recognitionStartTextRef = useRef("");
+  const speechFinalSegmentsRef = useRef<string[]>([]);
+  const speechInterimRef = useRef("");
+  const listeningDesiredRef = useRef(false);
+  const recognitionRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const retryRequestRef = useRef<{ text: string; id: string } | null>(null);
   const latestAssistantMessageId = findLatestAssistantMessageId(messages);
 
@@ -91,6 +97,8 @@ export function ChatConversation({
     const speechWindow = window as SpeechWindow;
     setSpeechSupport(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition ? "supported" : "unsupported");
     return () => {
+      listeningDesiredRef.current = false;
+      if (recognitionRestartTimerRef.current) clearTimeout(recognitionRestartTimerRef.current);
       const recognition = recognitionRef.current;
       if (recognition) {
         recognition.onresult = null;
@@ -102,10 +110,23 @@ export function ChatConversation({
     };
   }, []);
 
+  useEffect(() => {
+    const composer = composerInputRef.current;
+    if (!composer) return;
+    composer.style.height = "auto";
+    composer.style.height = `${Math.min(composer.scrollHeight, 168)}px`;
+  }, [text]);
+
   async function sendMessage(nextText?: string) {
     if (readOnly) return;
     const cleanText = (nextText ?? text).trim();
     if (!cleanText) return;
+
+    if (isListening) {
+      listeningDesiredRef.current = false;
+      recognitionRef.current?.stop();
+      setIsListening(false);
+    }
 
     const clientRequestId = retryRequestRef.current?.text === cleanText
       ? retryRequestRef.current.id
@@ -118,6 +139,7 @@ export function ChatConversation({
     ]);
     setIsSending(true);
     setError(null);
+    setFailedMessage(null);
     setText("");
 
     try {
@@ -149,10 +171,12 @@ export function ChatConversation({
       setCorrections((current) => [...current, ...(data.corrections ?? [])]);
       setSavedWordsCount(data.words?.length ?? 0);
       retryRequestRef.current = null;
+      setFailedMessage(null);
     } catch (sendError) {
       setMessages((current) => current.filter((message) => message.id !== optimisticMessageId));
       setText(cleanText);
-      setError(sendError instanceof Error ? sendError.message : "Erro inesperado no chat.");
+      setFailedMessage(cleanText);
+      setError(normalizeChatError(sendError, "Não foi possível continuar a conversa agora. Sua mensagem foi preservada."));
     } finally {
       setIsSending(false);
     }
@@ -176,7 +200,7 @@ export function ChatConversation({
       setIsTopicDialogOpen(false);
       router.refresh();
     } catch (changeError) {
-      setError(changeError instanceof Error ? changeError.message : "Erro inesperado ao mudar o tema.");
+      setError(normalizeChatError(changeError, "Não foi possível mudar o tema agora. Tente novamente."));
     } finally {
       setIsSending(false);
     }
@@ -197,7 +221,7 @@ export function ChatConversation({
       if (!response.ok || !data.ok || !data.assistantMessage) throw new Error(data.error ?? "Não foi possível executar esta ação.");
       setMessages((current) => [...current, data.assistantMessage!]);
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "Erro inesperado ao executar a ação.");
+      setError(normalizeChatError(actionError, "Não foi possível executar esta ação agora. Tente novamente."));
     } finally {
       setPendingQuickAction(null);
       setIsSending(false);
@@ -215,7 +239,7 @@ export function ChatConversation({
       if (!response.ok || !data.ok) throw new Error(data.error ?? "Não foi possível finalizar a conversa.");
       router.push(data.redirectTo ?? `/resumo?conversationId=${conversation.id}`);
     } catch (finishError) {
-      setError(finishError instanceof Error ? finishError.message : "Erro inesperado ao finalizar.");
+      setError(normalizeChatError(finishError, "Não foi possível finalizar a conversa agora. Tente novamente."));
     } finally {
       setIsSending(false);
     }
@@ -225,6 +249,7 @@ export function ChatConversation({
     if (isSending) return;
 
     if (isListening) {
+      listeningDesiredRef.current = false;
       recognitionRef.current?.stop();
       setIsListening(false);
       return;
@@ -245,35 +270,76 @@ export function ChatConversation({
     recognitionRef.current = recognition;
     recognition.lang = speechLocale(speechLanguage);
     recognition.interimResults = true;
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognitionStartTextRef.current = text.trim();
+    speechFinalSegmentsRef.current = [];
+    speechInterimRef.current = "";
+    listeningDesiredRef.current = true;
     setIsListening(true);
     setError(null);
 
     recognition.onresult = (event) => {
-      let transcript = "";
+      const finalSegments: string[] = [];
+      let interimTranscript = "";
 
       for (let index = 0; index < event.results.length; index += 1) {
         const result = event.results[index];
-        transcript += result[0].transcript;
+        const transcript = result[0].transcript.trim();
+        if (!transcript) continue;
+        if (result.isFinal) finalSegments.push(transcript);
+        else interimTranscript += `${interimTranscript ? " " : ""}${transcript}`;
       }
 
-      const nextTranscript = transcript.trim();
-      if (nextTranscript) setText([recognitionStartTextRef.current, nextTranscript].filter(Boolean).join(" "));
+      speechFinalSegmentsRef.current = finalSegments;
+      speechInterimRef.current = interimTranscript;
+      const liveTranscript = [...finalSegments, interimTranscript].filter(Boolean).join(" ");
+      if (liveTranscript) setText(mergeSpeechText(recognitionStartTextRef.current, liveTranscript));
     };
 
     recognition.onerror = (event) => {
+      listeningDesiredRef.current = false;
       setIsListening(false);
       const message = speechRecognitionErrorMessage(event.error);
       if (message) setError(message);
     };
 
     recognition.onend = () => {
-      setIsListening(false);
-      recognitionRef.current = null;
+      const completedTranscript = joinSpeechSegments(
+        [...speechFinalSegmentsRef.current, speechInterimRef.current].filter(Boolean),
+        speechLanguage
+      );
+      const completedText = mergeSpeechText(recognitionStartTextRef.current, completedTranscript);
+      if (completedTranscript) setText(completedText);
+
+      if (!listeningDesiredRef.current) {
+        setIsListening(false);
+        recognitionRef.current = null;
+        return;
+      }
+
+      recognitionStartTextRef.current = completedText;
+      speechFinalSegmentsRef.current = [];
+      speechInterimRef.current = "";
+      recognitionRestartTimerRef.current = setTimeout(() => {
+        try {
+          recognition.start();
+        } catch (restartError) {
+          listeningDesiredRef.current = false;
+          recognitionRef.current = null;
+          setIsListening(false);
+          setError(normalizeChatError(restartError, "O ditado foi interrompido. Toque no microfone para continuar."));
+        }
+      }, 250);
     };
 
-    recognition.start();
+    try {
+      recognition.start();
+    } catch (startError) {
+      listeningDesiredRef.current = false;
+      recognitionRef.current = null;
+      setIsListening(false);
+      setError(normalizeChatError(startError, "Não foi possível iniciar o ditado. Tente novamente."));
+    }
   }
 
   return (
@@ -382,12 +448,21 @@ export function ChatConversation({
           <div className="chat-row">
             <IconBubble Icon={Bot} />
             <div className="bubble ai typing-bubble">
-              <Loader2 className="spin" /> A IA está preparando a próxima pergunta...
+              <Loader2 className="spin" /> A IA está preparando a próxima resposta...
             </div>
           </div>
         ) : null}
 
-        {error ? <div className="inline-error" role="alert">{error}</div> : null}
+        {error ? (
+          <div className="inline-error chat-recovery" role="alert">
+            <span>{error}</span>
+            {failedMessage ? (
+              <button disabled={isSending} onClick={() => sendMessage(failedMessage)} type="button">
+                Tentar novamente
+              </button>
+            ) : null}
+          </div>
+        ) : null}
 
         <Link
           aria-label={savedWordsCount > 0 ? `Abrir ${savedWordsCount} palavras salvas` : "Abrir vocabulário"}
@@ -436,12 +511,20 @@ export function ChatConversation({
           >
             {speechSupport === "unsupported" ? <MicOff /> : <Mic />}
           </button>
-          <input
+          <textarea
             aria-label="Mensagem para a IA"
             className="composer-input"
             disabled={isSending}
             onChange={(event) => setText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
+                event.preventDefault();
+                sendMessage();
+              }
+            }}
             placeholder={isListening ? "Ouvindo..." : "Escreva ou fale sua mensagem..."}
+            ref={composerInputRef}
+            rows={1}
             value={text}
           />
           <button className="send-button" disabled={isSending || !text.trim()} type="submit" aria-label="Enviar mensagem">
@@ -465,6 +548,18 @@ export function ChatConversation({
 function createClientRequestId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `message-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function mergeSpeechText(existing: string, transcript: string) {
+  return [existing.trim(), transcript.trim()].filter(Boolean).join(" ");
+}
+
+function normalizeChatError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message.trim() : "";
+  if (!message || /the string did not match the expected pattern|invalidstateerror|failed to fetch|networkerror|network request failed|load failed|unexpected (end|token).*json/i.test(message)) {
+    return fallback;
+  }
+  return message;
 }
 
 function findLatestAssistantMessageId(messages: TeableRecord<MessageFields>[]) {
