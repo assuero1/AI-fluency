@@ -191,6 +191,7 @@ export function calculateLegacyWordReview(currentFamiliarity: number, result: { 
 }
 
 export async function createFlashcardPractice(input: { criterion?: unknown; count?: unknown; wordIds?: unknown; parentSessionId?: unknown; retrainMode?: unknown }) {
+  const operationStartedAt = Date.now();
   if (!isFlashcardActiveRecallEnabled()) throw new LearningStateError("O treino de recuperação ativa ainda não está habilitado para este ambiente.", 503);
   const criterion = normalizeFlashcardCriterion(input.criterion);
   const requestedCount = normalizeFlashcardCount(input.count);
@@ -206,6 +207,9 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
   if (active) throw new LearningStateError("Você já possui um treino ativo. Continue a sessão antes de iniciar outra.", 409);
   const scoped = allWords.filter((word) => matchesLearningScope(word.fields, { userId: user.id, profileId: profile.id }));
   const requestedWordIds = Array.isArray(input.wordIds) ? new Set(input.wordIds.filter((id): id is string => typeof id === "string")) : null;
+  if (requestedWordIds && requestedWordIds.size > 30) throw new LearningStateError("O treino aceita no máximo 30 palavras.", 422);
+  if (requestedWordIds && [...requestedWordIds].some((id) => !scoped.some((word) => word.id === id))) throw new LearningStateError("Uma ou mais palavras não pertencem ao perfil ativo.", 404);
+  if (typeof input.parentSessionId === "string" && input.parentSessionId && !sessions.some((item) => item.id === input.parentSessionId && item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards" && item.fields.status === "completed")) throw new LearningStateError("Sessão de origem do retreino não encontrada.", 404);
   const selected = requestedWordIds?.size ? scoped.filter((word) => requestedWordIds.has(word.id)) : selectFlashcardWords(scoped, criterion, requestedCount);
   if (selected.length < 1) throw new LearningStateError("Salve pelo menos uma palavra antes de iniciar este treino.", 409);
 
@@ -239,6 +243,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
   let deck: Awaited<ReturnType<typeof buildDeck>>;
   let cards: Flashcard[];
   try {
+    await client.createEvent(user.id, "flashcard_generation_started", { session_id: session.id, word_count: selected.length });
     deck = await buildDeck(selected, profile.fields.language_name || profile.fields.language_code, profile.fields.level || "intermediário", deckSeed, profile.fields.audio_enabled === true);
     cards = [];
     for (const [index, provisional] of deck.cards.entries()) {
@@ -251,8 +256,10 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
       configuration_json: JSON.stringify({ distribution: getActiveRecallDistribution(selected.length, profile.fields.audio_enabled === true), deckSeed, adapted: deck.adapted }),
       updated_at: new Date().toISOString()
     });
+    await client.createEvent(user.id, "flashcard_generation_completed", { session_id: session.id, card_count: cards.length, duration_ms: Date.now() - operationStartedAt, fallback_used: deck.adapted });
   } catch (error) {
     await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, { status: "failed", updated_at: new Date().toISOString() }).catch(() => undefined);
+    await client.createEvent(user.id, "flashcard_generation_failed", { session_id: session.id, duration_ms: Date.now() - operationStartedAt, error_type: safeErrorType(error) }).catch(() => undefined);
     throw error;
   }
   await client.createEvent(user.id, "flashcard_practice_started", { session_id: session.id, criterion, word_count: selected.length, card_count: cards.length });
@@ -315,6 +322,7 @@ export async function getActiveFlashcardPractice() {
   const attempts = attemptRecords.filter((record) => record.fields.practice_session_id === session.id).sort(compareAttemptRecords).map((record) => ({ id: record.id, ...attemptRecordToAnswer(record) }));
   if (!cards.length) throw new LearningStateError("A sessão ativa não possui cards persistidos.", 409);
   const rebuilt = rebuildFlashcardQueue(cards, attempts);
+  await client.createEvent(user.id, "flashcard_practice_resumed", { session_id: session.id, persisted_attempt_count: attempts.length });
   return {
     sessionId: session.id,
     cards,
@@ -367,6 +375,7 @@ export async function persistFlashcardAttempt(input: { sessionId?: unknown; clie
 }
 
 async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptId: string, input: { cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown; audioReplayCount?: unknown; usedSlowAudio?: unknown; audioFailed?: unknown }) {
+  const operationStartedAt = Date.now();
   const client = getTeableClient();
   const user = await getOrCreatePersonalUser();
   const profile = await getActiveLanguageProfile(user);
@@ -379,17 +388,24 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
   const session = sessions.find((item) => item.id === sessionId && item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards" && item.fields.status === "active");
   if (!session) throw new LearningStateError("Sessão ativa de treino não encontrada.", 404);
   const existing = attemptRecords.find((record) => record.fields.practice_session_id === sessionId && record.fields.client_attempt_id === clientAttemptId);
-  if (existing) return { id: existing.id, ...attemptRecordToAnswer(existing) };
+  if (existing) {
+    await client.createEvent(user.id, "flashcard_duplicate_attempt_prevented", { session_id: sessionId, flashcard_id: existing.fields.flashcard_id, presentation_number: existing.fields.presentation_number });
+    return { id: existing.id, ...attemptRecordToAnswer(existing) };
+  }
   const cards = cardRecords.filter((record) => record.fields.practice_session_id === sessionId).sort((a, b) => a.fields.initial_position - b.fields.initial_position).map(flashcardRecordToCard);
   const priorAttempts = attemptRecords.filter((record) => record.fields.practice_session_id === sessionId).sort(compareAttemptRecords).map(attemptRecordToAnswer);
   const rebuilt = rebuildFlashcardQueue(cards, priorAttempts);
   const current = rebuilt.currentItem;
   const cardId = typeof input.cardId === "string" ? input.cardId : "";
   const presentationNumber = Number(input.presentationNumber);
-  if (!current || current.cardId !== cardId || current.presentationNumber !== presentationNumber) throw new LearningStateError("A tentativa não corresponde ao próximo item da fila.", 409);
+  if (!current || current.cardId !== cardId || current.presentationNumber !== presentationNumber) {
+    await client.createEvent(user.id, "flashcard_session_inconsistency", { session_id: sessionId, reason: "unexpected_queue_item", presentation_number: presentationNumber });
+    throw new LearningStateError("A tentativa não corresponde ao próximo item da fila.", 409);
+  }
   const card = cards.find((candidate) => candidate.id === cardId)!;
   const forgot = input.forgot === true;
-  const userAnswer = typeof input.userAnswer === "string" ? input.userAnswer.trim().slice(0, 300) : "";
+  if (typeof input.userAnswer === "string" && input.userAnswer.length > 300) throw new LearningStateError("A resposta deve ter no máximo 300 caracteres.", 422);
+  const userAnswer = typeof input.userAnswer === "string" ? input.userAnswer.trim() : "";
   if (!forgot && !userAnswer) throw new LearningStateError("Informe uma resposta ou marque que não lembra.", 422);
   const matchResult = forgot ? "incorrect" as const : compareAnswerForCard(card, userAnswer);
   const responseTimeMs = Math.max(0, Math.min(300_000, Math.round(Number(input.responseTimeMs) || 0)));
@@ -416,7 +432,7 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
     audio_failed: input.audioFailed === true,
     created_at: now
   });
-  await client.createEvent(user.id, "flashcard_attempt_evaluated", { session_id: sessionId, flashcard_id: card.id, presentation_number: presentationNumber, rating, match_result: matchResult, used_speech: input.usedSpeech === true, audio_replay_count: Math.max(0, Math.min(30, Math.round(Number(input.audioReplayCount) || 0))), audio_failed: input.audioFailed === true });
+  await client.createEvent(user.id, "flashcard_attempt_evaluated", { session_id: sessionId, flashcard_id: card.id, presentation_number: presentationNumber, rating, match_result: matchResult, used_speech: input.usedSpeech === true, audio_replay_count: Math.max(0, Math.min(30, Math.round(Number(input.audioReplayCount) || 0))), audio_failed: input.audioFailed === true, evaluation_latency_ms: Date.now() - operationStartedAt });
   if (input.audioFailed === true) await client.createEvent(user.id, "flashcard_audio_fallback_activated", { session_id: sessionId, flashcard_id: card.id });
   await client.updateRecord<PracticeSessionFields>("practiceSessions", sessionId, { presentation_count: priorAttempts.length + 1, updated_at: now });
   return { id: record.id, ...attemptRecordToAnswer(record) };
@@ -448,6 +464,7 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
   const focus = parseFocus(session.fields.focus);
   if (focus.completed || session.fields.status === "completed") {
     if (focus.completionId === clientCompletionId && focus.result) return focus.result;
+    await client.createEvent(user.id, "flashcard_duplicate_completion_blocked", { session_id: session.id });
     throw new LearningStateError("Este treino já foi contabilizado.", 409);
   }
   const persistedCards = cardRecords.filter((record) => record.fields.practice_session_id === session.id).sort((a, b) => a.fields.initial_position - b.fields.initial_position).map(flashcardRecordToCard);
@@ -534,7 +551,7 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
   return result;
 }
 
-async function buildDeck(words: TeableRecord<WordFields>[], language: string, level: string, seed: string, audioEnabled: boolean) {
+export async function buildDeck(words: TeableRecord<WordFields>[], language: string, level: string, seed: string, audioEnabled: boolean) {
   const distribution = getActiveRecallDistribution(words.length, audioEnabled);
   const desiredTypes = [
     ...Array(distribution.targetToNative).fill("target_to_native" as const),
@@ -701,3 +718,4 @@ function compareAttemptRecords(a: TeableRecord<FlashcardAttemptFields>, b: Teabl
 
 function parseStringArray(value: string | undefined) { try { const parsed = JSON.parse(value || "[]"); return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : []; } catch { return []; } }
 function parseJson(value: string | undefined): Record<string, unknown> { try { const parsed = JSON.parse(value || "{}"); return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {}; } catch { return {}; } }
+function safeErrorType(error: unknown) { return error instanceof LearningStateError ? `learning_state_${error.status}` : error instanceof Error ? error.name.slice(0, 80) : "unknown"; }

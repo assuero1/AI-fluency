@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   calculateLegacyWordReview,
   getActiveRecallDistribution,
+  isFlashcardActiveRecallEnabled,
   normalizeFlashcardCount,
   normalizeFlashcardCriterion,
   seededShuffle,
@@ -24,6 +25,16 @@ describe("current flashcard behavior", () => {
     expect(normalizeFlashcardCount(1)).toBe(2);
     expect(normalizeFlashcardCount(18.6)).toBe(19);
     expect(normalizeFlashcardCount(99)).toBe(30);
+  });
+
+  it("supports a server-side rollout kill switch", () => {
+    const previous = process.env.FLASHCARD_ACTIVE_RECALL_ENABLED;
+    process.env.FLASHCARD_ACTIVE_RECALL_ENABLED = "false";
+    expect(isFlashcardActiveRecallEnabled()).toBe(false);
+    process.env.FLASHCARD_ACTIVE_RECALL_ENABLED = "true";
+    expect(isFlashcardActiveRecallEnabled()).toBe(true);
+    if (previous === undefined) delete process.env.FLASHCARD_ACTIVE_RECALL_ENABLED;
+    else process.env.FLASHCARD_ACTIVE_RECALL_ENABLED = previous;
   });
 
   it("prioritizes fewer uses and then lower familiarity", () => {
@@ -51,6 +62,7 @@ describe("current flashcard behavior", () => {
     expect(getActiveRecallDistribution(3)).toEqual({ targetToNative: 1, nativeToTarget: 1, cloze: 1, listening: 0 });
     expect(getActiveRecallDistribution(10)).toEqual({ targetToNative: 3, nativeToTarget: 2, cloze: 5, listening: 0 });
     expect(getActiveRecallDistribution(10, true)).toEqual({ targetToNative: 3, nativeToTarget: 2, cloze: 3, listening: 2 });
+    for (const count of [2, 5, 10, 30]) expect(Object.values(getActiveRecallDistribution(count, true)).reduce((sum, value) => sum + value, 0)).toBe(count);
   });
 
   it("reproduces the same shuffled deck from the persisted seed", () => {

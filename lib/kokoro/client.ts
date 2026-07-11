@@ -43,7 +43,8 @@ export async function testKokoroConnection() {
       speed: config.speed,
       stream_format: "audio"
     }),
-    cache: "no-store"
+    cache: "no-store",
+    signal: AbortSignal.timeout(12_000)
   });
 
   const contentType = response.headers.get("content-type") ?? "";
@@ -88,7 +89,8 @@ export async function synthesizeSpeech(input: string, options?: { voice?: string
       speed: request.speed,
       stream_format: "audio"
     }),
-    cache: "no-store"
+    cache: "no-store",
+    signal: AbortSignal.timeout(12_000)
   });
 
   const contentType = response.headers.get("content-type") ?? `audio/${request.outputFormat}`;

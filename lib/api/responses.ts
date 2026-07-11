@@ -37,6 +37,7 @@ export function handleApiError(error: unknown) {
   }
 
   if (error instanceof TeableRequestError) {
+    console.error(JSON.stringify({ event: "teable_request_failed", status: error.status, timestamp: new Date().toISOString() }));
     return jsonError(error.message, error.status, error.detail);
   }
 
@@ -45,6 +46,7 @@ export function handleApiError(error: unknown) {
   }
 
   if (error instanceof AiRequestError || error instanceof KokoroRequestError) {
+    console.error(JSON.stringify({ event: error instanceof AiRequestError ? "ai_request_failed" : "kokoro_request_failed", status: error.status, timestamp: new Date().toISOString() }));
     return jsonError(error.message, error.status);
   }
 

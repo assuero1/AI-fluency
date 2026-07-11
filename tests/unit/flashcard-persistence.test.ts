@@ -8,6 +8,7 @@ let attempts: Array<{ id: string; fields: Record<string, unknown>; createdTime?:
 const listRecords = vi.fn();
 const createRecord = vi.fn();
 const updateRecord = vi.fn();
+const createEvent = vi.fn();
 
 vi.mock("../../lib/ai/client", () => ({ createChatCompletion: vi.fn() }));
 vi.mock("../../lib/learning/profile", () => ({
@@ -15,7 +16,7 @@ vi.mock("../../lib/learning/profile", () => ({
   getActiveLanguageProfile: vi.fn(async () => profile)
 }));
 vi.mock("../../lib/teable/client", () => ({
-  getTeableClient: () => ({ listRecords, createRecord, updateRecord, createEvent: vi.fn() })
+  getTeableClient: () => ({ listRecords, createRecord, updateRecord, createEvent })
 }));
 
 describe("flashcard attempt persistence and resume", () => {
@@ -35,6 +36,7 @@ describe("flashcard attempt persistence and resume", () => {
       return record;
     });
     updateRecord.mockResolvedValue(session);
+    createEvent.mockResolvedValue({ id: "event-a", fields: {} });
   });
 
   it("persists one normalized attempt and returns it idempotently", async () => {
@@ -48,6 +50,8 @@ describe("flashcard attempt persistence and resume", () => {
     expect(createRecord).toHaveBeenCalledTimes(1);
     expect(attempts[0].fields.normalized_answer).toBe("hola");
     expect(attempts[0].fields).toMatchObject({ audio_replay_count: 2, used_slow_audio: true, answered_after_audio_replay: true, audio_failed: false });
+    expect(createEvent).toHaveBeenCalledWith(user.id, "flashcard_attempt_evaluated", expect.objectContaining({ session_id: session.id, presentation_number: 1, evaluation_latency_ms: expect.any(Number) }));
+    expect(createEvent).toHaveBeenCalledWith(user.id, "flashcard_duplicate_attempt_prevented", expect.objectContaining({ session_id: session.id, presentation_number: 1 }));
   });
 
   it("reconstructs the next presentation from persisted history", async () => {
