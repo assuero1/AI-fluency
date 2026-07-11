@@ -144,6 +144,23 @@ export function extractVocabularyCandidates(
   return [...candidates.values()];
 }
 
+/**
+ * Keeps the end-of-conversation picker focused on additions.  Comparing the
+ * fallback lemma also avoids offering common inflections (for example,
+ * "worked") when its base form is already in the learner's vocabulary.
+ */
+export function filterNewVocabularyCandidates(
+  candidates: VocabularyCandidate[],
+  existingWords: string[],
+  language: string
+) {
+  const existing = new Set(existingWords.map(normalizeVocabularyToken));
+  return candidates.filter((candidate) =>
+    !existing.has(candidate.normalized) &&
+    !existing.has(fallbackVocabularyLemma(candidate.normalized, language))
+  );
+}
+
 export function getSavedVocabularyCandidateIds(
   messages: TeableRecord<MessageFields>[],
   occurrences: TeableRecord<WordOccurrenceFields>[]

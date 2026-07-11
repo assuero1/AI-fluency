@@ -109,6 +109,19 @@ describe("vocabulary integrity", () => {
     expect(fallbackVocabularyLemma("parlando", "it")).toBe("parlare");
   });
 
+  it("keeps only candidates that are not already in the vocabulary", async () => {
+    const { extractVocabularyCandidates, filterNewVocabularyCandidates } = await import("../../lib/learning/vocabulary-selection");
+    const candidates = extractVocabularyCandidates(messages);
+
+    const filtered = filterNewVocabularyCandidates(candidates, ["work"], "en-US");
+
+    expect(filtered.map((candidate) => candidate.id)).not.toContain("user:work");
+    expect(filtered.map((candidate) => candidate.id)).not.toContain("assistant:work");
+    expect(filtered.map((candidate) => candidate.id)).not.toContain("user:worked");
+    expect(filtered.map((candidate) => candidate.id)).not.toContain("user:working");
+    expect(filtered.map((candidate) => candidate.id)).toContain("user:café");
+  });
+
   it("increments by each missing occurrence and is idempotent on retries", async () => {
     const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
 

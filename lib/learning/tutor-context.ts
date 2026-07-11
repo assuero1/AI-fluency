@@ -28,7 +28,9 @@ export type TutorContext = {
 
 type TutorKnowledge = Omit<TutorContext, "recentHistory">;
 
-const TUTOR_CONTEXT_TTL_MS = 45_000;
+// The pedagogical knowledge changes slowly, while loading it requires several
+// complete Teable reads. Keep it warm throughout a normal conversation.
+const TUTOR_CONTEXT_TTL_MS = 5 * 60_000;
 const MAX_TUTOR_CONTEXT_ENTRIES = 24;
 const tutorKnowledgeCache = new Map<string, { expiresAt: number; promise: Promise<TutorKnowledge> }>();
 

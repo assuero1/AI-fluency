@@ -50,6 +50,10 @@ export type CalendarSuggestion = {
   reason: string;
 };
 
+const COMPLETION_CACHE_TTL_MS = 30_000;
+const MAX_COMPLETION_CACHE_ENTRIES = 24;
+const completionCache = new Map<string, { expiresAt: number; value: Awaited<ReturnType<typeof buildCompletionSummary>> }>();
+
 export async function endConversation(conversationId: string) {
   const context = await getConversation(conversationId);
   if (!context) throw new LearningStateError("Conversa não encontrada.", 404);
@@ -59,9 +63,25 @@ export async function endConversation(conversationId: string) {
   }
 
   const client = getTeableClient();
-  const [wordOccurrences, words] = await Promise.all([
+  const endedAt = new Date().toISOString();
+  const supportingData = Promise.all([
     client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
-    client.listAllRecords<WordFields>("words")
+    client.listAllRecords<WordFields>("words"),
+    client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
+    client.listRecords<ConversationFields>("conversations", 300)
+  ]);
+  // The summary model can work from the transcript and corrections. Starting it
+  // now overlaps its latency with the database reads needed for persistence.
+  const summaryRequest = generateConversationSummary(
+    context.conversation,
+    context.topicTitle,
+    context.messages,
+    context.corrections,
+    []
+  );
+  const [[wordOccurrences, words, feedbacks, conversations], summary] = await Promise.all([
+    supportingData,
+    summaryRequest
   ]);
 
   const conversationOccurrences = wordOccurrences.filter(
@@ -74,33 +94,27 @@ export async function endConversation(conversationId: string) {
       profileId: context.conversation.fields.language_profile_id
     })
   );
-  const summary = await generateConversationSummary(
-    context.conversation,
-    context.topicTitle,
-    context.messages,
-    context.corrections,
-    conversationWords
-  );
-  const endedAt = new Date().toISOString();
-  const dailyFeedback = await saveDailyFeedback(
-    context.conversation,
-    context.corrections,
-    conversationWords,
-    summary,
-    endedAt
-  );
-
   const durationSeconds = Math.max(
     0,
     Math.round((new Date(endedAt).getTime() - new Date(context.conversation.fields.started_at).getTime()) / 1000)
   );
 
-  const completedConversation = await client.updateRecord<ConversationFields>("conversations", context.conversation.id, {
-    status: "completed",
-    ended_at: endedAt,
-    duration_seconds: durationSeconds,
-    summary: summary.recommended_focus ?? summary.strengths ?? "Conversa concluída."
-  });
+  const [dailyFeedback, completedConversation] = await Promise.all([
+    saveDailyFeedback(
+      context.conversation,
+      context.corrections,
+      conversationWords,
+      summary,
+      endedAt,
+      { feedbacks, conversations }
+    ),
+    client.updateRecord<ConversationFields>("conversations", context.conversation.id, {
+      status: "completed",
+      ended_at: endedAt,
+      duration_seconds: durationSeconds,
+      summary: summary.recommended_focus ?? summary.strengths ?? "Conversa concluída."
+    })
+  ]);
 
   await client.createEvent(context.conversation.fields.user_id, "conversation_completed", {
     conversation_id: context.conversation.id,
@@ -109,6 +123,13 @@ export async function endConversation(conversationId: string) {
     fluency_score: dailyFeedback.fields.fluency_score,
     new_words_count: dailyFeedback.fields.new_words_count
   });
+
+  const completionSummary = buildCompletionSummary(context, completedConversation, dailyFeedback, wordOccurrences, words);
+  if (completionCache.size >= MAX_COMPLETION_CACHE_ENTRIES) {
+    const oldestKey = completionCache.keys().next().value;
+    if (oldestKey) completionCache.delete(oldestKey);
+  }
+  completionCache.set(conversationId, { expiresAt: Date.now() + COMPLETION_CACHE_TTL_MS, value: completionSummary });
 
   return {
     conversation: completedConversation,
@@ -155,6 +176,11 @@ async function getPersistedCompletion(context: NonNullable<Awaited<ReturnType<ty
 }
 
 export async function getConversationSummary(conversationId: string) {
+  const cached = completionCache.get(conversationId);
+  if (cached) {
+    completionCache.delete(conversationId);
+    if (cached.expiresAt > Date.now()) return cached.value;
+  }
   const context = await getConversation(conversationId);
   if (!context) throw new LearningStateError("Conversa não encontrada.", 404);
 
@@ -209,6 +235,26 @@ export async function getConversationSummary(conversationId: string) {
       userId: context.conversation.fields.user_id,
       profileId: context.conversation.fields.language_profile_id
     })),
+    occurrences
+  };
+}
+
+function buildCompletionSummary(
+  context: NonNullable<Awaited<ReturnType<typeof getConversation>>>,
+  conversation: TeableRecord<ConversationFields>,
+  dailyFeedback: TeableRecord<DailyFeedbackFields>,
+  wordOccurrences: TeableRecord<WordOccurrenceFields>[],
+  words: TeableRecord<WordFields>[]
+) {
+  const occurrences = wordOccurrences.filter((occurrence) => occurrence.fields.conversation_id === conversation.id);
+  const scope = { userId: conversation.fields.user_id, profileId: conversation.fields.language_profile_id };
+  const wordIds = new Set(occurrences.map((occurrence) => occurrence.fields.word_id));
+  return {
+    ...context,
+    conversation,
+    dailyFeedback,
+    words: words.filter((word) => wordIds.has(word.id) && matchesLearningScope(word.fields, scope)),
+    vocabularyWords: words.filter((word) => matchesLearningScope(word.fields, scope)),
     occurrences
   };
 }
@@ -394,7 +440,7 @@ async function generateConversationSummary(
   words: TeableRecord<WordFields>[]
 ): Promise<Required<ConversationSummary>> {
   const transcript = messages
-    .slice(-16)
+    .slice(-12)
     .map((message) => `${message.fields.role}: ${message.fields.text}`)
     .join("\n");
   const correctionList = corrections
@@ -423,7 +469,7 @@ async function generateConversationSummary(
           ].join("\n\n")
         }
       ],
-      { temperature: 0.35, maxTokens: 800 }
+      { temperature: 0.3, maxTokens: 420, timeoutMs: 4_500 }
     );
     return normalizeSummary(parseSummary(ai.content), corrections, words);
   } catch {
@@ -436,14 +482,20 @@ async function saveDailyFeedback(
   corrections: TeableRecord<CorrectionFields>[],
   words: TeableRecord<WordFields>[],
   summary: Required<ConversationSummary>,
-  endedAt: string
+  endedAt: string,
+  preloaded?: {
+    feedbacks: TeableRecord<DailyFeedbackFields>[];
+    conversations: TeableRecord<ConversationFields>[];
+  }
 ) {
   const client = getTeableClient();
   const date = toDateKey(endedAt);
-  const [feedbacks, conversations] = await Promise.all([
-    client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
-    client.listRecords<ConversationFields>("conversations", 300)
-  ]);
+  const [feedbacks, conversations] = preloaded
+    ? [preloaded.feedbacks, preloaded.conversations]
+    : await Promise.all([
+        client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
+        client.listRecords<ConversationFields>("conversations", 300)
+      ]);
   const existing = feedbacks.find(
     (feedback) =>
       feedback.fields.user_id === conversation.fields.user_id &&

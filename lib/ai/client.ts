@@ -38,7 +38,7 @@ type ChatCompletionResponse = {
   };
 };
 
-export async function createChatCompletion(messages: AiMessage[], options?: { temperature?: number; maxTokens?: number }) {
+export async function createChatCompletion(messages: AiMessage[], options?: { temperature?: number; maxTokens?: number; timeoutMs?: number }) {
   const config = getAiConfig();
 
   if (!config.baseUrl) throw new AiConfigError("AI_BASE_URL is not configured.");
@@ -52,7 +52,7 @@ export async function createChatCompletion(messages: AiMessage[], options?: { te
     max_tokens: options?.maxTokens ?? config.maxTokens
   };
 
-  const body = await requestChatCompletion(config.baseUrl, config.apiKey, payload);
+  const body = await requestChatCompletion(config.baseUrl, config.apiKey, payload, requestSignal(options?.timeoutMs));
   const content = extractCompletionContent(body);
 
   if (!content) {
@@ -67,7 +67,7 @@ export async function createChatCompletion(messages: AiMessage[], options?: { te
           content: "Your previous response was empty. Reply now with the requested content only."
         }
       ]
-    });
+    }, requestSignal(options?.timeoutMs));
     const retryContent = extractCompletionContent(retryBody);
     if (!retryContent) throw new AiRequestError("AI provider returned an empty response.", 502, retryBody);
 
@@ -95,7 +95,8 @@ async function requestChatCompletion(
     messages: AiMessage[];
     temperature: number;
     max_tokens: number;
-  }
+  },
+  signal?: AbortSignal
 ) {
   const response = await fetch(`${trimSlash(baseUrl)}/chat/completions`, {
     method: "POST",
@@ -104,7 +105,8 @@ async function requestChatCompletion(
       "Content-Type": "application/json"
     },
     body: JSON.stringify(payload),
-    cache: "no-store"
+    cache: "no-store",
+    signal
   });
 
   const contentType = response.headers.get("content-type") ?? "";
@@ -115,6 +117,10 @@ async function requestChatCompletion(
   }
 
   return body as ChatCompletionResponse;
+}
+
+function requestSignal(timeoutMs?: number) {
+  return timeoutMs && timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
 }
 
 function extractCompletionContent(result: ChatCompletionResponse) {

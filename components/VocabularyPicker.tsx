@@ -5,17 +5,13 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { VocabularyCandidate } from "@/lib/learning/vocabulary-selection";
 
-export function VocabularyPicker({ conversationId, candidates, existingWords, savedIds }: {
+export function VocabularyPicker({ conversationId, candidates }: {
   conversationId: string;
   candidates: VocabularyCandidate[];
-  existingWords: string[];
-  savedIds: string[];
 }) {
   const router = useRouter();
   const candidatesById = useMemo(() => new Map(candidates.map((candidate) => [candidate.id, candidate])), [candidates]);
-  const savedIdSet = useMemo(() => new Set(savedIds), [savedIds]);
-  const existingWordSet = useMemo(() => new Set(existingWords), [existingWords]);
-  const [selected, setSelected] = useState(() => new Set(savedIds.filter((id) => candidatesById.get(id)?.eligible)));
+  const [selected, setSelected] = useState(() => new Set<string>());
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
   const groups = [
@@ -52,7 +48,7 @@ export function VocabularyPicker({ conversationId, candidates, existingWords, sa
 
   return <section className="section vocabulary-picker">
     <h2 className="section-title">Escolha o que vai para seu vocabulário</h2>
-    <p className="row-meta">Nada é salvo automaticamente. Selecione palavras individuais ou um grupo inteiro.</p>
+    <p className="row-meta">Aqui aparecem apenas palavras que ainda não estão no seu vocabulário. Nada é salvo automaticamente.</p>
     {groups.map((group) => {
       const items = candidates.filter((item) => item.source === group.source);
       const eligibleItems = items.filter((item) => item.eligible);
@@ -66,7 +62,7 @@ export function VocabularyPicker({ conversationId, candidates, existingWords, sa
         <div className="vocabulary-options">
           {items.map((item) => <label className={selected.has(item.id) ? "vocabulary-option selected" : "vocabulary-option"} key={item.id}>
             <input checked={selected.has(item.id)} disabled={!item.eligible} onChange={() => toggle(item.id)} type="checkbox" />
-            <span>{item.text}{item.occurrenceCount > 1 ? ` (${item.occurrenceCount}×)` : ""}<small>{getCandidateStatus(item, savedIdSet.has(item.id), existingWordSet.has(item.normalized))}</small></span>{selected.has(item.id) ? <Check size={16} /> : null}
+            <span>{item.text}{item.occurrenceCount > 1 ? ` (${item.occurrenceCount}×)` : ""}<small>{getCandidateStatus(item)}</small></span>{selected.has(item.id) ? <Check size={16} /> : null}
           </label>)}
         </div>
       </div>;
@@ -78,11 +74,9 @@ export function VocabularyPicker({ conversationId, candidates, existingWords, sa
   </section>;
 }
 
-function getCandidateStatus(candidate: VocabularyCandidate, alreadySaved: boolean, alreadyInVocabulary: boolean) {
+function getCandidateStatus(candidate: VocabularyCandidate) {
   if (!candidate.eligible) return "Uso corrigido — não será salvo";
   if (candidate.incorrectOccurrenceCount > 0) return `${candidate.correctOccurrenceCount} uso(s) correto(s); usos corrigidos ignorados`;
-  if (alreadySaved) return "Já registrado nesta conversa";
-  if (alreadyInVocabulary) return "Já está no vocabulário — o uso será atualizado";
   if (candidate.source === "assistant") return "Sugestão usada pela IA — não conta como domínio";
   return "Novo uso do seu vocabulário";
 }
