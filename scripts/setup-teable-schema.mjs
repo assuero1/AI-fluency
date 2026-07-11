@@ -189,6 +189,7 @@ const TABLES = [
       ["lemma", "text"],
       ["canonical_key", "text"],
       ["display_text", "text"],
+      ["forms_json", "longText"],
       ["translation", "text"],
       ["part_of_speech", "text"],
       ["familiarity_score", "number"],
@@ -219,6 +220,21 @@ const TABLES = [
       ["sentence_context", "longText"],
       ["was_correct", "checkbox"],
       ["created_at", "date"]
+    ]
+  },
+  {
+    envName: "TEABLE_WORD_USAGE_SUMMARIES_TABLE_ID",
+    name: "WordUsageSummaries",
+    fields: [
+      ["usage_key", "text"],
+      ["word_id", "text"],
+      ["conversation_id", "text"],
+      ["forms_json", "longText"],
+      ["observed_count", "number"],
+      ["correct_use_count", "number"],
+      ["correction_count", "number"],
+      ["first_used_at", "date"],
+      ["last_used_at", "date"]
     ]
   },
   {

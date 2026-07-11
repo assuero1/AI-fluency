@@ -10,6 +10,7 @@ export const tableDefinitions = [
   ["TEABLE_CORRECTIONS_TABLE_ID", "Corrections"],
   ["TEABLE_WORDS_TABLE_ID", "Words"],
   ["TEABLE_WORD_OCCURRENCES_TABLE_ID", "WordOccurrences"],
+  ["TEABLE_WORD_USAGE_SUMMARIES_TABLE_ID", "WordUsageSummaries"],
   ["TEABLE_DAILY_FEEDBACKS_TABLE_ID", "DailyFeedbacks"],
   ["TEABLE_TOPICS_TABLE_ID", "Topics"],
   ["TEABLE_PRACTICE_SESSIONS_TABLE_ID", "PracticeSessions"],

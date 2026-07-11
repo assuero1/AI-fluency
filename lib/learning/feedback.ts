@@ -7,7 +7,7 @@ import {
   MessageFields,
   startConversation,
   WordFields,
-  WordOccurrenceFields
+  WordUsageSummaryFields
 } from "./conversations";
 import { DailyFeedbackFields } from "./home";
 import { getActiveLanguageProfile, getOrCreatePersonalUser } from "./profile";
@@ -65,7 +65,6 @@ export async function endConversation(conversationId: string) {
   const client = getTeableClient();
   const endedAt = new Date().toISOString();
   const supportingData = Promise.all([
-    client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
     client.listAllRecords<WordFields>("words"),
     client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
     client.listRecords<ConversationFields>("conversations", 300)
@@ -79,21 +78,12 @@ export async function endConversation(conversationId: string) {
     context.corrections,
     []
   );
-  const [[wordOccurrences, words, feedbacks, conversations], summary] = await Promise.all([
+  const [[words, feedbacks, conversations], summary] = await Promise.all([
     supportingData,
     summaryRequest
   ]);
 
-  const conversationOccurrences = wordOccurrences.filter(
-    (occurrence) => occurrence.fields.conversation_id === context.conversation.id
-  );
-  const conversationWords = words.filter((word) =>
-    conversationOccurrences.some((occurrence) => occurrence.fields.word_id === word.id) &&
-    matchesLearningScope(word.fields, {
-      userId: context.conversation.fields.user_id,
-      profileId: context.conversation.fields.language_profile_id
-    })
-  );
+  const conversationWords: TeableRecord<WordFields>[] = [];
   const durationSeconds = Math.max(
     0,
     Math.round((new Date(endedAt).getTime() - new Date(context.conversation.fields.started_at).getTime()) / 1000)
@@ -124,7 +114,7 @@ export async function endConversation(conversationId: string) {
     new_words_count: dailyFeedback.fields.new_words_count
   });
 
-  const completionSummary = buildCompletionSummary(context, completedConversation, dailyFeedback, wordOccurrences, words);
+  const completionSummary = buildCompletionSummary(context, completedConversation, dailyFeedback, [], words);
   if (completionCache.size >= MAX_COMPLETION_CACHE_ENTRIES) {
     const oldestKey = completionCache.keys().next().value;
     if (oldestKey) completionCache.delete(oldestKey);
@@ -142,9 +132,9 @@ export async function endConversation(conversationId: string) {
 
 async function getPersistedCompletion(context: NonNullable<Awaited<ReturnType<typeof getConversation>>>) {
   const client = getTeableClient();
-  const [dailyFeedbacks, wordOccurrences, words] = await Promise.all([
+  const [dailyFeedbacks, usageSummaries, words] = await Promise.all([
     client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
-    client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
+    client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries"),
     client.listAllRecords<WordFields>("words")
   ]);
   const date = toDateKey(context.conversation.fields.ended_at || context.conversation.fields.started_at);
@@ -156,9 +146,9 @@ async function getPersistedCompletion(context: NonNullable<Awaited<ReturnType<ty
   );
   if (!dailyFeedback) throw new LearningStateError("O feedback desta conversa ainda não está disponível.", 409);
   const wordIds = new Set(
-    wordOccurrences
-      .filter((occurrence) => occurrence.fields.conversation_id === context.conversation.id)
-      .map((occurrence) => occurrence.fields.word_id)
+    usageSummaries
+      .filter((summary) => summary.fields.conversation_id === context.conversation.id)
+      .map((summary) => summary.fields.word_id)
   );
   return {
     conversation: context.conversation,
@@ -189,9 +179,9 @@ export async function getConversationSummary(conversationId: string) {
   }
 
   const client = getTeableClient();
-  const [dailyFeedbacks, wordOccurrences, words] = await Promise.all([
+  const [dailyFeedbacks, usageSummaries, words] = await Promise.all([
     client.listAllRecords<DailyFeedbackFields>("dailyFeedbacks"),
-    client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
+    client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries"),
     client.listAllRecords<WordFields>("words")
   ]);
 
@@ -218,9 +208,9 @@ export async function getConversationSummary(conversationId: string) {
     throw new LearningStateError("O feedback desta conversa ainda não está disponível.", 409);
   }
 
-  const occurrences = wordOccurrences.filter((occurrence) => occurrence.fields.conversation_id === context.conversation.id);
+  const conversationUsage = usageSummaries.filter((summary) => summary.fields.conversation_id === context.conversation.id);
   const conversationWords = words.filter((word) =>
-    occurrences.some((occurrence) => occurrence.fields.word_id === word.id) &&
+    conversationUsage.some((summary) => summary.fields.word_id === word.id) &&
     matchesLearningScope(word.fields, {
       userId: context.conversation.fields.user_id,
       profileId: context.conversation.fields.language_profile_id
@@ -234,8 +224,7 @@ export async function getConversationSummary(conversationId: string) {
     vocabularyWords: words.filter((word) => matchesLearningScope(word.fields, {
       userId: context.conversation.fields.user_id,
       profileId: context.conversation.fields.language_profile_id
-    })),
-    occurrences
+    }))
   };
 }
 
@@ -243,19 +232,18 @@ function buildCompletionSummary(
   context: NonNullable<Awaited<ReturnType<typeof getConversation>>>,
   conversation: TeableRecord<ConversationFields>,
   dailyFeedback: TeableRecord<DailyFeedbackFields>,
-  wordOccurrences: TeableRecord<WordOccurrenceFields>[],
+  usageSummaries: TeableRecord<WordUsageSummaryFields>[],
   words: TeableRecord<WordFields>[]
 ) {
-  const occurrences = wordOccurrences.filter((occurrence) => occurrence.fields.conversation_id === conversation.id);
+  const conversationUsage = usageSummaries.filter((summary) => summary.fields.conversation_id === conversation.id);
   const scope = { userId: conversation.fields.user_id, profileId: conversation.fields.language_profile_id };
-  const wordIds = new Set(occurrences.map((occurrence) => occurrence.fields.word_id));
+  const wordIds = new Set(conversationUsage.map((summary) => summary.fields.word_id));
   return {
     ...context,
     conversation,
     dailyFeedback,
     words: words.filter((word) => wordIds.has(word.id) && matchesLearningScope(word.fields, scope)),
-    vocabularyWords: words.filter((word) => matchesLearningScope(word.fields, scope)),
-    occurrences
+    vocabularyWords: words.filter((word) => matchesLearningScope(word.fields, scope))
   };
 }
 

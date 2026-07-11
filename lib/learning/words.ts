@@ -1,6 +1,5 @@
 import { startConversation } from "./conversations";
-import type { CorrectionFields, ConversationFields, MessageFields, WordFields, WordOccurrenceFields } from "./conversations";
-import type { TopicFields } from "./home";
+import type { WordFields, WordUsageSummaryFields } from "./conversations";
 import { getActiveLanguageProfile, getOrCreatePersonalUser } from "./profile";
 import { createTopic } from "./topics";
 import { matchesLearningScope } from "./scope";
@@ -8,23 +7,6 @@ import { getTeableClient, TeableRecord } from "@/lib/teable/client";
 
 export const wordFilters = ["all", "recent", "review", "corrected"] as const;
 export type WordFilter = (typeof wordFilters)[number];
-
-type WordOccurrenceView = {
-  id: string;
-  usedText: string;
-  sentenceContext: string;
-  wasCorrect: boolean;
-  createdAt: string;
-  conversationTitle: string;
-  topicTitle: string;
-  corrections: Array<{
-    id: string;
-    originalText: string;
-    correctedText: string;
-    explanation: string;
-    errorType: string;
-  }>;
-};
 
 export type WordListItem = {
   id: string;
@@ -126,11 +108,8 @@ export async function getWordsData(filter: WordFilter = "all", query = "") {
   const scoped = records.words.filter(
     (word) => matchesScope(word, scope) && Boolean(word.fields.display_text?.trim() || word.fields.lemma?.trim())
   );
-  const correctionMessageIds = new Set(
-    records.corrections.filter((correction) => correctionBelongsToScope(correction, records.conversations, scope)).map((correction) => correction.fields.message_id)
-  );
   const now = Date.now();
-  const mapped = scoped.map((word) => toWordListItem(word, records.occurrences, records.messages, correctionMessageIds, now));
+  const mapped = scoped.map((word) => toWordListItem(word, records.usageSummaries, now));
   const normalizedQuery = normalizeWordSearchQuery(query);
   const visibleWords = mapped
     .filter((word) => matchesFilter(word, filter))
@@ -177,47 +156,9 @@ export async function getWordDetail(wordId: string) {
   );
   if (!word) return null;
 
-  const correctionByMessage = new Map<string, TeableRecord<CorrectionFields>[]>();
-  for (const correction of records.corrections) {
-    const list = correctionByMessage.get(correction.fields.message_id) ?? [];
-    list.push(correction);
-    correctionByMessage.set(correction.fields.message_id, list);
-  }
-
-  const occurrences = records.occurrences
-    .filter((occurrence) => occurrence.fields.word_id === word.id)
-    .sort((a, b) => dateValue(b.fields.created_at) - dateValue(a.fields.created_at))
-    .map<WordOccurrenceView>((occurrence) => {
-      const conversation = records.conversations.find((item) => item.id === occurrence.fields.conversation_id);
-      const topic = records.topics.find((item) => item.id === conversation?.fields.topic_id);
-      const corrections = (correctionByMessage.get(occurrence.fields.message_id) ?? []).map((correction) => ({
-        id: correction.id,
-        originalText: correction.fields.original_text,
-        correctedText: correction.fields.corrected_text,
-        explanation: correction.fields.explanation,
-        errorType: correction.fields.error_type
-      }));
-
-      return {
-        id: occurrence.id,
-        usedText: occurrence.fields.used_text || word.fields.display_text || word.fields.lemma,
-        sentenceContext: occurrence.fields.sentence_context,
-        wasCorrect: occurrence.fields.was_correct !== false,
-        createdAt: occurrence.fields.created_at,
-        conversationTitle: conversation?.fields.Name || "Conversa",
-        topicTitle: topic?.fields.title || topic?.fields.Name || conversation?.fields.Name || "Conversa livre",
-        corrections
-      };
-    });
-
-  const correctionMessageIds = new Set(
-    records.corrections.filter((correction) => correctionBelongsToScope(correction, records.conversations, scope)).map((correction) => correction.fields.message_id)
-  );
-
   return {
     languageCode: scope.languageCode,
-    word: toWordListItem(word, records.occurrences, records.messages, correctionMessageIds, Date.now()),
-    occurrences
+    word: toWordListItem(word, records.usageSummaries, Date.now())
   };
 }
 
@@ -289,48 +230,30 @@ async function getWordScope(): Promise<WordScope> {
 
 async function getWordRecords() {
   const client = getTeableClient();
-  const [words, occurrences, corrections, conversations, topics, messages] = await Promise.all([
+  const [words, usageSummaries] = await Promise.all([
     client.listAllRecords<WordFields>("words"),
-    client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
-    client.listAllRecords<CorrectionFields>("corrections"),
-    client.listAllRecords<ConversationFields>("conversations"),
-    client.listAllRecords<TopicFields>("topics"),
-    client.listAllRecords<MessageFields>("messages")
+    client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries")
   ]);
-  return { words, occurrences, corrections, conversations, topics, messages };
+  return { words, usageSummaries };
 }
 
 function matchesScope(word: TeableRecord<WordFields>, scope: WordScope) {
   return matchesLearningScope(word.fields, scope);
 }
 
-function correctionBelongsToScope(
-  correction: TeableRecord<CorrectionFields>,
-  conversations: TeableRecord<ConversationFields>[],
-  scope: WordScope
-) {
-  const conversation = conversations.find((item) => item.id === correction.fields.conversation_id);
-  if (!conversation) return false;
-  return matchesLearningScope(conversation.fields, scope);
-}
-
 function toWordListItem(
   word: TeableRecord<WordFields>,
-  occurrences: TeableRecord<WordOccurrenceFields>[],
-  messages: TeableRecord<MessageFields>[],
-  correctionMessageIds: Set<string>,
+  usageSummaries: TeableRecord<WordUsageSummaryFields>[],
   now: number
 ): WordListItem {
-  const wordOccurrences = occurrences.filter((occurrence) => occurrence.fields.word_id === word.id);
-  const messageRoles = new Map(messages.map((message) => [message.id, message.fields.role]));
-  const learnerOccurrences = wordOccurrences.filter((occurrence) =>
-    messageRoles.get(occurrence.fields.message_id) === "user" && occurrence.fields.was_correct !== false
-  );
-  const correctionCount = wordOccurrences.filter((occurrence) => correctionMessageIds.has(occurrence.fields.message_id)).length;
+  const wordUsageSummaries = usageSummaries.filter((summary) => summary.fields.word_id === word.id);
+  const correctionCount = wordUsageSummaries.reduce((sum, summary) => sum + Number(summary.fields.correction_count ?? 0), 0);
   const reviewDueAt = word.fields.review_due_at || "";
-  const needsReview = (isPastOrToday(reviewDueAt, now) || correctionCount > 0) && wordOccurrences.length > 0;
-  const correctUses = Math.max(learnerOccurrences.length, Number(word.fields.total_uses ?? 0));
-  const conversationCount = new Set(learnerOccurrences.map((occurrence) => occurrence.fields.conversation_id)).size;
+  const aggregatedUses = wordUsageSummaries.reduce((sum, summary) => sum + Number(summary.fields.correct_use_count ?? 0), 0);
+  const correctUses = Math.max(aggregatedUses, Number(word.fields.total_uses ?? 0));
+  const conversationCount = wordUsageSummaries.filter((summary) => Number(summary.fields.correct_use_count ?? 0) > 0).length;
+  const occurrenceCount = wordUsageSummaries.reduce((sum, summary) => sum + Number(summary.fields.observed_count ?? 0), 0);
+  const needsReview = (isPastOrToday(reviewDueAt, now) || correctionCount > 0) && occurrenceCount > 0;
   const strength = calculateWordStrength({
     correctUses,
     conversationCount,
@@ -348,7 +271,7 @@ function toWordListItem(
     lemma: word.fields.lemma || word.fields.display_text || "",
     translation: word.fields.translation || "Tradução a adicionar",
     partOfSpeech: word.fields.part_of_speech || "",
-    totalUses: Number(word.fields.total_uses ?? wordOccurrences.length ?? 0),
+    totalUses: Number(word.fields.total_uses ?? aggregatedUses),
     familiarityScore: Number(word.fields.familiarity_score ?? 0),
     firstUsedAt: word.fields.first_used_at || "",
     lastUsedAt: word.fields.last_used_at || word.fields.first_used_at || "",
@@ -362,7 +285,7 @@ function toWordListItem(
     averageResponseTimeMs: Number(word.fields.average_response_time_ms ?? 0),
     reviewState: word.fields.review_state ?? "new",
     reviewVersion: word.fields.review_version ?? "",
-    occurrenceCount: wordOccurrences.length,
+    occurrenceCount,
     correctionCount,
     needsReview,
     correctUses,

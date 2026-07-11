@@ -859,54 +859,6 @@ a {
   font-size: 13px;
 }
 
-.occurrence-list {
-  display: grid;
-  gap: 14px;
-}
-
-.occurrence-card {
-  display: grid;
-  gap: 12px;
-  padding: 18px;
-  border: 1px solid var(--line);
-  border-radius: 18px;
-}
-
-.occurrence-card.has-correction {
-  border-color: #ffd1c9;
-  background: #fffdfc;
-}
-
-.occurrence-topline,
-.occurrence-source,
-.occurrence-correction {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--muted);
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.occurrence-topline {
-  justify-content: space-between;
-}
-
-.occurrence-context {
-  margin: 0;
-  font-size: 17px;
-  line-height: 1.4;
-}
-
-.occurrence-correction {
-  color: var(--danger);
-  line-height: 1.35;
-}
-
-.occurrence-correction strong {
-  color: #c34d3d;
-}
-
 .practice-tip {
   display: flex;
   align-items: flex-start;

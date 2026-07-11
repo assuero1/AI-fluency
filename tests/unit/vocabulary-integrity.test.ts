@@ -44,6 +44,7 @@ const messages = [
 
 const words: Array<{ id: string; fields: Record<string, unknown> }> = [];
 const occurrences: Array<{ id: string; fields: Record<string, unknown> }> = [];
+const usageSummaries: Array<{ id: string; fields: Record<string, unknown> }> = [];
 const createRecord = vi.fn();
 const updateRecord = vi.fn();
 const listRecords = vi.fn();
@@ -75,18 +76,25 @@ describe("vocabulary integrity", () => {
   beforeEach(() => {
     words.splice(0);
     occurrences.splice(0);
+    usageSummaries.splice(0);
     corrections = [];
     vi.clearAllMocks();
     createChatCompletion.mockResolvedValue({ content: "[]", tokensUsed: 1 });
-    listRecords.mockImplementation(async (table: string) => table === "words" ? [...words] : table === "messages" ? [...messages] : [...occurrences]);
+    listRecords.mockImplementation(async (table: string) => table === "words"
+      ? [...words]
+      : table === "messages"
+        ? [...messages]
+        : table === "wordUsageSummaries"
+          ? [...usageSummaries]
+          : [...occurrences]);
     createRecord.mockImplementation(async (table: string, fields: Record<string, unknown>) => {
-      const target = table === "words" ? words : occurrences;
+      const target = table === "words" ? words : table === "wordUsageSummaries" ? usageSummaries : occurrences;
       const record = { id: `${table}-${target.length + 1}`, fields: { ...fields } };
       target.push(record);
       return record;
     });
-    updateRecord.mockImplementation(async (_table: string, id: string, fields: Record<string, unknown>) => {
-      const record = words.find((item) => item.id === id)!;
+    updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
+      const record = (table === "wordUsageSummaries" ? usageSummaries : words).find((item) => item.id === id)!;
       record.fields = { ...record.fields, ...fields };
       return record;
     });
@@ -107,6 +115,27 @@ describe("vocabulary integrity", () => {
     expect(fallbackVocabularyLemma("hablando", "es")).toBe("hablar");
     expect(fallbackVocabularyLemma("parlant", "fr")).toBe("parler");
     expect(fallbackVocabularyLemma("parlando", "it")).toBe("parlare");
+    expect(fallbackVocabularyLemma("fomos", "pt-BR")).toBe("ir");
+  });
+
+  it("groups related forms under one selectable lemma", async () => {
+    const { extractVocabularyCandidates, groupNewVocabularyCandidates } = await import("../../lib/learning/vocabulary-selection");
+    const candidates = extractVocabularyCandidates(messages).filter((candidate) => ["user:worked", "user:working"].includes(candidate.id));
+
+    const groups = await groupNewVocabularyCandidates(candidates, [], "en-US");
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0]).toMatchObject({ lemma: "work", candidateIds: ["user:worked", "user:working"] });
+    expect(groups[0].forms.map((form) => form.toLowerCase())).toEqual(["worked", "working"]);
+  });
+
+  it("does not offer a related form when its family already exists", async () => {
+    const { extractVocabularyCandidates, groupNewVocabularyCandidates } = await import("../../lib/learning/vocabulary-selection");
+    const candidates = extractVocabularyCandidates(messages).filter((candidate) => ["user:worked", "user:working"].includes(candidate.id));
+
+    const groups = await groupNewVocabularyCandidates(candidates, [{ lemma: "work", displayText: "work", formsJson: "[]" }], "en-US");
+
+    expect(groups).toEqual([]);
   });
 
   it("keeps only candidates that are not already in the vocabulary", async () => {
@@ -132,12 +161,14 @@ describe("vocabulary integrity", () => {
     expect(retry.savedCount).toBe(0);
     expect(words).toHaveLength(1);
     expect(words[0].fields.total_uses).toBe(3);
-    expect(occurrences).toHaveLength(3);
+    expect(occurrences).toHaveLength(0);
+    expect(usageSummaries).toHaveLength(1);
+    expect(usageSummaries[0].fields.correct_use_count).toBe(3);
   });
 
   it("backfills only occurrences missing from an earlier partial save", async () => {
     words.push({ id: "word-1", fields: { user_id: "user-1", language_profile_id: "profile-1", lemma: "WORK", display_text: "Work", total_uses: 1 } });
-    occurrences.push({ id: "occurrence-1", fields: { word_id: "word-1", conversation_id: "conversation-1", message_id: "message-user-1", used_text: "Work", was_correct: true } });
+    usageSummaries.push({ id: "usage-1", fields: { usage_key: JSON.stringify(["word-1", "conversation-1"]), word_id: "word-1", conversation_id: "conversation-1", observed_count: 1, correct_use_count: 1, correction_count: 0 } });
     const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
 
     const result = await saveSelectedVocabulary("conversation-1", ["user:work"]);
@@ -145,7 +176,8 @@ describe("vocabulary integrity", () => {
     expect(result.savedCount).toBe(2);
     expect(words).toHaveLength(1);
     expect(words[0].fields.total_uses).toBe(3);
-    expect(occurrences).toHaveLength(3);
+    expect(usageSummaries).toHaveLength(1);
+    expect(usageSummaries[0].fields.observed_count).toBe(3);
   });
 
   it("records assistant vocabulary without counting it as learner usage", async () => {
@@ -157,7 +189,8 @@ describe("vocabulary integrity", () => {
     expect(result.newWordCount).toBe(1);
     expect(words).toHaveLength(1);
     expect(words[0].fields.total_uses).toBe(3);
-    expect(occurrences).toHaveLength(4);
+    expect(occurrences).toHaveLength(0);
+    expect(usageSummaries[0].fields.observed_count).toBe(4);
   });
 
   it("marks only changed correction tokens as ineligible", async () => {
@@ -185,6 +218,7 @@ describe("vocabulary integrity", () => {
 
     expect(words).toHaveLength(1);
     expect(words[0].fields.lemma).toBe("work");
+    expect(JSON.parse(String(words[0].fields.forms_json))).toEqual(["Worked", "working"]);
     expect(words[0].fields.total_uses).toBe(2);
   });
 

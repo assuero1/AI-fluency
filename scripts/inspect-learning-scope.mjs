@@ -41,6 +41,7 @@ for (const tableName of [
   "TEABLE_MESSAGES_TABLE_ID",
   "TEABLE_CORRECTIONS_TABLE_ID",
   "TEABLE_WORD_OCCURRENCES_TABLE_ID",
+  "TEABLE_WORD_USAGE_SUMMARIES_TABLE_ID",
   "TEABLE_APP_EVENTS_TABLE_ID"
 ]) {
   const records = await list(tableName);

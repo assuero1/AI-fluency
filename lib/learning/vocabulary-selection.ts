@@ -3,7 +3,7 @@ import "server-only";
 import { createChatCompletion } from "@/lib/ai/client";
 import { getTeableClient, TeableRecord, TeableRequestError } from "@/lib/teable/client";
 import { LearningStateError } from "./access";
-import { CorrectionFields, getConversation, MessageFields, WordFields, WordOccurrenceFields } from "./conversations";
+import { CorrectionFields, getConversation, MessageFields, WordFields, WordUsageSummaryFields } from "./conversations";
 import { matchesLearningScope } from "./scope";
 import { addSavedWordsToDailyFeedback } from "./feedback";
 
@@ -20,12 +20,33 @@ export type VocabularyCandidate = {
   eligible: boolean;
 };
 
+export type VocabularyCandidateGroup = {
+  id: string;
+  lemma: string;
+  displayText: string;
+  translation: string;
+  partOfSpeech: string;
+  forms: string[];
+  source: "user" | "assistant";
+  candidateIds: string[];
+  occurrenceCount: number;
+  correctOccurrenceCount: number;
+  incorrectOccurrenceCount: number;
+  eligible: boolean;
+};
+
+export type ExistingVocabularyFamily = {
+  lemma: string;
+  displayText: string;
+  formsJson?: string;
+};
+
 type VocabularyOccurrence = Omit<VocabularyCandidate, "id" | "occurrenceCount" | "correctOccurrenceCount" | "incorrectOccurrenceCount" | "eligible"> & {
   wasCorrect: boolean;
   occurrenceOrdinal: number;
 };
 
-type VocabularyLinguisticData = { lemma: string; translation: string };
+type VocabularyLinguisticData = { lemma: string; translation: string; partOfSpeech: string };
 
 const vocabularySaveLocks = new Map<string, Promise<Awaited<ReturnType<typeof persistSelectedVocabulary>>>>();
 
@@ -161,16 +182,111 @@ export function filterNewVocabularyCandidates(
   );
 }
 
-export function getSavedVocabularyCandidateIds(
-  messages: TeableRecord<MessageFields>[],
-  occurrences: TeableRecord<WordOccurrenceFields>[]
+export async function groupNewVocabularyCandidates(
+  candidates: VocabularyCandidate[],
+  existingWords: ExistingVocabularyFamily[],
+  language: string
 ) {
-  const rolesByMessage = new Map(messages.map((message) => [message.id, message.fields.role]));
-  return [...new Set(occurrences.flatMap((occurrence) => {
-    const role = rolesByMessage.get(occurrence.fields.message_id);
-    if (role !== "user" && role !== "assistant") return [];
-    return [vocabularyCandidateId(role, normalizeVocabularyToken(occurrence.fields.used_text))];
-  }))];
+  const limited = candidates.slice(0, 80);
+  const linguisticData = await analyzeVocabulary(limited, language);
+  const groups = groupCandidatesByLemma(limited, linguisticData);
+  const existingKeys = new Set(existingWords.flatMap((word) => [
+    normalizeVocabularyToken(word.lemma || word.displayText),
+    normalizeVocabularyToken(word.displayText),
+    ...parseVocabularyForms(word.formsJson).map(normalizeVocabularyToken)
+  ]).filter(Boolean));
+  return groups.filter((group) =>
+    !existingKeys.has(group.lemma) &&
+    !group.forms.some((form) => existingKeys.has(normalizeVocabularyToken(form)))
+  );
+}
+
+export async function getConversationVocabularyGroups(conversationId: string) {
+  const context = await getConversation(conversationId);
+  if (!context) throw new LearningStateError("Conversa não encontrada.", 404);
+  if (context.conversation.fields.status !== "completed") {
+    throw new LearningStateError("Finalize a conversa antes de escolher palavras.", 409);
+  }
+  const words = await getTeableClient().listAllRecords<WordFields>("words");
+  const scope = {
+    userId: context.conversation.fields.user_id,
+    profileId: context.conversation.fields.language_profile_id
+  };
+  return groupNewVocabularyCandidates(
+    extractVocabularyCandidates(context.messages, context.corrections),
+    words.filter((word) => matchesLearningScope(word.fields, scope)).map((word) => ({
+      lemma: word.fields.lemma,
+      displayText: word.fields.display_text,
+      formsJson: word.fields.forms_json
+    })),
+    context.profile?.fields.language_code ?? "auto"
+  );
+}
+
+function groupCandidatesByLemma(
+  candidates: VocabularyCandidate[],
+  linguisticData: Record<string, VocabularyLinguisticData>
+) {
+  const groups = new Map<string, VocabularyCandidateGroup>();
+  for (const candidate of candidates) {
+    const linguistic = linguisticData[candidate.id] ?? {
+      lemma: candidate.normalized,
+      translation: "",
+      partOfSpeech: ""
+    };
+    const lemma = normalizeVocabularyToken(linguistic.lemma) || candidate.normalized;
+    const existing = groups.get(lemma);
+    if (existing) {
+      existing.forms = uniqueVocabularyForms([...existing.forms, candidate.text]);
+      existing.candidateIds.push(candidate.id);
+      existing.occurrenceCount += candidate.occurrenceCount;
+      existing.correctOccurrenceCount += candidate.correctOccurrenceCount;
+      existing.incorrectOccurrenceCount += candidate.incorrectOccurrenceCount;
+      existing.eligible = existing.eligible || candidate.eligible;
+      if (candidate.source === "user") existing.source = "user";
+      if (!existing.translation && linguistic.translation) existing.translation = linguistic.translation;
+      if (!existing.partOfSpeech && linguistic.partOfSpeech) existing.partOfSpeech = linguistic.partOfSpeech;
+      continue;
+    }
+    groups.set(lemma, {
+      id: `lemma:${lemma}`,
+      lemma,
+      displayText: lemma,
+      translation: linguistic.translation,
+      partOfSpeech: linguistic.partOfSpeech,
+      forms: uniqueVocabularyForms([candidate.text]),
+      source: candidate.source,
+      candidateIds: [candidate.id],
+      occurrenceCount: candidate.occurrenceCount,
+      correctOccurrenceCount: candidate.correctOccurrenceCount,
+      incorrectOccurrenceCount: candidate.incorrectOccurrenceCount,
+      eligible: candidate.eligible
+    });
+  }
+  return [...groups.values()].map((group) => ({
+    ...group,
+    candidateIds: group.candidateIds.filter((id) => candidates.find((candidate) => candidate.id === id)?.eligible)
+  })).filter((group) => group.candidateIds.length > 0);
+}
+
+export function parseVocabularyForms(value: string | undefined) {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((form): form is string => typeof form === "string" && Boolean(form.trim())) : [];
+  } catch {
+    return [];
+  }
+}
+
+function uniqueVocabularyForms(forms: string[]) {
+  const seen = new Set<string>();
+  return forms.filter((form) => {
+    const key = normalizeVocabularyToken(form);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 export async function saveSelectedVocabulary(conversationId: string, candidateIds: string[]) {
@@ -196,159 +312,140 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
   if (!selected.length) throw new LearningStateError("Selecione ao menos uma palavra.", 400);
 
   const client = getTeableClient();
-  const [existingWords, occurrences, linguisticData] = await Promise.all([
+  const [existingWords, usageSummaries, linguisticData] = await Promise.all([
     client.listAllRecords<WordFields>("words"),
-    client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
+    client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries"),
     analyzeVocabulary(selected, context.profile?.fields.language_code ?? "auto")
   ]);
   const now = new Date().toISOString();
   const reviewDue = new Date(Date.now() + 7 * 86400000).toISOString();
+  const scope = { userId: context.conversation.fields.user_id, profileId: context.conversation.fields.language_profile_id };
   let savedCount = 0;
   let newWordCount = 0;
   let rejectedCount = 0;
-  const updatedWordIds = new Set<string>();
-  const touchedWordIds = new Set<string>();
+  let updatedWordCount = 0;
 
-  for (const candidate of selected) {
-    const candidateOccurrences = allOccurrences.filter((item) =>
-      item.source === candidate.source && item.normalized === candidate.normalized && item.wasCorrect
+  for (const family of groupCandidatesByLemma(selected, linguisticData)) {
+    const familyCandidates = selected.filter((candidate) => family.candidateIds.includes(candidate.id));
+    const candidateKeys = new Set(familyCandidates.map((candidate) => `${candidate.source}:${candidate.normalized}`));
+    const relevant = allOccurrences.filter((occurrence) =>
+      occurrence.wasCorrect && candidateKeys.has(`${occurrence.source}:${occurrence.normalized}`)
     );
-    rejectedCount += candidate.incorrectOccurrenceCount;
-    if (!candidateOccurrences.length) continue;
-    const missingOccurrences = candidateOccurrences.filter((item, index, items) => {
-      const ordinalInMessage = items.slice(0, index + 1).filter((previous) => previous.messageId === item.messageId).length;
-      const persistedInMessage = occurrences.filter((persisted) =>
-        persisted.fields.conversation_id === conversationId &&
-        persisted.fields.message_id === item.messageId &&
-        normalizeVocabularyToken(persisted.fields.used_text) === candidate.normalized
-      ).length;
-      return ordinalInMessage > persistedInMessage;
-    });
-    if (!missingOccurrences.length) continue;
-    const linguistic = linguisticData[candidate.id] ?? { lemma: candidate.normalized, translation: "" };
-    const canonicalLemma = normalizeVocabularyToken(linguistic.lemma) || candidate.normalized;
-    const canonicalKey = canonicalVocabularyKey(context.conversation.fields.user_id, context.conversation.fields.language_profile_id, canonicalLemma);
-    const userUseCount = candidate.source === "user" ? missingOccurrences.length : 0;
+    if (!relevant.length) continue;
+    rejectedCount += familyCandidates.reduce((sum, candidate) => sum + candidate.incorrectOccurrenceCount, 0);
+    const canonicalKey = canonicalVocabularyKey(scope.userId, scope.profileId, family.lemma);
+    const forms = uniqueVocabularyForms([...family.forms, ...relevant.map((occurrence) => occurrence.text)]);
+    const correctUseCount = relevant.filter((occurrence) => occurrence.source === "user").length;
     let word = existingWords.find((item) =>
-      (item.fields.canonical_key === canonicalKey || normalizeVocabularyToken(item.fields.lemma || item.fields.display_text) === canonicalLemma) &&
-      matchesLearningScope(item.fields, { userId: context.conversation.fields.user_id, profileId: context.conversation.fields.language_profile_id })
+      matchesLearningScope(item.fields, scope) &&
+      (item.fields.canonical_key === canonicalKey || normalizeVocabularyToken(item.fields.lemma || item.fields.display_text) === family.lemma)
     );
-    if (word) {
-      const updates: Partial<WordFields> = { review_due_at: reviewDue };
-      if (userUseCount > 0) {
-        updates.total_uses = Number(word.fields.total_uses ?? 0) + userUseCount;
-        updates.last_used_at = now;
-      }
-      word = await client.updateRecord<WordFields>("words", word.id, updates);
-      updatedWordIds.add(word.id);
-      const wordIndex = existingWords.findIndex((item) => item.id === word?.id);
-      if (wordIndex >= 0) existingWords[wordIndex] = word;
-    } else {
-      const newWordFields: WordFields = {
-        Name: candidate.text,
-        user_id: context.conversation.fields.user_id,
-        language_profile_id: context.conversation.fields.language_profile_id,
-        lemma: canonicalLemma,
+    let createdWord = false;
+    if (!word) {
+      const fields: WordFields = {
+        Name: family.lemma,
+        user_id: scope.userId,
+        language_profile_id: scope.profileId,
+        lemma: family.lemma,
         canonical_key: canonicalKey,
-        display_text: candidate.text,
-        translation: linguistic.translation,
-        part_of_speech: "",
+        display_text: family.lemma,
+        forms_json: JSON.stringify(forms),
+        translation: family.translation,
+        part_of_speech: family.partOfSpeech,
         familiarity_score: 1,
-        total_uses: userUseCount,
+        total_uses: correctUseCount,
         last_used_at: now,
         first_used_at: now,
         review_due_at: reviewDue
       };
       try {
-        word = await client.createRecord<WordFields>("words", newWordFields);
+        word = await client.createRecord<WordFields>("words", fields);
+        createdWord = true;
+        existingWords.push(word);
       } catch (error) {
         if (!(error instanceof TeableRequestError) || ![400, 409, 422].includes(error.status)) throw error;
-        const refreshedWords = await client.listAllRecords<WordFields>("words");
-        word = refreshedWords.find((item) => item.fields.canonical_key === canonicalKey);
+        const refreshed = await client.listAllRecords<WordFields>("words");
+        word = refreshed.find((item) => item.fields.canonical_key === canonicalKey);
         if (!word) throw error;
-        const updates: Partial<WordFields> = { review_due_at: reviewDue };
-        if (userUseCount > 0) {
-          updates.total_uses = Number(word.fields.total_uses ?? 0) + userUseCount;
-          updates.last_used_at = now;
-        }
-        word = await client.updateRecord<WordFields>("words", word.id, updates);
-        updatedWordIds.add(word.id);
       }
-      existingWords.push(word);
-      if (!updatedWordIds.has(word.id)) newWordCount += 1;
     }
-    for (const occurrence of missingOccurrences) {
-      const occurrenceKey = JSON.stringify([conversationId, occurrence.messageId, occurrence.normalized, occurrence.occurrenceOrdinal]);
-      let created: TeableRecord<WordOccurrenceFields>;
-      try {
-        created = await client.createRecord<WordOccurrenceFields>("wordOccurrences", {
-        Name: occurrence.text,
-        word_id: word.id,
-        occurrence_key: occurrenceKey,
-        conversation_id: conversationId,
-        message_id: occurrence.messageId,
-        used_text: occurrence.text,
-        sentence_context: occurrence.context,
-        was_correct: true,
-        created_at: now
-        });
-      } catch (error) {
-        if (!(error instanceof TeableRequestError) || ![400, 409, 422].includes(error.status)) throw error;
-        const refreshed = await client.listAllRecords<WordOccurrenceFields>("wordOccurrences");
-        const existing = refreshed.find((item) => item.fields.occurrence_key === occurrenceKey);
-        if (!existing) throw error;
-        created = existing;
-      }
-      occurrences.push(created);
-    }
-    touchedWordIds.add(word.id);
-    savedCount += missingOccurrences.length;
+    const resolvedWord = word;
+    const usageKey = wordUsageKey(resolvedWord.id, conversationId);
+    const existingUsage = usageSummaries.find((summary) => summary.fields.usage_key === usageKey);
+    const previousObservedCount = Number(existingUsage?.fields.observed_count ?? 0);
+    const otherUses = usageSummaries.filter((summary) => summary.fields.word_id === resolvedWord.id && summary.fields.usage_key !== usageKey)
+      .reduce((sum, summary) => sum + Number(summary.fields.correct_use_count ?? 0), 0);
+    const mergedForms = uniqueVocabularyForms([...parseVocabularyForms(resolvedWord.fields.forms_json), ...forms]);
+    word = await client.updateRecord<WordFields>("words", resolvedWord.id, {
+      forms_json: JSON.stringify(mergedForms),
+      total_uses: otherUses + correctUseCount,
+      last_used_at: correctUseCount > 0 ? now : resolvedWord.fields.last_used_at,
+      review_due_at: reviewDue,
+      ...(!resolvedWord.fields.translation && family.translation ? { translation: family.translation } : {}),
+      ...(!resolvedWord.fields.part_of_speech && family.partOfSpeech ? { part_of_speech: family.partOfSpeech } : {})
+    });
+    const summaryFields: WordUsageSummaryFields = {
+      Name: forms[0] ?? family.lemma,
+      usage_key: usageKey,
+      word_id: resolvedWord.id,
+      conversation_id: conversationId,
+      forms_json: JSON.stringify(forms),
+      observed_count: relevant.length,
+      correct_use_count: correctUseCount,
+      correction_count: familyCandidates.reduce((sum, candidate) => sum + candidate.incorrectOccurrenceCount, 0),
+      first_used_at: existingUsage?.fields.first_used_at || now,
+      last_used_at: now
+    };
+    const persisted = await upsertWordUsageSummary(client, usageSummaries, existingUsage, summaryFields);
+    if (!existingUsage) usageSummaries.push(persisted);
+    savedCount += Math.max(0, relevant.length - previousObservedCount);
+    if (createdWord) newWordCount += 1;
+    else updatedWordCount += 1;
   }
-  await reconcileVocabularyTotals(client, touchedWordIds);
   await addSavedWordsToDailyFeedback(context.conversation, newWordCount);
-  return { savedCount, newWordCount, updatedWordCount: updatedWordIds.size, rejectedCount };
+  return { savedCount, newWordCount, updatedWordCount, rejectedCount };
 }
 
-async function reconcileVocabularyTotals(client: ReturnType<typeof getTeableClient>, wordIds: Set<string>) {
-  if (wordIds.size === 0) return;
-  // A second pass makes concurrent writers converge after their unique occurrence inserts settle.
-  for (let pass = 0; pass < 2; pass += 1) {
-    const [allOccurrences, allMessages, allWords] = await Promise.all([
-      client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
-      client.listAllRecords<MessageFields>("messages"),
-      client.listAllRecords<WordFields>("words")
-    ]);
-    const rolesByMessage = new Map(allMessages.map((message) => [message.id, message.fields.role]));
-    for (const wordId of wordIds) {
-      const learnerUses = allOccurrences.filter((occurrence) =>
-        occurrence.fields.word_id === wordId &&
-        occurrence.fields.was_correct !== false &&
-        rolesByMessage.get(occurrence.fields.message_id) === "user"
-      );
-      const word = allWords.find((item) => item.id === wordId);
-      if (!word || Number(word.fields.total_uses ?? 0) === learnerUses.length) continue;
-      const lastUsedAt = learnerUses.map((occurrence) => occurrence.fields.created_at).filter(Boolean).sort().at(-1);
-      await client.updateRecord<WordFields>("words", wordId, {
-        total_uses: learnerUses.length,
-        ...(lastUsedAt ? { last_used_at: lastUsedAt } : {})
-      });
-    }
+function wordUsageKey(wordId: string, conversationId: string) {
+  return JSON.stringify([wordId, conversationId]);
+}
+
+async function upsertWordUsageSummary(
+  client: ReturnType<typeof getTeableClient>,
+  usageSummaries: TeableRecord<WordUsageSummaryFields>[],
+  existing: TeableRecord<WordUsageSummaryFields> | undefined,
+  fields: WordUsageSummaryFields
+) {
+  if (existing) {
+    const updated = await client.updateRecord<WordUsageSummaryFields>("wordUsageSummaries", existing.id, fields);
+    Object.assign(existing, updated);
+    return updated;
+  }
+  try {
+    return await client.createRecord<WordUsageSummaryFields>("wordUsageSummaries", fields);
+  } catch (error) {
+    if (!(error instanceof TeableRequestError) || ![400, 409, 422].includes(error.status)) throw error;
+    const refreshed = await client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries");
+    const concurrent = refreshed.find((summary) => summary.fields.usage_key === fields.usage_key);
+    if (!concurrent) throw error;
+    return client.updateRecord<WordUsageSummaryFields>("wordUsageSummaries", concurrent.id, fields);
   }
 }
 
 async function analyzeVocabulary(candidates: VocabularyCandidate[], language: string) {
   const fallback = Object.fromEntries(candidates.map((candidate) => [candidate.id, {
     lemma: fallbackVocabularyLemma(candidate.normalized, language),
-    translation: ""
+    translation: "",
+    partOfSpeech: ""
   }])) as Record<string, VocabularyLinguisticData>;
   try {
     const response = await createChatCompletion([
       {
         role: "system",
-        content: "Analise vocabulário no idioma informado. Responda somente JSON válido: um array com objetos {id, lemma, translation}. Preserve cada id exatamente, use no lemma a forma canônica de dicionário no idioma alvo e traduza brevemente para português brasileiro."
+        content: "Analise vocabulário no idioma informado. Responda somente JSON válido: um array com objetos {id, lemma, translation, part_of_speech}. Preserve cada id exatamente, agrupe flexões usando o mesmo lemma canônico de dicionário, traduza brevemente para português brasileiro e informe a classe gramatical no idioma alvo."
       },
       { role: "user", content: `Idioma: ${language}\nItens: ${JSON.stringify(candidates.map((candidate) => ({ id: candidate.id, text: candidate.text, context: candidate.context })))}` }
-    ], { temperature: 0, maxTokens: 900 });
+    ], { temperature: 0, maxTokens: 900, timeoutMs: 4_500 });
     const match = response.content.match(/\[[\s\S]*\]/);
     const parsed = JSON.parse(match?.[0] ?? "[]") as unknown;
     if (!Array.isArray(parsed)) return fallback;
@@ -361,7 +458,8 @@ async function analyzeVocabulary(candidates: VocabularyCandidate[], language: st
       if (!lemma) continue;
       fallback[item.id] = {
         lemma,
-        translation: typeof item.translation === "string" ? item.translation.trim() : ""
+        translation: typeof item.translation === "string" ? item.translation.trim() : "",
+        partOfSpeech: typeof item.part_of_speech === "string" ? item.part_of_speech.trim() : ""
       };
     }
     return fallback;
@@ -374,7 +472,15 @@ export function fallbackVocabularyLemma(value: string, language: string) {
   const word = normalizeVocabularyToken(value);
   const code = language.toLocaleLowerCase().split(/[-_]/)[0];
   const irregular: Record<string, Record<string, string>> = {
-    en: { went: "go", gone: "go", was: "be", were: "be", been: "be", did: "do", done: "do", had: "have", made: "make" }
+    en: { went: "go", gone: "go", was: "be", were: "be", been: "be", did: "do", done: "do", had: "have", made: "make" },
+    pt: {
+      fui: "ir", foi: "ir", fomos: "ir", foram: "ir", vou: "ir", vai: "ir", vamos: "ir", vão: "ir",
+      sou: "ser", somos: "ser", são: "ser", era: "ser", eram: "ser",
+      tive: "ter", teve: "ter", tivemos: "ter", tiveram: "ter"
+    },
+    es: { fui: "ir", fue: "ir", fuimos: "ir", fueron: "ir", voy: "ir", va: "ir", vamos: "ir", van: "ir" },
+    fr: { étais: "être", était: "être", étions: "être", étaient: "être" },
+    it: { sono: "essere", era: "essere", erano: "essere", siamo: "essere" }
   };
   if (irregular[code]?.[word]) return irregular[code][word];
   if (code === "en") {

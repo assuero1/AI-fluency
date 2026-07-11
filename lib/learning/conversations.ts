@@ -5,7 +5,6 @@ import { createTopic } from "./topics";
 import { assertPracticeReady, LearningStateError } from "./access";
 import { isMutableConversationStatus, selectScopedConversation } from "./conversation-state";
 import { getActiveLanguageProfile, getExistingPersonalUser, LanguageProfileFields } from "./profile";
-import { matchesLearningScope } from "./scope";
 import { formatTutorContext, getTutorContext, TutorContext } from "./tutor-context";
 import { ConversationQuickAction, getConversationQuickActionPrompt } from "./quick-actions";
 
@@ -56,6 +55,7 @@ export type WordFields = {
   lemma: string;
   canonical_key?: string;
   display_text: string;
+  forms_json?: string;
   translation: string;
   part_of_speech: string;
   familiarity_score: number;
@@ -84,6 +84,19 @@ export type WordOccurrenceFields = {
   sentence_context: string;
   was_correct: boolean;
   created_at: string;
+};
+
+export type WordUsageSummaryFields = {
+  Name?: string;
+  usage_key: string;
+  word_id: string;
+  conversation_id: string;
+  forms_json: string;
+  observed_count: number;
+  correct_use_count: number;
+  correction_count: number;
+  first_used_at: string;
+  last_used_at: string;
 };
 
 type LearningAnalysis = {
@@ -422,27 +435,11 @@ async function getExistingTurnResult(
   const assistantMessage = context.messages.slice(index + 1).find((message) => message.fields.role === "assistant");
   if (!assistantMessage) return null;
 
-  const client = getTeableClient();
-  const [words, occurrences] = await Promise.all([
-    client.listAllRecords<WordFields>("words"),
-    client.listAllRecords<WordOccurrenceFields>("wordOccurrences")
-  ]);
-  const wordIds = new Set(
-    occurrences
-      .filter((occurrence) => occurrence.fields.conversation_id === context.conversation.id && occurrence.fields.message_id === userMessage.id)
-      .map((occurrence) => occurrence.fields.word_id)
-  );
   return {
     userMessage,
     assistantMessage,
     corrections: context.corrections.filter((correction) => correction.fields.message_id === userMessage.id),
-    words: words.filter((word) =>
-      wordIds.has(word.id) &&
-      matchesLearningScope(word.fields, {
-        userId: context.conversation.fields.user_id,
-        profileId: context.conversation.fields.language_profile_id
-      })
-    )
+    words: [] as TeableRecord<WordFields>[]
   };
 }
 

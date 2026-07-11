@@ -1,4 +1,4 @@
-import { ArrowLeft, BookOpen, CircleAlert, MessageCircle, Target } from "lucide-react";
+import { ArrowLeft, BookOpen, Target } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
@@ -20,7 +20,7 @@ export default async function WordDetailPage({ params }: WordDetailPageProps) {
   const data = await getWordDetail(wordId);
   if (!data) notFound();
 
-  const { word, occurrences } = data;
+  const { word } = data;
 
   return (
     <AppShell activeNav="palavras">
@@ -62,40 +62,6 @@ export default async function WordDetailPage({ params }: WordDetailPageProps) {
       </div>
 
       <section className="section">
-        <h2 className="section-title">Como você usou</h2>
-        <div className="occurrence-list">
-          {occurrences.length > 0 ? (
-            occurrences.map((occurrence) => (
-              <article className={occurrence.corrections.length ? "occurrence-card has-correction" : "occurrence-card"} key={occurrence.id}>
-                <div className="occurrence-topline">
-                  <span>{formatOccurrenceDate(occurrence.createdAt)}</span>
-                  <span>{occurrence.topicTitle}</span>
-                </div>
-                <p className="occurrence-context">{occurrence.sentenceContext || occurrence.usedText}</p>
-                <CopyButton label="Copiar exemplo" text={occurrence.sentenceContext || occurrence.usedText} />
-                {occurrence.corrections.map((correction) => (
-                  <div className="occurrence-correction" key={correction.id}>
-                    <CircleAlert size={18} />
-                    <span>
-                      <s>{correction.originalText}</s> → <strong>{correction.correctedText}</strong>
-                    </span>
-                  </div>
-                ))}
-                <div className="occurrence-source">
-                  <MessageCircle size={16} /> {occurrence.conversationTitle}
-                </div>
-              </article>
-            ))
-          ) : (
-            <div className="empty-state">
-              <MessageCircle size={30} />
-              <div className="row-meta">O contexto de uso aparecerá após a próxima conversa.</div>
-            </div>
-          )}
-        </div>
-      </section>
-
-      <section className="section">
         <div className="practice-tip">
           <Target />
           <div>
@@ -107,10 +73,4 @@ export default async function WordDetailPage({ params }: WordDetailPageProps) {
       <WordPracticeButton wordId={word.id} />
     </AppShell>
   );
-}
-
-function formatOccurrenceDate(value: string) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Conversa recente";
-  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short" }).format(date);
 }

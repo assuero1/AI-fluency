@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { getConnectionStatus } from "@/lib/settings/status";
 import { getTeableClient, TeableRecord } from "@/lib/teable/client";
 import type { TeableTableKey } from "@/lib/teable/schema";
-import type { ConversationFields, CorrectionFields, MessageFields, WordFields, WordOccurrenceFields } from "./conversations";
+import type { ConversationFields, CorrectionFields, MessageFields, WordFields, WordOccurrenceFields, WordUsageSummaryFields } from "./conversations";
 import type { DailyFeedbackFields, TopicFields } from "./home";
 import type { FlashcardAttemptFields, FlashcardFields } from "./flashcards";
 import { getActiveLanguageProfile, getOrCreatePersonalUser, LanguageProfileFields, UserFields } from "./profile";
@@ -160,6 +160,7 @@ export async function exportPersonalData() {
       corrections: data.corrections,
       words: data.words,
       wordOccurrences: data.wordOccurrences,
+      wordUsageSummaries: data.wordUsageSummaries,
       dailyFeedbacks: data.dailyFeedbacks,
       topics: data.topics,
       practiceSessions: data.practiceSessions,
@@ -222,6 +223,7 @@ export async function deleteLearningHistory(input: { confirmationToken?: string;
     ["flashcardAttempts", data.flashcardAttempts],
     ["flashcards", data.flashcards],
     ["wordOccurrences", data.wordOccurrences],
+    ["wordUsageSummaries", data.wordUsageSummaries],
     ["corrections", data.corrections],
     ["messages", data.messages],
     ["practiceSessions", data.practiceSessions],
@@ -268,13 +270,14 @@ async function getScopedLearningData() {
   const client = getTeableClient();
   const user = await getOrCreatePersonalUser();
   const profile = await getActiveLanguageProfile(user);
-  const [profiles, conversations, messages, corrections, words, wordOccurrences, dailyFeedbacks, topics, practiceSessions, flashcards, flashcardAttempts] = await Promise.all([
+  const [profiles, conversations, messages, corrections, words, wordOccurrences, wordUsageSummaries, dailyFeedbacks, topics, practiceSessions, flashcards, flashcardAttempts] = await Promise.all([
     client.listAllRecords<LanguageProfileFields>("languageProfiles"),
     client.listAllRecords<ConversationFields>("conversations"),
     client.listAllRecords<MessageFields>("messages"),
     client.listAllRecords<CorrectionFields>("corrections"),
     client.listAllRecords<WordFields>("words"),
     client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
+    client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries"),
     client.listAllRecords<DailyFeedbackFields>("dailyFeedbacks"),
     client.listAllRecords<TopicFields>("topics"),
     client.listAllRecords<Record<string, unknown>>("practiceSessions"),
@@ -301,6 +304,7 @@ async function getScopedLearningData() {
     corrections: corrections.filter((item) => conversationIds.has(item.fields.conversation_id)),
     words: scopedWords,
     wordOccurrences: wordOccurrences.filter((item) => wordIds.has(item.fields.word_id) || conversationIds.has(item.fields.conversation_id)),
+    wordUsageSummaries: wordUsageSummaries.filter((item) => wordIds.has(item.fields.word_id) || conversationIds.has(item.fields.conversation_id)),
     dailyFeedbacks: dailyFeedbacks.filter((item) => inScope(item, user.id, profileId)),
     topics: topics.filter((item) => inScope(item, user.id, profileId)),
     practiceSessions: scopedPracticeSessions,

@@ -33,6 +33,8 @@
     "vocabulary:audit": "node scripts/migrate-vocabulary-integrity.mjs",
     "vocabulary:migrate": "node scripts/migrate-vocabulary-integrity.mjs --apply",
     "vocabulary:unique-field": "node scripts/ensure-vocabulary-unique-field.mjs",
+    "vocabulary:family-fields": "node scripts/ensure-vocabulary-family-fields.mjs",
+    "vocabulary:usage-migrate": "node scripts/migrate-word-usage-summaries.mjs",
     "scope:reset-test-data": "node scripts/reset-personal-test-data.mjs",
     "security:bundle": "node scripts/verify-client-secrets.mjs"
   },

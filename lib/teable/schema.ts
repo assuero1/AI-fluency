@@ -8,6 +8,7 @@ export type TeableTableKey =
   | "corrections"
   | "words"
   | "wordOccurrences"
+  | "wordUsageSummaries"
   | "dailyFeedbacks"
   | "topics"
   | "practiceSessions"
@@ -176,6 +177,7 @@ export const teableSchema: TeableTableDefinition[] = [
       { name: "lemma", type: "text" },
       { name: "canonical_key", type: "text", note: "Unique user + language profile + lemma key." },
       { name: "display_text", type: "text" },
+      { name: "forms_json", type: "json", note: "Observed inflected forms grouped under this lemma." },
       { name: "translation", type: "text" },
       { name: "part_of_speech", type: "text" },
       { name: "familiarity_score", type: "number" },
@@ -208,6 +210,23 @@ export const teableSchema: TeableTableDefinition[] = [
       { name: "sentence_context", type: "longText" },
       { name: "was_correct", type: "checkbox" },
       { name: "created_at", type: "date" }
+    ]
+  },
+  {
+    key: "wordUsageSummaries",
+    envName: "TEABLE_WORD_USAGE_SUMMARIES_TABLE_ID",
+    displayName: "WordUsageSummaries",
+    purpose: "One compact vocabulary usage aggregate per word and conversation.",
+    fields: [
+      { name: "usage_key", type: "text", note: "Unique word + conversation key." },
+      { name: "word_id", type: "relation", note: "Words" },
+      { name: "conversation_id", type: "relation", note: "Conversations" },
+      { name: "forms_json", type: "json" },
+      { name: "observed_count", type: "number" },
+      { name: "correct_use_count", type: "number" },
+      { name: "correction_count", type: "number" },
+      { name: "first_used_at", type: "date" },
+      { name: "last_used_at", type: "date" }
     ]
   },
   {
