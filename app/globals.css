@@ -1927,7 +1927,19 @@ textarea:focus-visible,
 .flashcard-result-details { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; text-align: left; }
 .flashcard-result-details div { display: grid; gap: 3px; padding: 10px; border-radius: 12px; background: rgba(255,255,255,.72); }
 .flashcard-result-details span { color: var(--muted); font-size: 12px; }.flashcard-result-details strong { font-size: 16px; }
-.word-review-states { display: grid; grid-template-columns: repeat(5, 1fr); gap: 7px; padding: 0; border: 0; background: transparent; }.word-review-states div { display: grid; gap: 3px; padding: 10px 6px; border-radius: 14px; background: #f6faf6; text-align: center; }.word-review-states strong { font-size: 17px; }.word-review-states span { color: var(--muted); font-size: 11px; }
+.word-review-states { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; padding: 0; border: 0; background: transparent; }.word-review-states div { display: grid; min-width: 0; gap: 3px; padding: 10px 4px; border-radius: 14px; background: #f6faf6; text-align: center; }.word-review-states strong { font-size: 17px; }.word-review-states span { min-width: 0; color: var(--muted); font-size: 11px; overflow-wrap: anywhere; }
+
+@media (max-width: 340px) {
+  :root { --screen-pad: 16px; }
+  .word-review-states { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .word-row { gap: 10px; }
+  .word-row .row-title { font-size: 18px; overflow-wrap: anywhere; }
+  .word-strength { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+  .word-detail-hero { gap: 10px; }
+  .word-detail-hero .pill { width: 100%; max-width: 100%; justify-content: center; padding-inline: 8px; white-space: normal; overflow-wrap: anywhere; text-align: center; }
+  .word-detail-metrics div { min-width: 0; padding-inline: 5px; }
+  .word-detail-metrics span { overflow-wrap: anywhere; }
+}
 .flashcard-retrain { display: grid; gap: 10px; padding: 16px; border: 1px solid #d8eadc; border-radius: 18px; background: rgba(255,255,255,.72); text-align: left; }
 .flashcard-retrain > div { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .flashcard-retrain .outline-button { min-height: 42px; padding: 8px 10px; font-size: 13px; text-align: center; }

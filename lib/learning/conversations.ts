@@ -210,6 +210,34 @@ export async function changeConversationTopic(conversationId: string, title: str
   return { conversation, topic: created.topic };
 }
 
+export async function abandonConversation(conversationId: string) {
+  const context = await getConversation(conversationId);
+  if (!context) throw new LearningStateError("Conversa não encontrada.", 404);
+  if (!isMutableConversationStatus(context.conversation.fields.status)) {
+    throw new LearningStateError("Esta conversa já foi encerrada e não pode ser abandonada.", 409);
+  }
+
+  const client = getTeableClient();
+  const endedAt = new Date().toISOString();
+  const durationSeconds = Math.max(
+    0,
+    Math.round((new Date(endedAt).getTime() - new Date(context.conversation.fields.started_at).getTime()) / 1000)
+  );
+  const conversation = await client.updateRecord<ConversationFields>("conversations", context.conversation.id, {
+    status: "abandoned",
+    ended_at: endedAt,
+    duration_seconds: durationSeconds,
+    summary: ""
+  });
+
+  await client.createEvent(context.conversation.fields.user_id, "conversation_abandoned", {
+    conversation_id: context.conversation.id,
+    duration_seconds: durationSeconds
+  });
+
+  return { conversation, redirectTo: "/" };
+}
+
 export async function getConversation(conversationId?: string) {
   const client = getTeableClient();
   const user = await getExistingPersonalUser();

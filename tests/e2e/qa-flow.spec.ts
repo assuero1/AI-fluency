@@ -492,9 +492,19 @@ test("release visual matrix has no horizontal overflow or clipped navigation", a
       const layout = await page.evaluate(() => ({
         horizontalOverflow: document.documentElement.scrollWidth > document.documentElement.clientWidth,
         clippedNavigation: Array.from(document.querySelectorAll<HTMLElement>(".nav-item"))
-          .some((item) => item.scrollWidth > item.clientWidth + 1)
+          .some((item) => item.scrollWidth > item.clientWidth + 1),
+        overflowingElements: Array.from(document.querySelectorAll<HTMLElement>("body *"))
+          .filter((item) => item.getBoundingClientRect().right > document.documentElement.clientWidth + 1)
+          .slice(0, 8)
+          .map((item) => ({
+            tag: item.tagName.toLowerCase(),
+            className: item.className,
+            text: item.textContent?.trim().slice(0, 80) ?? "",
+            right: Math.round(item.getBoundingClientRect().right),
+            width: Math.round(item.getBoundingClientRect().width)
+          }))
       }));
-      expect.soft(layout.horizontalOverflow, `${surface.name} overflows at ${viewport.width}px`).toBe(false);
+      expect.soft(layout.horizontalOverflow, `${surface.name} overflows at ${viewport.width}px: ${JSON.stringify(layout.overflowingElements)}`).toBe(false);
       expect.soft(layout.clippedNavigation, `${surface.name} clips navigation at ${viewport.width}px`).toBe(false);
       await testInfo.attach(`${surface.name}-${viewport.width}x${viewport.height}`, {
         body: await page.screenshot({ fullPage: true }),

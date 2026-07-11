@@ -38,8 +38,10 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
     );
   }
 
+  const isActiveTraining = context.conversation.fields.status === "active";
+
   return (
-    <AppShell activeNav="chat">
+    <AppShell activeNav="chat" noNav={isActiveTraining}>
       <ChatConversation
         corrections={context.corrections}
         conversation={context.conversation}
@@ -48,7 +50,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
         messages={context.messages}
         transcriptEnabled={Boolean(context.profile?.fields.transcript_enabled)}
         topicTitle={context.topicTitle}
-        readOnly={context.conversation.fields.status !== "active"}
+        readOnly={!isActiveTraining}
         streak={progress.streak}
       />
     </AppShell>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, CalendarDays, ChevronRight, Clock3, Flame, Languages, Loader2, Mic, MicOff, Send, Shuffle, Volume2 } from "lucide-react";
+import { Bot, CalendarDays, ChevronRight, Clock3, Flame, Languages, Loader2, LogOut, Mic, MicOff, Send, Shuffle, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -80,6 +80,7 @@ export function ChatConversation({
   const [isExplaining, setIsExplaining] = useState(false);
   const [activeTopicTitle, setActiveTopicTitle] = useState(topicTitle);
   const [isTopicDialogOpen, setIsTopicDialogOpen] = useState(false);
+  const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
   const [nextTopicTitle, setNextTopicTitle] = useState("");
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
@@ -255,6 +256,24 @@ export function ChatConversation({
     }
   }
 
+  async function abandonConversation() {
+    if (readOnly) return;
+    setIsSending(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/conversations/${conversation.id}/abandon`, { method: "POST" });
+      const data = (await response.json()) as { ok?: boolean; error?: string; redirectTo?: string };
+      if (!response.ok || !data.ok) throw new Error(data.error ?? "Não foi possível abandonar o treino.");
+      router.push(data.redirectTo ?? "/");
+      router.refresh();
+    } catch (abandonError) {
+      setError(normalizeChatError(abandonError, "Não foi possível abandonar o treino agora. Tente novamente."));
+      setIsExitDialogOpen(false);
+      setIsSending(false);
+    }
+  }
+
   function captureSelection(event: React.PointerEvent<HTMLDivElement>) {
     const selection = window.getSelection();
     const clean = selection?.toString().trim() ?? "";
@@ -384,9 +403,15 @@ export function ChatConversation({
           <Flame aria-hidden="true" size={18} color="#f59d1f" fill="#f59d1f" /> {formatPracticeStreak(streak)}
         </Pill>
         <ScreenHeader title="Conversa" subtitle="com a IA" centered />
-        <Link className="outline-button" href="/calendario" aria-label="Abrir calendário">
-          <CalendarDays />
-        </Link>
+        {!readOnly ? (
+          <button className="outline-button" disabled={isSending} onClick={() => setIsExitDialogOpen(true)} type="button">
+            <LogOut /> Sair
+          </button>
+        ) : (
+          <Link className="outline-button" href="/calendario" aria-label="Abrir calendário">
+            <CalendarDays />
+          </Link>
+        )}
         <Pill aria-label={`Tempo de conversa: ${formatElapsedTime(elapsedSeconds)}`}><Clock3 size={16} /> {formatElapsedTime(elapsedSeconds)}</Pill>
       </div>
 
@@ -422,6 +447,29 @@ export function ChatConversation({
                 {isSending ? <Loader2 className="spin" /> : <Shuffle />} Confirmar
               </button>
             </div>
+        </ModalDialog>
+      ) : null}
+
+      {isExitDialogOpen ? (
+        <ModalDialog
+          busy={isSending}
+          descriptionId="exit-training-description"
+          onClose={() => setIsExitDialogOpen(false)}
+          titleId="exit-training-title"
+        >
+          <LogOut color="var(--danger)" size={30} />
+          <h2 id="exit-training-title" className="section-title">Abandonar este treino?</h2>
+          <p className="row-meta" id="exit-training-description">
+            O treino será encerrado por completo e não poderá ser retomado. Os dados já salvos, como palavras e correções, serão preservados.
+          </p>
+          <div className="modal-actions">
+            <button data-autofocus className="outline-button" disabled={isSending} onClick={() => setIsExitDialogOpen(false)} type="button">
+              Continuar treino
+            </button>
+            <button className="danger-button" disabled={isSending} onClick={abandonConversation} type="button">
+              {isSending ? <Loader2 className="spin" /> : <LogOut />} Abandonar treino
+            </button>
+          </div>
         </ModalDialog>
       ) : null}
 
