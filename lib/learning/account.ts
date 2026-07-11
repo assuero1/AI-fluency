@@ -269,17 +269,17 @@ async function getScopedLearningData() {
   const user = await getOrCreatePersonalUser();
   const profile = await getActiveLanguageProfile(user);
   const [profiles, conversations, messages, corrections, words, wordOccurrences, dailyFeedbacks, topics, practiceSessions, flashcards, flashcardAttempts] = await Promise.all([
-    client.listRecords<LanguageProfileFields>("languageProfiles", 50),
-    client.listRecords<ConversationFields>("conversations", 300),
-    client.listRecords<MessageFields>("messages", 500),
-    client.listRecords<CorrectionFields>("corrections", 400),
-    client.listRecords<WordFields>("words", 300),
-    client.listRecords<WordOccurrenceFields>("wordOccurrences", 500),
-    client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
-    client.listRecords<TopicFields>("topics", 300),
-    client.listRecords<Record<string, unknown>>("practiceSessions", 300),
-    client.listRecords<FlashcardFields>("flashcards", 500),
-    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000)
+    client.listAllRecords<LanguageProfileFields>("languageProfiles"),
+    client.listAllRecords<ConversationFields>("conversations"),
+    client.listAllRecords<MessageFields>("messages"),
+    client.listAllRecords<CorrectionFields>("corrections"),
+    client.listAllRecords<WordFields>("words"),
+    client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
+    client.listAllRecords<DailyFeedbackFields>("dailyFeedbacks"),
+    client.listAllRecords<TopicFields>("topics"),
+    client.listAllRecords<Record<string, unknown>>("practiceSessions"),
+    client.listAllRecords<FlashcardFields>("flashcards"),
+    client.listAllRecords<FlashcardAttemptFields>("flashcardAttempts")
   ]);
   const profileId = profile?.id;
   const ownProfiles = profiles.filter((item) => item.fields.user_id === user.id);

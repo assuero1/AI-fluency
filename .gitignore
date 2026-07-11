@@ -8,6 +8,7 @@ dist/
 coverage/
 .audio-cache/
 .qa-fixtures/
+backups/*.json
 .DS_Store
 tsconfig.tsbuildinfo
 npm-debug.log*

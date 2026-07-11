@@ -1850,9 +1850,16 @@ textarea:focus-visible,
 .selection-explanation p { margin: 6px 0; }
 .vocabulary-picker, .vocabulary-options { display: grid; gap: 12px; }
 .vocabulary-options { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); }
-.vocabulary-option { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 999px; padding: 9px 12px; cursor: pointer; }
+.vocabulary-option { display: flex; align-items: center; gap: 8px; border: 1px solid var(--border); border-radius: 18px; padding: 9px 12px; cursor: pointer; }
 .vocabulary-option.selected { border-color: #2f9d4a; background: #edf8ef; }
 .vocabulary-option input { accent-color: #2f9d4a; }
+.vocabulary-option:has(input:disabled) { cursor: not-allowed; opacity: .65; background: #f7f7f5; }
+.vocabulary-option span { display: grid; gap: 2px; }
+.vocabulary-option small { color: var(--muted); font-size: 11px; line-height: 1.25; }
+.word-strength { display: inline-flex; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; vertical-align: middle; background: #f1f2ef; color: var(--muted); }
+.word-strength.learning { background: #fff5d9; color: #7d5c00; }
+.word-strength.consolidating { background: #e8f1ff; color: #245b9b; }
+.word-strength.strong { background: #e4f6e8; color: #21733a; }
 
 .flashcard-entry { display: flex; align-items: center; gap: 14px; padding: 18px; border-radius: 24px; color: inherit; text-decoration: none; background: linear-gradient(135deg, #173f2a, #2f9d4a); color: #fff; box-shadow: 0 14px 34px rgba(26, 105, 58, .2); }
 .flashcard-entry .row-meta { color: rgba(255,255,255,.78); }

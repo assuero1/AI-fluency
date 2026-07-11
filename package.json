@@ -30,6 +30,9 @@
     "scope:audit": "node scripts/backfill-learning-scope.mjs",
     "scope:inspect": "node scripts/inspect-learning-scope.mjs",
     "scope:backup": "node scripts/backup-learning-data.mjs",
+    "vocabulary:audit": "node scripts/migrate-vocabulary-integrity.mjs",
+    "vocabulary:migrate": "node scripts/migrate-vocabulary-integrity.mjs --apply",
+    "vocabulary:unique-field": "node scripts/ensure-vocabulary-unique-field.mjs",
     "scope:reset-test-data": "node scripts/reset-personal-test-data.mjs",
     "security:bundle": "node scripts/verify-client-secrets.mjs"
   },

@@ -174,6 +174,7 @@ export const teableSchema: TeableTableDefinition[] = [
       { name: "user_id", type: "relation", note: "Users" },
       { name: "language_profile_id", type: "relation", note: "LanguageProfiles" },
       { name: "lemma", type: "text" },
+      { name: "canonical_key", type: "text", note: "Unique user + language profile + lemma key." },
       { name: "display_text", type: "text" },
       { name: "translation", type: "text" },
       { name: "part_of_speech", type: "text" },
@@ -200,6 +201,7 @@ export const teableSchema: TeableTableDefinition[] = [
     purpose: "Every contextual use of a word.",
     fields: [
       { name: "word_id", type: "relation", note: "Words" },
+      { name: "occurrence_key", type: "text", note: "Unique conversation + message + token + ordinal key." },
       { name: "conversation_id", type: "relation", note: "Conversations" },
       { name: "message_id", type: "relation", note: "Messages" },
       { name: "used_text", type: "text" },

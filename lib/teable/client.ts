@@ -137,6 +137,20 @@ export class TeableClient {
     return result.records ?? result.data?.records ?? [];
   }
 
+  async listAllRecords<TFields extends Record<string, unknown> = Record<string, unknown>>(tableKey: TeableTableKey) {
+    const tableId = this.tableId(tableKey);
+    const records: TeableRecord<TFields>[] = [];
+    const pageSize = 1000;
+    for (let skip = 0; ; skip += pageSize) {
+      const result = await this.request<TeableListResponse<TFields>>(
+        `/api/table/${encodeURIComponent(tableId)}/record?take=${pageSize}&skip=${skip}&fieldKeyType=name`
+      );
+      const page = result.records ?? result.data?.records ?? [];
+      records.push(...page);
+      if (page.length < pageSize) return records;
+    }
+  }
+
   async createRecord<TFields extends Record<string, unknown> = Record<string, unknown>>(
     tableKey: TeableTableKey,
     fields: TFields

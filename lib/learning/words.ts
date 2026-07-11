@@ -1,5 +1,5 @@
 import { startConversation } from "./conversations";
-import type { CorrectionFields, ConversationFields, WordFields, WordOccurrenceFields } from "./conversations";
+import type { CorrectionFields, ConversationFields, MessageFields, WordFields, WordOccurrenceFields } from "./conversations";
 import type { TopicFields } from "./home";
 import { getActiveLanguageProfile, getOrCreatePersonalUser } from "./profile";
 import { createTopic } from "./topics";
@@ -49,7 +49,53 @@ export type WordListItem = {
   occurrenceCount: number;
   correctionCount: number;
   needsReview: boolean;
+  correctUses: number;
+  conversationCount: number;
+  strengthScore: number;
+  strengthLevel: WordStrengthLevel;
 };
+
+export type WordStrengthLevel = "new" | "learning" | "consolidating" | "strong";
+
+export const wordStrengthLabels: Record<WordStrengthLevel, string> = {
+  new: "Nova",
+  learning: "Em aprendizado",
+  consolidating: "Em consolidação",
+  strong: "Forte"
+};
+
+export function calculateWordStrength(input: {
+  correctUses: number;
+  conversationCount: number;
+  lastUsedAt: string;
+  reviewStreak: number;
+  lapseCount: number;
+  lastRating: WordListItem["lastRating"];
+  correctionCount: number;
+  now?: number;
+}) {
+  const now = input.now ?? Date.now();
+  const daysSinceUse = Math.max(0, Math.floor((now - dateValue(input.lastUsedAt)) / 86_400_000));
+  const recencyPoints = !dateValue(input.lastUsedAt) ? 0 : daysSinceUse <= 7 ? 15 : daysSinceUse <= 30 ? 10 : daysSinceUse <= 90 ? 4 : 0;
+  const ratingPoints = input.lastRating === "easy" ? 5 : input.lastRating === "good" ? 3 : input.lastRating === "forgot" ? -6 : 0;
+  const score = Math.max(0, Math.min(100,
+    Math.min(40, input.correctUses * 8) +
+    Math.min(25, input.conversationCount * 8) +
+    recencyPoints +
+    Math.min(15, input.reviewStreak * 3) +
+    ratingPoints -
+    Math.min(20, input.lapseCount * 5) -
+    Math.min(15, input.correctionCount * 3)
+  ));
+  const level: WordStrengthLevel = score >= 65 && input.correctUses >= 5 && input.conversationCount >= 2 && input.lastRating !== "forgot"
+    ? "strong"
+    : score >= 35 && input.correctUses >= 3
+      ? "consolidating"
+      : input.correctUses > 0 || input.reviewStreak > 0
+        ? "learning"
+        : "new";
+  return { score, level };
+}
 
 type WordScope = {
   userId: string;
@@ -84,7 +130,7 @@ export async function getWordsData(filter: WordFilter = "all", query = "") {
     records.corrections.filter((correction) => correctionBelongsToScope(correction, records.conversations, scope)).map((correction) => correction.fields.message_id)
   );
   const now = Date.now();
-  const mapped = scoped.map((word) => toWordListItem(word, records.occurrences, correctionMessageIds, now));
+  const mapped = scoped.map((word) => toWordListItem(word, records.occurrences, records.messages, correctionMessageIds, now));
   const normalizedQuery = normalizeWordSearchQuery(query);
   const visibleWords = mapped
     .filter((word) => matchesFilter(word, filter))
@@ -111,7 +157,8 @@ export async function getWordsData(filter: WordFilter = "all", query = "") {
       newWords: mapped.filter((word) => word.reviewState === "new").length,
       learningWords: mapped.filter((word) => word.reviewState === "learning").length,
       reviewWords: mapped.filter((word) => word.reviewState === "review").length,
-      difficultWords: mapped.filter((word) => word.reviewState === "difficult").length
+      difficultWords: mapped.filter((word) => word.reviewState === "difficult").length,
+      strongWords: mapped.filter((word) => word.strengthLevel === "strong").length
     }
   };
 }
@@ -169,7 +216,7 @@ export async function getWordDetail(wordId: string) {
 
   return {
     languageCode: scope.languageCode,
-    word: toWordListItem(word, records.occurrences, correctionMessageIds, Date.now()),
+    word: toWordListItem(word, records.occurrences, records.messages, correctionMessageIds, Date.now()),
     occurrences
   };
 }
@@ -242,14 +289,15 @@ async function getWordScope(): Promise<WordScope> {
 
 async function getWordRecords() {
   const client = getTeableClient();
-  const [words, occurrences, corrections, conversations, topics] = await Promise.all([
-    client.listRecords<WordFields>("words", 300),
-    client.listRecords<WordOccurrenceFields>("wordOccurrences", 200),
-    client.listRecords<CorrectionFields>("corrections", 300),
-    client.listRecords<ConversationFields>("conversations", 300),
-    client.listRecords<TopicFields>("topics", 300)
+  const [words, occurrences, corrections, conversations, topics, messages] = await Promise.all([
+    client.listAllRecords<WordFields>("words"),
+    client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
+    client.listAllRecords<CorrectionFields>("corrections"),
+    client.listAllRecords<ConversationFields>("conversations"),
+    client.listAllRecords<TopicFields>("topics"),
+    client.listAllRecords<MessageFields>("messages")
   ]);
-  return { words, occurrences, corrections, conversations, topics };
+  return { words, occurrences, corrections, conversations, topics, messages };
 }
 
 function matchesScope(word: TeableRecord<WordFields>, scope: WordScope) {
@@ -269,13 +317,30 @@ function correctionBelongsToScope(
 function toWordListItem(
   word: TeableRecord<WordFields>,
   occurrences: TeableRecord<WordOccurrenceFields>[],
+  messages: TeableRecord<MessageFields>[],
   correctionMessageIds: Set<string>,
   now: number
 ): WordListItem {
   const wordOccurrences = occurrences.filter((occurrence) => occurrence.fields.word_id === word.id);
+  const messageRoles = new Map(messages.map((message) => [message.id, message.fields.role]));
+  const learnerOccurrences = wordOccurrences.filter((occurrence) =>
+    messageRoles.get(occurrence.fields.message_id) === "user" && occurrence.fields.was_correct !== false
+  );
   const correctionCount = wordOccurrences.filter((occurrence) => correctionMessageIds.has(occurrence.fields.message_id)).length;
   const reviewDueAt = word.fields.review_due_at || "";
   const needsReview = (isPastOrToday(reviewDueAt, now) || correctionCount > 0) && wordOccurrences.length > 0;
+  const correctUses = Math.max(learnerOccurrences.length, Number(word.fields.total_uses ?? 0));
+  const conversationCount = new Set(learnerOccurrences.map((occurrence) => occurrence.fields.conversation_id)).size;
+  const strength = calculateWordStrength({
+    correctUses,
+    conversationCount,
+    lastUsedAt: word.fields.last_used_at || word.fields.first_used_at || "",
+    reviewStreak: Number(word.fields.review_streak ?? 0),
+    lapseCount: Number(word.fields.lapse_count ?? 0),
+    lastRating: word.fields.last_rating ?? "",
+    correctionCount,
+    now
+  });
 
   return {
     id: word.id,
@@ -299,7 +364,11 @@ function toWordListItem(
     reviewVersion: word.fields.review_version ?? "",
     occurrenceCount: wordOccurrences.length,
     correctionCount,
-    needsReview
+    needsReview,
+    correctUses,
+    conversationCount,
+    strengthScore: strength.score,
+    strengthLevel: strength.level
   };
 }
 

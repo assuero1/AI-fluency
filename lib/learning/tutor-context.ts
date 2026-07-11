@@ -73,9 +73,9 @@ async function loadTutorKnowledge(
   calendarMemoryEnabled: boolean
 ): Promise<TutorKnowledge> {
   const [words, corrections, conversations, topics, feedbacks] = await Promise.all([
-    client.listRecords<WordFields>("words", 300),
-    client.listRecords<CorrectionFields>("corrections", 300),
-    client.listRecords<ConversationFields>("conversations", 300),
+    client.listAllRecords<WordFields>("words"),
+    client.listAllRecords<CorrectionFields>("corrections"),
+    client.listAllRecords<ConversationFields>("conversations"),
     client.listRecords<TopicFields>("topics", 150),
     client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 90)
   ]);

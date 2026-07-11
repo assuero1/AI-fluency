@@ -187,6 +187,7 @@ const TABLES = [
       ["user_id", "text"],
       ["language_profile_id", "text"],
       ["lemma", "text"],
+      ["canonical_key", "text"],
       ["display_text", "text"],
       ["translation", "text"],
       ["part_of_speech", "text"],
@@ -211,6 +212,7 @@ const TABLES = [
     name: "WordOccurrences",
     fields: [
       ["word_id", "text"],
+      ["occurrence_key", "text"],
       ["conversation_id", "text"],
       ["message_id", "text"],
       ["used_text", "text"],

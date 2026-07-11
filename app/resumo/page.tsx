@@ -8,7 +8,7 @@ import { Pill } from "@/components/Pill";
 import { LearningStateError } from "@/lib/learning/access";
 import { getConversationSummary } from "@/lib/learning/feedback";
 import { VocabularyPicker } from "@/components/VocabularyPicker";
-import { extractVocabularyCandidates } from "@/lib/learning/vocabulary-selection";
+import { extractVocabularyCandidates, getSavedVocabularyCandidateIds, normalizeVocabularyToken } from "@/lib/learning/vocabulary-selection";
 
 export const dynamic = "force-dynamic";
 
@@ -42,8 +42,9 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
   const correctionsCount = data.corrections.length;
   const topicTitle = data.topicTitle;
   const learnerName = data.user.fields.Name?.trim() || data.user.fields.name?.trim() || "Você";
-  const candidates = extractVocabularyCandidates(data.messages);
-  const savedIds = data.occurrences?.map((occurrence) => `${occurrence.fields.message_id}:${occurrence.fields.used_text.toLocaleLowerCase()}`) ?? [];
+  const candidates = extractVocabularyCandidates(data.messages, data.corrections);
+  const savedIds = getSavedVocabularyCandidateIds(data.messages, data.occurrences ?? []);
+  const existingWords = data.vocabularyWords.map((word) => normalizeVocabularyToken(word.fields.lemma || word.fields.display_text));
 
   const metrics = [
     {
@@ -103,7 +104,7 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
           </div>
         </div>
       </section>
-      <VocabularyPicker candidates={candidates} conversationId={conversationId} savedIds={savedIds} />
+      <VocabularyPicker candidates={candidates} conversationId={conversationId} existingWords={existingWords} savedIds={savedIds} />
       <section className="section">
         <h2 className="section-title">Já salvas desta conversa</h2>
         <div className="row-list">

@@ -27,11 +27,11 @@ export async function getProgressData() {
   const client = getTeableClient();
   const [user, conversations, corrections, words, feedbacks, practiceSessions] = await Promise.all([
     getOrCreatePersonalUser(),
-    client.listRecords<ConversationFields>("conversations", 300),
-    client.listRecords<CorrectionFields>("corrections", 400),
-    client.listRecords<WordFields>("words", 300),
-    client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
-    client.listRecords<PracticeSessionFields>("practiceSessions", 400)
+    client.listAllRecords<ConversationFields>("conversations"),
+    client.listAllRecords<CorrectionFields>("corrections"),
+    client.listAllRecords<WordFields>("words"),
+    client.listAllRecords<DailyFeedbackFields>("dailyFeedbacks"),
+    client.listAllRecords<PracticeSessionFields>("practiceSessions")
   ]);
   const profile = await getActiveLanguageProfile(user);
   const scopedConversations = conversations.filter((conversation) => matchesConversationScope(conversation, user.id, profile?.id));

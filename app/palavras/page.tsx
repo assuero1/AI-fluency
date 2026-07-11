@@ -5,7 +5,7 @@ import { IconBubble } from "@/components/IconBubble";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { VoiceButton } from "@/components/VoiceButton";
 import { WordPracticeButton } from "@/components/WordPracticeButton";
-import { getWordsData, normalizeWordFilter, wordFilters } from "@/lib/learning/words";
+import { getWordsData, normalizeWordFilter, wordFilters, wordStrengthLabels } from "@/lib/learning/words";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +58,7 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
         <div className="row-meta">Meta semanal: {data.summary.weeklyNew}/{data.summary.weeklyGoal} novas palavras</div>
       </section>
       <section className="section word-review-states" aria-label="Estados de revisão">
-        <div><strong>{data.summary.toReview}</strong><span>para hoje</span></div><div><strong>{data.summary.newWords}</strong><span>novas</span></div><div><strong>{data.summary.learningWords}</strong><span>aprendendo</span></div><div><strong>{data.summary.reviewWords}</strong><span>consolidadas</span></div><div><strong>{data.summary.difficultWords}</strong><span>difíceis</span></div>
+        <div><strong>{data.summary.toReview}</strong><span>para hoje</span></div><div><strong>{data.summary.newWords}</strong><span>novas</span></div><div><strong>{data.summary.learningWords}</strong><span>aprendendo</span></div><div><strong>{data.summary.reviewWords}</strong><span>consolidadas</span></div><div><strong>{data.summary.strongWords}</strong><span>fortes</span></div>
       </section>
 
       <form className="word-search-form" action="/palavras" role="search">
@@ -89,7 +89,7 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
               <IconBubble Icon={BookOpen} tone={word.needsReview ? "warning" : "primary"} />
               <Link className="row-copy word-row-link" href={`/palavras/${word.id}`}>
                 <div className="row-title">
-                  {word.displayText} <span className="word-use-count">+{word.totalUses}</span>
+                  {word.displayText} <span className="word-use-count">+{word.totalUses}</span> <span className={`word-strength ${word.strengthLevel}`}>{wordStrengthLabels[word.strengthLevel]}</span>
                 </div>
                 <div className="row-meta">{word.translation}</div>
                 <div className="word-row-foot">

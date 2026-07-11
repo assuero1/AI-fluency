@@ -54,6 +54,7 @@ export type WordFields = {
   user_id: string;
   language_profile_id: string;
   lemma: string;
+  canonical_key?: string;
   display_text: string;
   translation: string;
   part_of_speech: string;
@@ -76,6 +77,7 @@ export type WordFields = {
 export type WordOccurrenceFields = {
   Name?: string;
   word_id: string;
+  occurrence_key?: string;
   conversation_id: string;
   message_id: string;
   used_text: string;
@@ -214,16 +216,16 @@ export async function getConversation(conversationId?: string) {
   if (!user) return null;
   const profile = await getActiveLanguageProfile(user);
   if (!profile) return null;
-  const conversations = await client.listRecords<ConversationFields>("conversations", 100);
+  const conversations = await client.listAllRecords<ConversationFields>("conversations");
   const conversation = selectScopedConversation(conversations, { userId: user.id, profileId: profile.id }, conversationId);
 
   if (!conversation) return null;
 
   const [messages, topics, profiles, corrections] = await Promise.all([
-    client.listRecords<MessageFields>("messages", 100),
-    client.listRecords<{ title?: string; Name?: string; reason?: string }>("topics", 100),
-    client.listRecords<LanguageProfileFields>("languageProfiles", 50),
-    client.listRecords<CorrectionFields>("corrections", 100)
+    client.listAllRecords<MessageFields>("messages"),
+    client.listAllRecords<{ title?: string; Name?: string; reason?: string }>("topics"),
+    client.listAllRecords<LanguageProfileFields>("languageProfiles"),
+    client.listAllRecords<CorrectionFields>("corrections")
   ]);
 
   const conversationMessages = messages
@@ -391,8 +393,8 @@ async function getExistingTurnResult(
 
   const client = getTeableClient();
   const [words, occurrences] = await Promise.all([
-    client.listRecords<WordFields>("words", 300),
-    client.listRecords<WordOccurrenceFields>("wordOccurrences", 500)
+    client.listAllRecords<WordFields>("words"),
+    client.listAllRecords<WordOccurrenceFields>("wordOccurrences")
   ]);
   const wordIds = new Set(
     occurrences

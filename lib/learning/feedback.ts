@@ -60,8 +60,8 @@ export async function endConversation(conversationId: string) {
 
   const client = getTeableClient();
   const [wordOccurrences, words] = await Promise.all([
-    client.listRecords<WordOccurrenceFields>("wordOccurrences", 200),
-    client.listRecords<WordFields>("words", 200)
+    client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
+    client.listAllRecords<WordFields>("words")
   ]);
 
   const conversationOccurrences = wordOccurrences.filter(
@@ -123,8 +123,8 @@ async function getPersistedCompletion(context: NonNullable<Awaited<ReturnType<ty
   const client = getTeableClient();
   const [dailyFeedbacks, wordOccurrences, words] = await Promise.all([
     client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
-    client.listRecords<WordOccurrenceFields>("wordOccurrences", 200),
-    client.listRecords<WordFields>("words", 200)
+    client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
+    client.listAllRecords<WordFields>("words")
   ]);
   const date = toDateKey(context.conversation.fields.ended_at || context.conversation.fields.started_at);
   const dailyFeedback = dailyFeedbacks.find(
@@ -164,9 +164,9 @@ export async function getConversationSummary(conversationId: string) {
 
   const client = getTeableClient();
   const [dailyFeedbacks, wordOccurrences, words] = await Promise.all([
-    client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 60),
-    client.listRecords<WordOccurrenceFields>("wordOccurrences", 200),
-    client.listRecords<WordFields>("words", 200)
+    client.listAllRecords<DailyFeedbackFields>("dailyFeedbacks"),
+    client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
+    client.listAllRecords<WordFields>("words")
   ]);
 
   const feedbackDate = toDateKey(context.conversation.fields.ended_at || context.conversation.fields.started_at);
@@ -205,6 +205,10 @@ export async function getConversationSummary(conversationId: string) {
     ...context,
     dailyFeedback: dailyFeedback!,
     words: conversationWords,
+    vocabularyWords: words.filter((word) => matchesLearningScope(word.fields, {
+      userId: context.conversation.fields.user_id,
+      profileId: context.conversation.fields.language_profile_id
+    })),
     occurrences
   };
 }

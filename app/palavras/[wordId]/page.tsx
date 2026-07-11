@@ -7,7 +7,7 @@ import { IconBubble } from "@/components/IconBubble";
 import { Pill } from "@/components/Pill";
 import { VoiceButton } from "@/components/VoiceButton";
 import { WordPracticeButton } from "@/components/WordPracticeButton";
-import { getWordDetail } from "@/lib/learning/words";
+import { getWordDetail, wordStrengthLabels } from "@/lib/learning/words";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +36,7 @@ export default async function WordDetailPage({ params }: WordDetailPageProps) {
           <div className="level-pills">
             {word.partOfSpeech ? <Pill>{word.partOfSpeech}</Pill> : null}
             <Pill tone={word.needsReview ? "warning" : "primary"}>{word.needsReview ? "Revisar agora" : "Em prática"}</Pill>
+            <Pill>{wordStrengthLabels[word.strengthLevel]} · {word.strengthScore}/100</Pill>
           </div>
         </div>
       </section>
@@ -46,8 +47,8 @@ export default async function WordDetailPage({ params }: WordDetailPageProps) {
           <span>usos</span>
         </div>
         <div>
-          <strong>{word.occurrenceCount}</strong>
-          <span>contextos</span>
+          <strong>{word.conversationCount}</strong>
+          <span>conversas</span>
         </div>
         <div>
           <strong>{word.correctionCount}</strong>

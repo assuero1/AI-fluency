@@ -63,10 +63,10 @@ export async function getHomeData() {
   const profile = await getActiveLanguageProfile(user);
 
   const [topics, feedbacks, words, conversations] = await Promise.all([
-    client.listRecords<TopicFields>("topics", 30),
-    client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 14),
-    client.listRecords<WordFields>("words", 80),
-    client.listRecords<ConversationFields>("conversations", 160)
+    client.listAllRecords<TopicFields>("topics"),
+    client.listAllRecords<DailyFeedbackFields>("dailyFeedbacks"),
+    client.listAllRecords<WordFields>("words"),
+    client.listAllRecords<ConversationFields>("conversations")
   ]);
 
   const profileTopics = filterByProfile(topics, user, profile);
