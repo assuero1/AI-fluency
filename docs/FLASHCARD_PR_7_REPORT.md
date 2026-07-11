@@ -11,11 +11,16 @@ Data: 10 de julho de 2026
 - Limites aplicados: até 30 palavras, no máximo três apresentações por card, resposta de 300 caracteres, timeout de IA e áudio, e IDs estritamente vinculados ao perfil ativo.
 - Matriz determinística cobre sessões de 2, 5, 10 e 30 palavras e fallback quando a IA está indisponível.
 
-## Evidências atuais
+## Evidências
 
 - TypeScript, 25 arquivos/93 testes unitários, lint, build, bundle sem segredos e diff check aprovados.
 - Integração QA aprovada após a instrumentação final.
-- O E2E final não iniciou porque o ambiente Codex atingiu o limite de uso. A última execução anterior aprovou 17 testes, mas precisa ser repetida sobre o estado final antes de declarar o PR7 100% fechado.
+- 17 testes E2E aprovados sobre o estado final.
+- Smoke test e verificação de limpeza do QA aprovados.
+
+## Conclusão
+
+O PR7 está 100% implementado e validado em QA. A migração e o rollout no ambiente de produção permanecem ações de deploy separadas.
 
 ## Rollout recomendado
 
