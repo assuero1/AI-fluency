@@ -129,6 +129,36 @@ a {
   padding: 0;
 }
 
+@media (max-width: 380px) {
+  .chat-header {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    row-gap: 12px;
+  }
+
+  .chat-header .header-center {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .chat-header > .pill:first-child {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .chat-header > .outline-button {
+    grid-column: 2;
+    grid-row: 2;
+    justify-self: center;
+  }
+
+  .chat-header > .pill:last-child {
+    grid-column: 3;
+    grid-row: 2;
+  }
+
+}
+
 .screen-header > div {
   min-width: 0;
 }
@@ -1233,7 +1263,7 @@ a {
 
 .quick-actions {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 12px;
 }
 
@@ -1945,3 +1975,23 @@ textarea:focus-visible,
 .flashcard-retrain .outline-button { min-height: 42px; padding: 8px 10px; font-size: 13px; text-align: center; }
 .button-reset { border: 0; background: transparent; cursor: pointer; }
 @media (max-width: 560px) { .flashcard-choice-grid { grid-template-columns: 1fr; } .flashcard-card, .flashcard-card-toggle { height: 315px; min-height: 315px; } .active-recall-card { min-height: 225px; padding: 26px 20px; } .recall-rating-grid { grid-template-columns: 1fr 1fr; } }
+
+@media (max-width: 380px) {
+  .chat-topic {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .chat-topic > .outline-button {
+    width: 100%;
+  }
+
+  .audio-pill {
+    gap: 8px;
+    padding-inline: 12px;
+    font-size: 15px;
+  }
+
+  .audio-pill > span:last-child {
+    white-space: nowrap;
+  }
+}

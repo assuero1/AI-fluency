@@ -93,6 +93,7 @@ export function ChatConversation({
   const recognitionStartTextRef = useRef("");
   const speechFinalSegmentsRef = useRef<string[]>([]);
   const speechInterimRef = useRef("");
+  const suppressSpeechCommitRef = useRef(false);
   const listeningDesiredRef = useRef(false);
   const recognitionRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
@@ -135,6 +136,7 @@ export function ChatConversation({
     if (!cleanText) return;
 
     if (isListening) {
+      suppressSpeechCommitRef.current = true;
       listeningDesiredRef.current = false;
       recognitionRef.current?.stop();
       setIsListening(false);
@@ -328,6 +330,7 @@ export function ChatConversation({
     recognitionStartTextRef.current = text.trim();
     speechFinalSegmentsRef.current = [];
     speechInterimRef.current = "";
+    suppressSpeechCommitRef.current = false;
     listeningDesiredRef.current = true;
     setIsListening(true);
     setError(null);
@@ -358,6 +361,15 @@ export function ChatConversation({
     };
 
     recognition.onend = () => {
+      if (suppressSpeechCommitRef.current) {
+        suppressSpeechCommitRef.current = false;
+        speechFinalSegmentsRef.current = [];
+        speechInterimRef.current = "";
+        recognitionRef.current = null;
+        setIsListening(false);
+        return;
+      }
+
       const completedTranscript = joinSpeechSegments(
         [...speechFinalSegmentsRef.current, speechInterimRef.current].filter(Boolean),
         speechLanguage

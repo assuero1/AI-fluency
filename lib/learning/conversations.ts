@@ -214,6 +214,9 @@ export async function abandonConversation(conversationId: string) {
   const context = await getConversation(conversationId);
   if (!context) throw new LearningStateError("Conversa não encontrada.", 404);
   if (!isMutableConversationStatus(context.conversation.fields.status)) {
+    if (context.conversation.fields.status === "abandoned") {
+      return { conversation: context.conversation, redirectTo: "/" };
+    }
     throw new LearningStateError("Esta conversa já foi encerrada e não pode ser abandonada.", 409);
   }
 
