@@ -11,6 +11,8 @@ export type TeableTableKey =
   | "dailyFeedbacks"
   | "topics"
   | "practiceSessions"
+  | "flashcards"
+  | "flashcardAttempts"
   | "appEvents";
 
 export type TeableFieldType =
@@ -179,7 +181,16 @@ export const teableSchema: TeableTableDefinition[] = [
       { name: "total_uses", type: "number" },
       { name: "last_used_at", type: "date" },
       { name: "first_used_at", type: "date" },
-      { name: "review_due_at", type: "date" }
+      { name: "review_due_at", type: "date" },
+      { name: "review_interval_days", type: "number" },
+      { name: "review_ease", type: "number" },
+      { name: "review_streak", type: "number" },
+      { name: "lapse_count", type: "number" },
+      { name: "last_reviewed_at", type: "date" },
+      { name: "last_rating", type: "singleSelect" },
+      { name: "average_response_time_ms", type: "number" },
+      { name: "review_state", type: "singleSelect" },
+      { name: "review_version", type: "text" }
     ]
   },
   {
@@ -245,6 +256,71 @@ export const teableSchema: TeableTableDefinition[] = [
       { name: "conversation_id", type: "relation", note: "Conversations" },
       { name: "type", type: "singleSelect" },
       { name: "focus", type: "text" },
+      { name: "status", type: "singleSelect" },
+      { name: "started_at", type: "date" },
+      { name: "ended_at", type: "date" },
+      { name: "duration_seconds", type: "number" },
+      { name: "criterion", type: "text" },
+      { name: "requested_word_count", type: "number" },
+      { name: "selected_word_count", type: "number" },
+      { name: "unique_card_count", type: "number" },
+      { name: "presentation_count", type: "number" },
+      { name: "correct_count", type: "number" },
+      { name: "incorrect_count", type: "number" },
+      { name: "score", type: "number" },
+      { name: "language_code", type: "text" },
+      { name: "configuration_json", type: "json" },
+      { name: "parent_session_id", type: "relation", note: "PracticeSessions" },
+      { name: "created_at", type: "date" },
+      { name: "updated_at", type: "date" }
+    ]
+  },
+  {
+    key: "flashcards",
+    envName: "TEABLE_FLASHCARDS_TABLE_ID",
+    displayName: "Flashcards",
+    purpose: "Frozen cards for a flashcard practice session.",
+    fields: [
+      { name: "practice_session_id", type: "relation", note: "PracticeSessions" },
+      { name: "target_word_id", type: "relation", note: "Words" },
+      { name: "supporting_word_ids", type: "json" },
+      { name: "card_type", type: "singleSelect" },
+      { name: "prompt", type: "longText" },
+      { name: "expected_answer", type: "longText" },
+      { name: "accepted_answers", type: "json" },
+      { name: "translation", type: "longText" },
+      { name: "explanation", type: "longText" },
+      { name: "sentence", type: "longText" },
+      { name: "audio_text", type: "longText" },
+      { name: "difficulty", type: "number" },
+      { name: "initial_position", type: "number" },
+      { name: "generation_source", type: "singleSelect" },
+      { name: "created_at", type: "date" }
+    ]
+  },
+  {
+    key: "flashcardAttempts",
+    envName: "TEABLE_FLASHCARD_ATTEMPTS_TABLE_ID",
+    displayName: "FlashcardAttempts",
+    purpose: "Every persisted presentation and answer.",
+    fields: [
+      { name: "practice_session_id", type: "relation", note: "PracticeSessions" },
+      { name: "flashcard_id", type: "relation", note: "Flashcards" },
+      { name: "word_id", type: "relation", note: "Words" },
+      { name: "presentation_number", type: "number" },
+      { name: "client_attempt_id", type: "text" },
+      { name: "user_answer", type: "longText" },
+      { name: "normalized_answer", type: "longText" },
+      { name: "match_result", type: "singleSelect" },
+      { name: "suggested_rating", type: "singleSelect" },
+      { name: "final_rating", type: "singleSelect" },
+      { name: "was_correct", type: "checkbox" },
+      { name: "response_time_ms", type: "number" },
+      { name: "used_speech", type: "checkbox" },
+      { name: "audio_replay_count", type: "number" },
+      { name: "used_slow_audio", type: "checkbox" },
+      { name: "answered_after_audio_replay", type: "checkbox" },
+      { name: "audio_failed", type: "checkbox" },
       { name: "created_at", type: "date" }
     ]
   },

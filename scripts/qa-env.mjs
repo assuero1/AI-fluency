@@ -13,6 +13,8 @@ export const tableDefinitions = [
   ["TEABLE_DAILY_FEEDBACKS_TABLE_ID", "DailyFeedbacks"],
   ["TEABLE_TOPICS_TABLE_ID", "Topics"],
   ["TEABLE_PRACTICE_SESSIONS_TABLE_ID", "PracticeSessions"],
+  ["TEABLE_FLASHCARDS_TABLE_ID", "Flashcards"],
+  ["TEABLE_FLASHCARD_ATTEMPTS_TABLE_ID", "FlashcardAttempts"],
   ["TEABLE_APP_EVENTS_TABLE_ID", "AppEvents"]
 ];
 

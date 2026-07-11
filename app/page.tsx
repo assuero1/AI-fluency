@@ -6,6 +6,8 @@ import { getLearningGate } from "@/lib/learning/access";
 import { getHomeData } from "@/lib/learning/home";
 import { warmKokoroLanguage } from "@/lib/kokoro/cache";
 
+export const dynamic = "force-dynamic";
+
 export default async function HomePage() {
   const gate = await getLearningGate();
   if (gate.gate === "onboarding") redirect("/onboarding");

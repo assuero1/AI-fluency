@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronLeft, ChevronRight, MessageCircle, Target } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3, MessageCircle, Target } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { CalendarPracticeButton, CalendarTopicButton } from "@/components/CalendarPracticeButton";
@@ -25,7 +25,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 
   return (
     <AppShell activeNav="calendario">
-      <ScreenHeader title="Calendário" subtitle="Feedbacks das suas conversas" />
+      <ScreenHeader title="Calendário" subtitle="Conversas e revisões em um só panorama" />
       <section className="section">
         <div className="calendar-month-nav">
           <Link aria-label="Mês anterior" className="calendar-month-button" href={`/calendario?month=${calendar.previousMonth}`}>
@@ -33,7 +33,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
           </Link>
           <div>
             <div className="calendar-month-title">{capitalize(calendar.monthLabel)}</div>
-            <div className="calendar-month-meta">{calendar.feedbackCount} dia(s) com feedback</div>
+            <div className="calendar-month-meta">{calendar.feedbackCount} feedback(s) · {calendar.conversationCount} conversa(s)</div>
           </div>
           <Link aria-label="Próximo mês" className="calendar-month-button" href={`/calendario?month=${calendar.nextMonth}`}>
             <ChevronRight />
@@ -52,7 +52,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             const isToday = day.date === today;
             const className = [
               "calendar-day",
-              day.hasFeedback ? "has-note" : "",
+              day.hasFeedback || day.flashcardWords > 0 ? "has-note" : "",
               isToday ? "today" : ""
             ]
               .filter(Boolean)
@@ -60,16 +60,24 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             return (
               <Link
                 aria-current={isToday ? "date" : undefined}
-                aria-label={`${formatDate(day.date)}${isToday ? ", hoje" : ""}${day.hasFeedback ? ", com feedback" : ", sem feedback"}`}
+                aria-label={`${formatDate(day.date)}${isToday ? ", hoje" : ""}${day.hasFeedback ? ", com feedback" : ""}${day.flashcardWords ? `, ${day.flashcardWords} palavra(s) revisada(s)` : ""}`}
                 className={className}
                 href={`/calendario/${day.date}`}
                 key={day.date}
               >
                 {day.day}
-                {day.hasFeedback ? <span className="calendar-note-dot" aria-hidden="true" /> : null}
+                {day.hasFeedback || day.flashcardWords ? <span className="calendar-note-dot" aria-hidden="true" /> : null}
               </Link>
             );
           })}
+        </div>
+      </section>
+
+      <section className="section">
+        <div className="calendar-feedback-card">
+          <div className="top-row"><div><div className="eyebrow">Tempo de treino no mês</div><div className="title">{formatDuration(calendar.totalPracticeSeconds)}</div></div><Clock3 color="#2f9d4a" size={30} /></div>
+          <div className="level-pills"><Pill tone="info">Últimos 7 dias: {formatDuration(calendar.weekPracticeSeconds)}</Pill></div>
+          <p className="row-meta">Soma de conversas finalizadas e revisões de flashcards em {calendar.monthLabel}.</p>
         </div>
       </section>
 
@@ -136,4 +144,11 @@ function formatDate(value: string) {
 function toDateKey(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value.slice(0, 10) : date.toISOString().slice(0, 10);
+}
+
+function formatDuration(seconds: number) {
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}min`;
 }

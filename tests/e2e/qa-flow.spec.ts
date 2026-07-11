@@ -49,6 +49,145 @@ test.beforeEach(async ({ page }) => {
   });
 });
 
+test("mobile flashcard training completes a frozen deck once", async ({ page }) => {
+  const completionBodies: Array<{ clientCompletionId?: string; answers?: unknown[] }> = [];
+  await page.route("**/api/practice/flashcards", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, activeSession: null }) });
+      return;
+    }
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        sessionId: "session-e2e",
+        languageCode: "es",
+        languageName: "Espanhol",
+        cards: [
+          { id: "card-a", sessionId: "session-e2e", type: "target_to_native", targetWordId: "word-a", supportingWordIds: [], prompt: "hola", expectedAnswer: "olá", acceptedAnswers: [], translation: "olá", difficulty: 1 },
+          { id: "card-b", sessionId: "session-e2e", type: "native_to_target", targetWordId: "word-b", supportingWordIds: [], prompt: "bom dia", expectedAnswer: "buen día", acceptedAnswers: [], translation: "bom dia", difficulty: 2 }
+        ]
+      })
+    });
+  });
+  await page.route("**/api/practice/flashcards/attempt", async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, attempt: { ...body, matchResult: body.forgot ? "incorrect" : "exact", suggestedRating: body.forgot ? "forgot" : "easy" } }) });
+  });
+  await page.route("**/api/practice/flashcards/complete", async (route) => {
+    completionBodies.push(route.request().postDataJSON() as { clientCompletionId?: string; answers?: unknown[] });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, score: 100, correctCards: 2, wrongCards: 0, totalCards: 2, reviewedWords: 2, uniqueCardCount: 2, presentationCount: 3, firstAttemptCorrect: 1, recoveredCards: 1 }) });
+  });
+
+  await page.goto("/palavras/treino");
+  await page.getByRole("button", { name: /Montar treino/ }).click();
+  await expect(page.getByText("hola", { exact: true })).toBeVisible();
+  await expect(page.getByText("olá", { exact: true })).toHaveCount(0);
+  const answer = page.getByRole("textbox", { name: "Resposta esperada em português" });
+  await expect(answer).toBeFocused();
+  await answer.fill("olá");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Resposta exata")).toBeVisible();
+  await page.getByRole("button", { name: "Lembrei", exact: true }).click();
+  await expect(page.getByText("bom dia", { exact: true })).toBeVisible();
+  await expect(page.getByText("buen día", { exact: true })).toHaveCount(0);
+  await page.getByRole("button", { name: "Não lembro" }).click();
+  await expect(page.getByText("buen día", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Não lembrei", exact: true }).click();
+  await expect(page.getByText("bom dia", { exact: true })).toBeVisible();
+  await page.getByRole("textbox", { name: "Resposta esperada em Espanhol" }).fill("buen día");
+  await page.getByRole("button", { name: "Responder" }).click();
+  await page.getByRole("button", { name: "Lembrei", exact: true }).click();
+
+  await expect(page.getByRole("heading", { name: "100% de acerto" })).toBeVisible();
+  expect(completionBodies).toHaveLength(1);
+  expect(completionBodies[0].clientCompletionId).toMatch(/^[0-9a-f-]{36}$/);
+  expect(completionBodies[0].answers).toHaveLength(3);
+  expect(completionBodies[0].answers?.[0]).toMatchObject({ presentationNumber: 1, userAnswer: "olá", matchResult: "exact", rating: "good", forgot: false });
+  expect(completionBodies[0].answers?.[1]).toMatchObject({ presentationNumber: 1, userAnswer: "", matchResult: "incorrect", rating: "forgot", forgot: true });
+  expect(completionBodies[0].answers?.[2]).toMatchObject({ presentationNumber: 2, rating: "good" });
+});
+
+test("flashcard speech fills an editable attempt and never submits automatically", async ({ page }) => {
+  await page.addInitScript(() => {
+    class MockRecognition {
+      lang = "";
+      interimResults = false;
+      continuous = false;
+      onresult: ((event: unknown) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onend: (() => void) | null = null;
+      constructor() { (window as unknown as { __flashcardRecognition: MockRecognition }).__flashcardRecognition = this; }
+      start() {}
+      stop() { this.onend?.(); }
+      abort() { this.onend?.(); }
+    }
+    Object.defineProperty(window, "SpeechRecognition", { configurable: true, value: MockRecognition });
+    Object.defineProperty(window, "webkitSpeechRecognition", { configurable: true, value: MockRecognition });
+  });
+  await page.route("**/api/practice/flashcards", async (route) => route.fulfill({
+    status: 201,
+    contentType: "application/json",
+    body: JSON.stringify(route.request().method() === "GET" ? { ok: true, activeSession: null } : { ok: true, sessionId: "speech-session", languageCode: "es", languageName: "Espanhol", cards: [
+      { id: "speech-card", sessionId: "speech-session", type: "native_to_target", targetWordId: "word-a", supportingWordIds: [], prompt: "olá", expectedAnswer: "hola", acceptedAnswers: [], translation: "olá", difficulty: 2 }
+    ] })
+  }));
+
+  await page.goto("/palavras/treino");
+  await page.getByRole("button", { name: /Montar treino/ }).click();
+  await page.getByRole("button", { name: "Falar resposta" }).click();
+  await page.evaluate(() => {
+    const recognition = (window as unknown as { __flashcardRecognition: { lang: string; onresult: ((event: unknown) => void) | null } }).__flashcardRecognition;
+    if (recognition.lang !== "es") throw new Error(`Unexpected recognition language: ${recognition.lang}`);
+    recognition.onresult?.({ results: [{ isFinal: true, 0: { transcript: "ola" } }] });
+  });
+  const input = page.getByRole("textbox", { name: "Resposta esperada em Espanhol" });
+  await expect(input).toHaveValue("ola");
+  await expect(page.getByText("Resposta esperada", { exact: true })).toHaveCount(0);
+  await input.fill("hola");
+  await page.getByRole("button", { name: "Responder" }).click();
+  await expect(page.getByText("Resposta exata")).toBeVisible();
+});
+
+test("listening cards keep the text hidden until the learner requests audio", async ({ page }) => {
+  let audioRequests = 0;
+  await page.route("**/api/voice/synthesize", async (route) => {
+    audioRequests += 1;
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, audioUrl: "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" }) });
+  });
+  await page.route("**/api/practice/flashcards", async (route) => route.fulfill({
+    status: route.request().method() === "GET" ? 200 : 201,
+    contentType: "application/json",
+    body: JSON.stringify(route.request().method() === "GET" ? { ok: true, activeSession: null } : { ok: true, sessionId: "listening-session", languageCode: "es", languageName: "Espanhol", cards: [
+      { id: "listening-card", sessionId: "listening-session", type: "listening", targetWordId: "word-a", supportingWordIds: [], prompt: "", expectedAnswer: "olá", acceptedAnswers: [], translation: "olá", audioText: "hola", difficulty: 3 }
+    ] })
+  }));
+
+  await page.goto("/palavras/treino");
+  await page.getByRole("button", { name: /Montar treino/ }).click();
+  await expect(page.getByLabel("Card de escuta")).toBeVisible();
+  await expect(page.getByText("hola", { exact: true })).toHaveCount(0);
+  expect(audioRequests).toBe(0);
+  await page.getByRole("button", { name: "Ouvir áudio" }).click();
+  await expect.poll(() => audioRequests).toBe(1);
+});
+
+test("active flashcard session can resume from persisted attempts", async ({ page }) => {
+  const card = { id: "resume-card", sessionId: "resume-session", type: "native_to_target", targetWordId: "word-a", supportingWordIds: [], prompt: "olá", expectedAnswer: "hola", acceptedAnswers: [], translation: "olá", difficulty: 2 };
+  await page.route("**/api/practice/flashcards", async (route) => route.fulfill({
+    status: 200,
+    contentType: "application/json",
+    body: JSON.stringify({ ok: true, activeSession: { sessionId: "resume-session", cards: [card], attempts: [], queue: [{ cardId: card.id, presentationNumber: 1, dueAfterIndex: 0 }], currentItem: { cardId: card.id, presentationNumber: 1, dueAfterIndex: 0 }, languageCode: "es", languageName: "Espanhol", adapted: false } })
+  }));
+
+  await page.goto("/palavras/treino");
+  await expect(page.getByText("Treino em andamento")).toBeVisible();
+  await page.getByRole("button", { name: "Continuar treino" }).click();
+  await expect(page.getByText("olá", { exact: true })).toBeVisible();
+  await expect(page.getByRole("textbox", { name: "Resposta esperada em Espanhol" })).toBeFocused();
+});
+
 test("mobile learner navigation keeps the standard bottom menu", async ({ page }) => {
   await page.goto("/");
   const languageSelector = page.getByRole("link", { name: "Trocar idioma de estudo. Idioma atual: Inglês" });
@@ -91,7 +230,7 @@ test("active chat confirms a topic change without losing the conversation surfac
   await expect(page.getByRole("dialog", { name: "Mudar o tema da conversa?" })).toBeHidden();
   await expect(change).toBeFocused();
   await expect(page.getByRole("textbox", { name: "Mensagem para a IA" })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Abrir vocabulário" })).toBeVisible();
+  await expect(page.getByRole("navigation", { name: "Navegação principal" }).getByRole("link", { name: "Palavras" })).toBeVisible();
 });
 
 test("connection errors are announced and a retry can recover", async ({ page }) => {

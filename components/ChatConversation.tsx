@@ -1,6 +1,6 @@
 "use client";
 
-import { BookOpen, Bot, CalendarDays, ChevronRight, Flame, Loader2, Mic, MicOff, Send, Shuffle, Volume2 } from "lucide-react";
+import { Bot, CalendarDays, ChevronRight, Clock3, Flame, Languages, Loader2, Mic, MicOff, Send, Shuffle, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -12,6 +12,7 @@ import { TranslationButton } from "./TranslationButton";
 import { ScreenHeader } from "./ScreenHeader";
 import { VoiceButton } from "./VoiceButton";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields } from "@/lib/learning/conversations";
+import type { SelectionExplanation } from "@/lib/learning/selection-explanation";
 import { joinSpeechSegments, speechLanguageName, speechLocale, speechRecognitionErrorMessage } from "@/lib/learning/speech";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 import type { TeableRecord } from "@/lib/teable/client";
@@ -72,7 +73,11 @@ export function ChatConversation({
   const router = useRouter();
   const [messages, setMessages] = useState(initialMessages);
   const [corrections, setCorrections] = useState(initialCorrections);
-  const [savedWordsCount, setSavedWordsCount] = useState(0);
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => Math.max(0, Math.floor((Date.now() - new Date(conversation.fields.started_at).getTime()) / 1000)));
+  const [selectedText, setSelectedText] = useState("");
+  const [selectionContext, setSelectionContext] = useState("");
+  const [selectionExplanation, setSelectionExplanation] = useState<SelectionExplanation | null>(null);
+  const [isExplaining, setIsExplaining] = useState(false);
   const [activeTopicTitle, setActiveTopicTitle] = useState(topicTitle);
   const [isTopicDialogOpen, setIsTopicDialogOpen] = useState(false);
   const [nextTopicTitle, setNextTopicTitle] = useState("");
@@ -92,6 +97,12 @@ export function ChatConversation({
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const retryRequestRef = useRef<{ text: string; id: string } | null>(null);
   const latestAssistantMessageId = findLatestAssistantMessageId(messages);
+
+  useEffect(() => {
+    if (readOnly) return;
+    const timer = window.setInterval(() => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - new Date(conversation.fields.started_at).getTime()) / 1000))), 1000);
+    return () => window.clearInterval(timer);
+  }, [conversation.fields.started_at, readOnly]);
 
   useEffect(() => {
     const speechWindow = window as SpeechWindow;
@@ -169,7 +180,6 @@ export function ChatConversation({
         data.assistantMessage!
       ]);
       setCorrections((current) => [...current, ...(data.corrections ?? [])]);
-      setSavedWordsCount(data.words?.length ?? 0);
       retryRequestRef.current = null;
       setFailedMessage(null);
     } catch (sendError) {
@@ -243,6 +253,31 @@ export function ChatConversation({
     } finally {
       setIsSending(false);
     }
+  }
+
+  function captureSelection(event: React.PointerEvent<HTMLDivElement>) {
+    const selection = window.getSelection();
+    const clean = selection?.toString().trim() ?? "";
+    if (!clean || clean.length > 300 || !selection?.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    if (!event.currentTarget.contains(range.commonAncestorContainer)) return;
+    const element = range.commonAncestorContainer instanceof Element ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
+    const bubble = element?.closest<HTMLElement>(".bubble");
+    setSelectedText(clean);
+    setSelectionContext(bubble?.innerText ?? clean);
+    setSelectionExplanation(null);
+  }
+
+  async function explainSelectedText() {
+    if (!selectedText) return;
+    setIsExplaining(true); setError(null);
+    try {
+      const response = await fetch("/api/explain-selection", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text: selectedText, language: speechLanguage, context: selectionContext }) });
+      const data = await response.json() as { ok?: boolean; error?: string; explanation?: SelectionExplanation };
+      if (!response.ok || !data.ok || !data.explanation) throw new Error(data.error ?? "Não foi possível explicar a seleção.");
+      setSelectionExplanation(data.explanation);
+    } catch (explainError) { setError(normalizeChatError(explainError, "Não foi possível explicar a seleção agora.")); }
+    finally { setIsExplaining(false); }
   }
 
   function toggleNativeSpeechRecognition() {
@@ -352,6 +387,7 @@ export function ChatConversation({
         <Link className="outline-button" href="/calendario" aria-label="Abrir calendário">
           <CalendarDays />
         </Link>
+        <Pill aria-label={`Tempo de conversa: ${formatElapsedTime(elapsedSeconds)}`}><Clock3 size={16} /> {formatElapsedTime(elapsedSeconds)}</Pill>
       </div>
 
       <div className="chat-topic">
@@ -389,7 +425,7 @@ export function ChatConversation({
         </ModalDialog>
       ) : null}
 
-      <div className="chat-stack">
+      <div className="chat-stack" onPointerUp={captureSelection}>
         {messages.map((message) => {
           const messageCorrections = corrections.filter((correction) => correction.fields.message_id === message.id);
 
@@ -464,22 +500,18 @@ export function ChatConversation({
           </div>
         ) : null}
 
-        <Link
-          aria-label={savedWordsCount > 0 ? `Abrir ${savedWordsCount} palavras salvas` : "Abrir vocabulário"}
-          className={savedWordsCount > 0 ? "saved-words" : "saved-words muted-saved-words"}
-          href="/palavras"
-        >
-          <span>
-            <BookOpen size={22} />{" "}
-            {savedWordsCount > 0 ? `${savedWordsCount} novas palavras salvas` : "Palavras salvas aparecem aqui"}
-          </span>
-          <ChevronRight />
-        </Link>
+        {selectedText ? <div className="selection-explainer">
+          <div><span className="eyebrow">Trecho selecionado</span><strong>{selectedText}</strong></div>
+          <button className="outline-button" disabled={isExplaining} onClick={explainSelectedText} type="button">{isExplaining ? <Loader2 className="spin" /> : <Languages />} Explicar seleção</button>
+          {selectionExplanation ? <div className="selection-explanation" aria-live="polite">
+            <p><strong>Tradução:</strong> {selectionExplanation.translation}</p>
+            <p><strong>Gramática:</strong> {selectionExplanation.grammar}</p>
+            <p><strong>Como usar:</strong> {selectionExplanation.usage}</p>
+            {selectionExplanation.example ? <p><strong>Exemplo:</strong> {selectionExplanation.example}</p> : null}
+          </div> : null}
+        </div> : null}
 
         {!readOnly ? <div className="quick-actions">
-          <button className="outline-button" disabled={isSending} onClick={() => runQuickAction("explain")} type="button">
-            {pendingQuickAction === "explain" ? <Loader2 className="spin" /> : null} Explicar
-          </button>
           <button className="outline-button" disabled={isSending} onClick={() => runQuickAction("repeat")} type="button">
             {pendingQuickAction === "repeat" ? <Loader2 className="spin" /> : null} Repetir
           </button>
@@ -548,6 +580,15 @@ export function ChatConversation({
 function createClientRequestId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `message-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function formatElapsedTime(totalSeconds: number) {
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return hours > 0
+    ? `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+    : `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
 function mergeSpeechText(existing: string, transcript: string) {

@@ -19,6 +19,8 @@ if (manifest.runId !== runId || manifest.namespace !== env.QA_RUN_NAMESPACE) {
 }
 
 const deletionOrder = [
+  "TEABLE_FLASHCARD_ATTEMPTS_TABLE_ID",
+  "TEABLE_FLASHCARDS_TABLE_ID",
   "TEABLE_WORD_OCCURRENCES_TABLE_ID",
   "TEABLE_CORRECTIONS_TABLE_ID",
   "TEABLE_MESSAGES_TABLE_ID",

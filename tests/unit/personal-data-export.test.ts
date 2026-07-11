@@ -5,7 +5,7 @@ import { buildPersonalDataExportFileName, PERSONAL_DATA_EXPORT_SCHEMA_VERSION } 
 
 describe("personal data export", () => {
   it("versions the schema and names the file with language and date", () => {
-    expect(PERSONAL_DATA_EXPORT_SCHEMA_VERSION).toBe(1);
+    expect(PERSONAL_DATA_EXPORT_SCHEMA_VERSION).toBe(2);
     expect(buildPersonalDataExportFileName("pt-BR", new Date("2026-07-10T12:00:00.000Z")))
       .toBe("ai-fluency-pt-br-2026-07-10.json");
     expect(buildPersonalDataExportFileName(undefined, new Date("2026-07-10T12:00:00.000Z")))

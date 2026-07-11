@@ -20,6 +20,7 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
 
   const { feedback, completedConversations, recurringErrors, suggestedTopics } = detail;
   const month = date.slice(0, 7);
+  const dailySeconds = completedConversations.reduce((sum, conversation) => sum + conversation.durationSeconds, 0);
 
   return (
     <AppShell activeNav="calendario">
@@ -85,7 +86,7 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
       )}
 
       <section className="section">
-        <h2 className="section-title">Conversas deste dia</h2>
+        <div className="top-row"><h2 className="section-title">Conversas deste dia</h2><Pill><Clock3 size={15} /> {formatDuration(dailySeconds)}</Pill></div>
         <div className="row-list">
           {completedConversations.length > 0 ? (
             completedConversations.map((conversation) => (
@@ -125,6 +126,12 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
       ) : null}
     </AppShell>
   );
+}
+
+function formatDuration(seconds: number) {
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} min`;
+  return `${Math.floor(minutes / 60)}h ${minutes % 60}min`;
 }
 
 function formatLongDate(value: string) {

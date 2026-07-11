@@ -31,6 +31,8 @@ if (!user) throw new Error(`User ${userId} was not found.`);
 if (!profile) throw new Error(`Profile ${profileId} was not found for user ${userId}.`);
 
 const deletionOrder = [
+  "TEABLE_FLASHCARD_ATTEMPTS_TABLE_ID",
+  "TEABLE_FLASHCARDS_TABLE_ID",
   "TEABLE_WORD_OCCURRENCES_TABLE_ID",
   "TEABLE_CORRECTIONS_TABLE_ID",
   "TEABLE_MESSAGES_TABLE_ID",

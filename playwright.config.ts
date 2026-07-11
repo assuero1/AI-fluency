@@ -17,6 +17,7 @@ export default defineConfig({
   globalTeardown: "./tests/e2e/global-teardown.ts",
   use: {
     baseURL: "http://localhost:3015",
+    serviceWorkers: "block",
     trace: "retain-on-failure"
   },
   projects: [{ name: "mobile-chromium", use: { ...devices["Pixel 5"] } }],

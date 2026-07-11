@@ -22,16 +22,16 @@ export default async function ProgressPage() {
       tone: "primary" as const
     },
     {
-      value: String(progress.metrics.recurringErrors),
-      label: "Erros recorrentes",
-      foot: "últimos 30 dias",
-      icon: CircleAlert,
+      value: String(progress.metrics.flashcardWords),
+      label: "Palavras revisadas",
+      foot: `${progress.metrics.flashcardMinutes} min em cards`,
+      icon: Check,
       tone: "warning" as const
     },
     {
-      value: `+${progress.metrics.newWordsMonth}`,
-      label: "Palavras este mês",
-      foot: "capturadas no chat",
+      value: String(progress.metrics.consolidatedWords),
+      label: "Consolidadas",
+      foot: `${progress.metrics.difficultWords} difíceis · ${progress.metrics.recoveredWords} recuperadas`,
       icon: TrendingUp,
       tone: "info" as const
     }

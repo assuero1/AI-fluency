@@ -6,6 +6,7 @@ import { getActiveLanguageProfile, getOrCreatePersonalUser } from "./profile";
 import { getTeableClient, TeableRecord } from "@/lib/teable/client";
 import { matchesLearningScope } from "./scope";
 import { getPracticeActivity } from "./practice-activity";
+import type { PracticeSessionFields } from "./flashcards";
 
 type ProgressError = {
   type: string;
@@ -24,12 +25,13 @@ type ProgressStrength = {
 
 export async function getProgressData() {
   const client = getTeableClient();
-  const [user, conversations, corrections, words, feedbacks] = await Promise.all([
+  const [user, conversations, corrections, words, feedbacks, practiceSessions] = await Promise.all([
     getOrCreatePersonalUser(),
     client.listRecords<ConversationFields>("conversations", 300),
     client.listRecords<CorrectionFields>("corrections", 400),
     client.listRecords<WordFields>("words", 300),
-    client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180)
+    client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
+    client.listRecords<PracticeSessionFields>("practiceSessions", 400)
   ]);
   const profile = await getActiveLanguageProfile(user);
   const scopedConversations = conversations.filter((conversation) => matchesConversationScope(conversation, user.id, profile?.id));
@@ -53,10 +55,17 @@ export async function getProgressData() {
   const monthlyConversations = completedConversations.filter((conversation) =>
     dateKey(conversation.fields.ended_at || conversation.fields.started_at).startsWith(currentMonth)
   );
+  const completedFlashcards = practiceSessions.filter((session) => session.fields.type === "flashcards" && session.fields.status === "completed" && matchesLearningScope(session.fields, { userId: user.id, profileId: profile?.id }));
+  const flashcardSeconds = completedFlashcards.reduce((sum, session) => sum + Number(session.fields.duration_seconds ?? 0), 0);
+  const flashcardWords = completedFlashcards.reduce((sum, session) => sum + Number(session.fields.selected_word_count ?? 0), 0);
+  const recoveredWords = completedFlashcards.reduce((sum, session) => {
+    const focus = parseSessionFocus(session.fields.focus);
+    return sum + Number(focus.result?.recoveredCards ?? 0);
+  }, 0);
   const errors = buildRecurringErrors(scopedCorrections, scopedConversations, now);
   const latestFeedback = scopedFeedbacks[0] ?? null;
   const practice = getPracticeActivity(
-    completedConversations.map((conversation) => conversation.fields.ended_at || conversation.fields.started_at),
+    [...completedConversations.map((conversation) => conversation.fields.ended_at || conversation.fields.started_at), ...completedFlashcards.map((session) => session.fields.ended_at || session.fields.started_at)],
     { now, timeZone: user.fields.timezone ?? "UTC" }
   );
   const strengths = buildStrengths({
@@ -80,7 +89,12 @@ export async function getProgressData() {
       correctionScore: average(currentMonthFeedbacks.map((feedback) => Number(feedback.fields.correction_score ?? 0))) || Number(latestFeedback?.fields.correction_score ?? 0),
       recurringErrors: errors.length,
       newWordsMonth,
-      completedConversations: completedConversations.length
+      completedConversations: completedConversations.length,
+      flashcardWords,
+      flashcardMinutes: Math.round(flashcardSeconds / 60),
+      consolidatedWords: scopedWords.filter((word) => word.fields.review_state === "review").length,
+      difficultWords: scopedWords.filter((word) => word.fields.review_state === "difficult").length,
+      recoveredWords
     },
     strengths,
     focus,
@@ -89,6 +103,8 @@ export async function getProgressData() {
     activityDays: practice.activityDays
   };
 }
+
+function parseSessionFocus(value: string | undefined) { try { return JSON.parse(value || "{}") as { result?: { recoveredCards?: number } }; } catch { return {}; } }
 
 export async function startProgressFocusPractice() {
   const progress = await getProgressData();

@@ -9,6 +9,9 @@ type VoiceButtonProps = {
   compact?: boolean;
   languageCode?: string;
   preload?: boolean;
+  playbackRate?: number;
+  onPlayback?: (event: { replay: boolean; slow: boolean; deviceFallback: boolean }) => void;
+  onAudioFailure?: () => void;
 };
 
 type VoiceStatus = "idle" | "loading" | "ready" | "playing" | "paused" | "ended" | "error";
@@ -28,7 +31,7 @@ function Wave() {
   );
 }
 
-export function VoiceButton({ text, label = "Ouvir", compact = false, languageCode, preload = false }: VoiceButtonProps) {
+export function VoiceButton({ text, label = "Ouvir", compact = false, languageCode, preload = false, playbackRate = 1, onPlayback, onAudioFailure }: VoiceButtonProps) {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const loadPromiseRef = useRef<Promise<HTMLAudioElement> | null>(null);
@@ -55,13 +58,15 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
   const playExisting = useCallback(async (audio: HTMLAudioElement) => {
     if (activeVoice?.owner !== ownerRef.current) activeVoice?.stop();
     activeVoice = { owner: ownerRef.current, stop: stopForAnotherVoice };
+    audio.playbackRate = playbackRate;
     try {
       await audio.play();
       setStatus("playing");
+      onPlayback?.({ replay: audio.currentTime > 0, slow: playbackRate < 1, deviceFallback: false });
     } catch {
       setStatus("ready");
     }
-  }, [stopForAnotherVoice]);
+  }, [onPlayback, playbackRate, stopForAnotherVoice]);
 
   const ensureAudio = useCallback(async () => {
     if (audioRef.current) return audioRef.current;
@@ -77,6 +82,7 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
       audio.onerror = () => {
         releaseAudio();
         setStatus("error");
+        onAudioFailure?.();
       };
       audio.load();
       setStatus("ready");
@@ -92,7 +98,7 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     } finally {
       loadPromiseRef.current = null;
     }
-  }, [languageCode, releaseAudio, text]);
+  }, [languageCode, onAudioFailure, releaseAudio, text]);
 
   useEffect(() => () => releaseAudio(), [releaseAudio]);
 
@@ -129,7 +135,13 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
       await playExisting(audio);
     } catch {
       releaseAudio();
-      setStatus("error");
+      if (!playDeviceSpeech(text, languageCode, playbackRate, () => setStatus("ended"))) {
+        setStatus("error");
+        onAudioFailure?.();
+      } else {
+        setStatus("playing");
+        onPlayback?.({ replay: false, slow: playbackRate < 1, deviceFallback: true });
+      }
     }
   }
 
@@ -151,6 +163,18 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
       <span aria-live="polite">{voiceStatusText(status, label)}</span>
     </button>
   );
+}
+
+function playDeviceSpeech(text: string, languageCode: string | undefined, rate: number, onEnd: () => void) {
+  if (typeof window === "undefined" || !window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") return false;
+  window.speechSynthesis.cancel();
+  const utterance = new SpeechSynthesisUtterance(text);
+  utterance.lang = languageCode || "en";
+  utterance.rate = rate;
+  utterance.onend = onEnd;
+  utterance.onerror = onEnd;
+  window.speechSynthesis.speak(utterance);
+  return true;
 }
 
 function requestSpeech(text: string, languageCode: string | undefined) {

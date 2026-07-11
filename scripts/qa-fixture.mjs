@@ -128,6 +128,20 @@ const word = await create("TEABLE_WORDS_TABLE_ID", {
   first_used_at: past,
   review_due_at: past
 });
+await create("TEABLE_WORDS_TABLE_ID", {
+  Name: `QA Word two ${runId}`,
+  user_id: user.id,
+  language_profile_id: profile.id,
+  lemma: "practice",
+  display_text: "practice",
+  translation: "prática",
+  part_of_speech: "noun",
+  familiarity_score: 2,
+  total_uses: 2,
+  last_used_at: past,
+  first_used_at: past,
+  review_due_at: past
+});
 const message = await create("TEABLE_MESSAGES_TABLE_ID", {
   Name: `QA Message ${runId}`,
   conversation_id: completedConversation.id,

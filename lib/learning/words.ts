@@ -37,6 +37,15 @@ export type WordListItem = {
   firstUsedAt: string;
   lastUsedAt: string;
   reviewDueAt: string;
+  reviewIntervalDays: number;
+  reviewEase: number;
+  reviewStreak: number;
+  lapseCount: number;
+  lastReviewedAt: string;
+  lastRating: "forgot" | "hard" | "good" | "easy" | "";
+  averageResponseTimeMs: number;
+  reviewState: "new" | "learning" | "review" | "difficult" | "suspended";
+  reviewVersion: string;
   occurrenceCount: number;
   correctionCount: number;
   needsReview: boolean;
@@ -98,7 +107,11 @@ export async function getWordsData(filter: WordFilter = "all", query = "") {
       weeklyNew,
       weeklyGoal: scope.weeklyWordGoal,
       toReview,
-      correctedWords: mapped.filter((word) => word.correctionCount > 0).length
+      correctedWords: mapped.filter((word) => word.correctionCount > 0).length,
+      newWords: mapped.filter((word) => word.reviewState === "new").length,
+      learningWords: mapped.filter((word) => word.reviewState === "learning").length,
+      reviewWords: mapped.filter((word) => word.reviewState === "review").length,
+      difficultWords: mapped.filter((word) => word.reviewState === "difficult").length
     }
   };
 }
@@ -275,6 +288,15 @@ function toWordListItem(
     firstUsedAt: word.fields.first_used_at || "",
     lastUsedAt: word.fields.last_used_at || word.fields.first_used_at || "",
     reviewDueAt,
+    reviewIntervalDays: Number(word.fields.review_interval_days ?? 0),
+    reviewEase: Number(word.fields.review_ease ?? 0),
+    reviewStreak: Number(word.fields.review_streak ?? 0),
+    lapseCount: Number(word.fields.lapse_count ?? 0),
+    lastReviewedAt: word.fields.last_reviewed_at || "",
+    lastRating: word.fields.last_rating ?? "",
+    averageResponseTimeMs: Number(word.fields.average_response_time_ms ?? 0),
+    reviewState: word.fields.review_state ?? "new",
+    reviewVersion: word.fields.review_version ?? "",
     occurrenceCount: wordOccurrences.length,
     correctionCount,
     needsReview

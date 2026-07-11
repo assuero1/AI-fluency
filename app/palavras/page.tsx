@@ -1,4 +1,4 @@
-import { BookOpen, Search, SlidersHorizontal } from "lucide-react";
+import { BookOpen, Brain, ChevronRight, Search, SlidersHorizontal, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { IconBubble } from "@/components/IconBubble";
@@ -32,6 +32,9 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
   return (
     <AppShell activeNav="palavras">
       <ScreenHeader title="Suas palavras" subtitle={`${data.summary.totalWords} palavras salvas`} />
+      <Link className="flashcard-entry" href="/palavras/treino">
+        <div className="flashcard-entry-icon"><Brain /></div><div className="row-copy"><div className="eyebrow"><Sparkles size={14} /> Revisão inteligente</div><div className="row-title">Treinar com cards</div><div className="row-meta">Palavras e frases do seu vocabulário</div></div><ChevronRight />
+      </Link>
       <section className="section">
         <div className="word-summary">
           <div>
@@ -53,6 +56,9 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
           <span style={{ width: `${progress}%` }} />
         </div>
         <div className="row-meta">Meta semanal: {data.summary.weeklyNew}/{data.summary.weeklyGoal} novas palavras</div>
+      </section>
+      <section className="section word-review-states" aria-label="Estados de revisão">
+        <div><strong>{data.summary.toReview}</strong><span>para hoje</span></div><div><strong>{data.summary.newWords}</strong><span>novas</span></div><div><strong>{data.summary.learningWords}</strong><span>aprendendo</span></div><div><strong>{data.summary.reviewWords}</strong><span>consolidadas</span></div><div><strong>{data.summary.difficultWords}</strong><span>difíceis</span></div>
       </section>
 
       <form className="word-search-form" action="/palavras" role="search">

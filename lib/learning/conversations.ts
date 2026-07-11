@@ -62,6 +62,15 @@ export type WordFields = {
   last_used_at: string;
   first_used_at: string;
   review_due_at: string;
+  review_interval_days?: number;
+  review_ease?: number;
+  review_streak?: number;
+  lapse_count?: number;
+  last_reviewed_at?: string;
+  last_rating?: "forgot" | "hard" | "good" | "easy";
+  average_response_time_ms?: number;
+  review_state?: "new" | "learning" | "review" | "difficult" | "suspended";
+  review_version?: string;
 };
 
 export type WordOccurrenceFields = {
@@ -436,10 +445,7 @@ async function createAnalyzedAssistantTurn(
   const analysis = parseLearningAnalysis(ai.content);
   const assistantReply = safeTutorReply(analysis.assistant_reply, profile);
   const now = new Date().toISOString();
-  const expectedCorrectionCount = (analysis.corrections ?? []).filter(
-    (correction) => correction.original?.trim() && correction.corrected?.trim()
-  ).length;
-  const [assistantMessage, corrections, words] = await Promise.all([
+  const [assistantMessage, corrections] = await Promise.all([
     client.createRecord<MessageFields>("messages", {
       Name: assistantReply.slice(0, 80),
       conversation_id: conversation.id,
@@ -451,14 +457,13 @@ async function createAnalyzedAssistantTurn(
       tokens_used: ai.tokensUsed,
       created_at: now
     }),
-    saveCorrections(conversation, userMessage, analysis),
-    saveWordsAndOccurrences(conversation, userMessage, profile, analysis, expectedCorrectionCount === 0)
+    saveCorrections(conversation, userMessage, analysis)
   ]);
 
   return {
     assistantMessage,
     corrections,
-    words
+    words: [] as TeableRecord<WordFields>[]
   };
 }
 
@@ -596,8 +601,9 @@ export function buildStructuredTutorPrompt(
       ]
     }),
     "Se não houver erro, use corrections: [].",
+    "REGRA OBRIGATÓRIA: todo campo explanation de corrections deve estar somente em português brasileiro, mesmo quando o idioma alvo for outro.",
     "Mantenha assistant_reply curto para uma conversa falada fluida e variada.",
-    "Extraia no máximo 3 palavras úteis da mensagem do usuário e/ou da resposta da IA.",
+    "Não selecione nem salve vocabulário durante a conversa: use sempre words: []. O usuário escolherá as palavras somente ao finalizar.",
     "error_type deve ser um de: grammar, vocabulary, pronunciation, tense, preposition, word_order, naturalness, spelling.",
     "severity deve ser um de: low, medium, high."
   ].join("\n");
@@ -728,88 +734,6 @@ async function saveCorrections(
       created_at: now
     });
   }));
-}
-
-async function saveWordsAndOccurrences(
-  conversation: TeableRecord<ConversationFields>,
-  userMessage: TeableRecord<MessageFields>,
-  profile: TeableRecord<LanguageProfileFields> | null,
-  analysis: LearningAnalysis,
-  wasCorrect: boolean
-) {
-  const client = getTeableClient();
-  const existingWords = await client.listRecords<WordFields>("words", 200);
-  const now = new Date().toISOString();
-  const reviewDue = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-  const words = uniqueWords(analysis.words ?? []).slice(0, 3);
-
-  const saved = await Promise.all(words.map(async (word) => {
-    const lemma = normalizeLemma(word.lemma || word.display_text);
-    if (!lemma) return null;
-
-    const displayText = word.display_text?.trim() || lemma;
-    const existing = existingWords.find(
-      (record) =>
-        normalizeLemma(record.fields.lemma || record.fields.display_text) === lemma &&
-        matchesLearningScope(record.fields, {
-          userId: conversation.fields.user_id,
-          profileId: profile?.id ?? conversation.fields.language_profile_id
-        })
-    );
-
-    const wordRecord = existing
-      ? await client.updateRecord<WordFields>("words", existing.id, {
-          display_text: existing.fields.display_text || displayText,
-          translation: existing.fields.translation || word.translation?.trim() || "",
-          part_of_speech: existing.fields.part_of_speech || word.part_of_speech?.trim() || "",
-          total_uses: Number(existing.fields.total_uses ?? 0) + 1,
-          last_used_at: now,
-          review_due_at: reviewDue
-        })
-      : await client.createRecord<WordFields>("words", {
-          Name: displayText,
-          user_id: conversation.fields.user_id,
-          language_profile_id: profile?.id ?? conversation.fields.language_profile_id,
-          lemma,
-          display_text: displayText,
-          translation: word.translation?.trim() || "",
-          part_of_speech: word.part_of_speech?.trim() || "",
-          familiarity_score: 1,
-          total_uses: 1,
-          last_used_at: now,
-          first_used_at: now,
-          review_due_at: reviewDue
-        });
-
-    await client.createRecord<WordOccurrenceFields>("wordOccurrences", {
-      Name: displayText,
-      word_id: wordRecord.id,
-      conversation_id: conversation.id,
-      message_id: userMessage.id,
-      used_text: displayText,
-      sentence_context: word.context?.trim() || userMessage.fields.text,
-      was_correct: word.was_correct ?? wasCorrect,
-      created_at: now
-    });
-
-    return wordRecord;
-  }));
-
-  return saved.filter((word): word is TeableRecord<WordFields> => word !== null);
-}
-
-function uniqueWords(words: NonNullable<LearningAnalysis["words"]>) {
-  const seen = new Set<string>();
-  return words.filter((word) => {
-    const lemma = normalizeLemma(word.lemma || word.display_text);
-    if (!lemma || seen.has(lemma)) return false;
-    seen.add(lemma);
-    return true;
-  });
-}
-
-function normalizeLemma(value: string | undefined) {
-  return value?.trim().toLowerCase().replace(/[^\p{L}\p{N}' -]/gu, "") ?? "";
 }
 
 function normalizeErrorType(value: string | undefined) {

@@ -55,13 +55,20 @@ const SELECT_CHOICES = {
   output_format: ["mp3", "wav", "opus"],
   last_test_status: ["not_tested", "success", "error"],
   mode: ["free_conversation", "suggested_topic", "custom_topic", "review_words", "calendar_focus"],
-  status: ["active", "completed", "paused", "error"],
+  status: ["preparing", "active", "completed", "abandoned", "failed", "paused", "error"],
   role: ["user", "assistant", "system"],
   error_type: ["grammar", "vocabulary", "pronunciation", "tense", "preposition", "word_order", "naturalness", "spelling"],
   severity: ["low", "medium", "high"],
   source: ["user_custom", "ai_suggestion", "calendar_based", "weak_words", "recurring_error"],
   difficulty: ["A1", "A2", "B1", "B2", "C1", "C2"],
-  type: ["conversation", "weak_words", "calendar_focus", "recurring_error"]
+  type: ["conversation", "flashcards", "weak_words", "calendar_focus", "recurring_error"],
+  card_type: ["target_to_native", "native_to_target", "cloze", "listening"],
+  generation_source: ["ai", "deterministic", "fallback"],
+  match_result: ["exact", "acceptable", "minor_error", "incorrect", "unknown"],
+  suggested_rating: ["forgot", "hard", "good", "easy"],
+  final_rating: ["forgot", "hard", "good", "easy"],
+  last_rating: ["forgot", "hard", "good", "easy"],
+  review_state: ["new", "learning", "review", "difficult", "suspended"]
 };
 
 const TABLES = [
@@ -187,7 +194,16 @@ const TABLES = [
       ["total_uses", "number"],
       ["last_used_at", "date"],
       ["first_used_at", "date"],
-      ["review_due_at", "date"]
+      ["review_due_at", "date"],
+      ["review_interval_days", "number"],
+      ["review_ease", "number"],
+      ["review_streak", "number"],
+      ["lapse_count", "number"],
+      ["last_reviewed_at", "date"],
+      ["last_rating", "singleSelect"],
+      ["average_response_time_ms", "number"],
+      ["review_state", "singleSelect"],
+      ["review_version", "text"]
     ]
   },
   {
@@ -245,6 +261,67 @@ const TABLES = [
       ["conversation_id", "text"],
       ["type", "singleSelect"],
       ["focus", "text"],
+      ["status", "singleSelect"],
+      ["started_at", "date"],
+      ["ended_at", "date"],
+      ["duration_seconds", "number"],
+      ["criterion", "text"],
+      ["requested_word_count", "number"],
+      ["selected_word_count", "number"],
+      ["unique_card_count", "number"],
+      ["presentation_count", "number"],
+      ["correct_count", "number"],
+      ["incorrect_count", "number"],
+      ["score", "number"],
+      ["language_code", "text"],
+      ["configuration_json", "longText"],
+      ["parent_session_id", "text"],
+      ["created_at", "date"],
+      ["updated_at", "date"]
+    ]
+  },
+  {
+    envName: "TEABLE_FLASHCARDS_TABLE_ID",
+    name: "Flashcards",
+    fields: [
+      ["practice_session_id", "text"],
+      ["target_word_id", "text"],
+      ["supporting_word_ids", "longText"],
+      ["card_type", "singleSelect"],
+      ["prompt", "longText"],
+      ["expected_answer", "longText"],
+      ["accepted_answers", "longText"],
+      ["translation", "longText"],
+      ["explanation", "longText"],
+      ["sentence", "longText"],
+      ["audio_text", "longText"],
+      ["difficulty", "number"],
+      ["initial_position", "number"],
+      ["generation_source", "singleSelect"],
+      ["created_at", "date"]
+    ]
+  },
+  {
+    envName: "TEABLE_FLASHCARD_ATTEMPTS_TABLE_ID",
+    name: "FlashcardAttempts",
+    fields: [
+      ["practice_session_id", "text"],
+      ["flashcard_id", "text"],
+      ["word_id", "text"],
+      ["presentation_number", "number"],
+      ["client_attempt_id", "text"],
+      ["user_answer", "longText"],
+      ["normalized_answer", "longText"],
+      ["match_result", "singleSelect"],
+      ["suggested_rating", "singleSelect"],
+      ["final_rating", "singleSelect"],
+      ["was_correct", "checkbox"],
+      ["response_time_ms", "number"],
+      ["used_speech", "checkbox"],
+      ["audio_replay_count", "number"],
+      ["used_slow_audio", "checkbox"],
+      ["answered_after_audio_replay", "checkbox"],
+      ["audio_failed", "checkbox"],
       ["created_at", "date"]
     ]
   },
@@ -273,6 +350,30 @@ function fieldPayload(name, logicalType) {
     };
   }
   return payload;
+}
+
+function singleSelectConversionPayload(existingField, expectedChoices) {
+  const currentChoices = existingField.options?.choices ?? [];
+  const currentNames = new Set(currentChoices.map((choice) => choice.name));
+  const colors = ["grayBright", "greenBright", "yellowBright", "blueBright", "purpleBright", "redBright"];
+  const choices = [
+    ...currentChoices,
+    ...expectedChoices
+      .filter((choice) => !currentNames.has(choice))
+      .map((choice, index) => ({
+        name: choice,
+        color: colors[(currentChoices.length + index) % colors.length]
+      }))
+  ];
+
+  return {
+    type: "singleSelect",
+    name: existingField.name,
+    options: {
+      ...(existingField.options ?? {}),
+      choices
+    }
+  };
 }
 
 async function teableRequest(baseUrl, token, path, init = {}) {
@@ -328,11 +429,31 @@ async function main() {
     envUpdates[tableDef.envName] = table.id;
 
     const fields = await teableRequest(baseUrl, token, `/api/table/${table.id}/field`);
-    const existingFieldNames = new Set(fields.map((field) => field.name));
+    const existingFields = new Map(fields.map((field) => [field.name, field]));
 
     for (const [name, logicalType] of tableDef.fields) {
-      if (existingFieldNames.has(name)) {
+      const existingField = existingFields.get(name);
+      if (existingField) {
         console.log(`  = field ${tableDef.name}.${name}`);
+        const expectedChoices = logicalType === "singleSelect" ? SELECT_CHOICES[name] : undefined;
+        const currentChoices = existingField.options?.choices?.map((choice) => choice.name) ?? [];
+        const missingChoices = expectedChoices?.filter((choice) => !currentChoices.includes(choice)) ?? [];
+        if (missingChoices.length) {
+          console.log(`  ~ choices ${tableDef.name}.${name}: ${missingChoices.join(", ")}`);
+          if (apply) {
+            await teableRequest(baseUrl, token, `/api/table/${table.id}/field/${existingField.id}/convert`, {
+              method: "PUT",
+              body: JSON.stringify(singleSelectConversionPayload(existingField, expectedChoices))
+            });
+
+            const updatedField = await teableRequest(baseUrl, token, `/api/table/${table.id}/field/${existingField.id}`);
+            const updatedChoices = new Set(updatedField.options?.choices?.map((choice) => choice.name) ?? []);
+            const stillMissing = expectedChoices.filter((choice) => !updatedChoices.has(choice));
+            if (stillMissing.length) {
+              throw new Error(`Could not add choices to ${tableDef.name}.${name}: ${stillMissing.join(", ")}`);
+            }
+          }
+        }
         continue;
       }
 

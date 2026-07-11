@@ -4,6 +4,7 @@ import { getTeableClient, TeableRecord } from "@/lib/teable/client";
 import type { TeableTableKey } from "@/lib/teable/schema";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields, WordOccurrenceFields } from "./conversations";
 import type { DailyFeedbackFields, TopicFields } from "./home";
+import type { FlashcardAttemptFields, FlashcardFields } from "./flashcards";
 import { getActiveLanguageProfile, getOrCreatePersonalUser, LanguageProfileFields, UserFields } from "./profile";
 import { matchesLearningScope } from "./scope";
 import { PERSONAL_DATA_EXPORT_SCHEMA_VERSION } from "./export";
@@ -161,7 +162,9 @@ export async function exportPersonalData() {
       wordOccurrences: data.wordOccurrences,
       dailyFeedbacks: data.dailyFeedbacks,
       topics: data.topics,
-      practiceSessions: data.practiceSessions
+      practiceSessions: data.practiceSessions,
+      flashcards: data.flashcards,
+      flashcardAttempts: data.flashcardAttempts
     }
   };
 }
@@ -216,6 +219,8 @@ export async function deleteLearningHistory(input: { confirmationToken?: string;
       || (event.fields.user_id === data.user.id && isLearningHistoryEventInScope(event.fields, eventScope))
   );
   const groups: Array<[TeableTableKey, Array<{ id: string }>]> = [
+    ["flashcardAttempts", data.flashcardAttempts],
+    ["flashcards", data.flashcards],
     ["wordOccurrences", data.wordOccurrences],
     ["corrections", data.corrections],
     ["messages", data.messages],
@@ -263,7 +268,7 @@ async function getScopedLearningData() {
   const client = getTeableClient();
   const user = await getOrCreatePersonalUser();
   const profile = await getActiveLanguageProfile(user);
-  const [profiles, conversations, messages, corrections, words, wordOccurrences, dailyFeedbacks, topics, practiceSessions] = await Promise.all([
+  const [profiles, conversations, messages, corrections, words, wordOccurrences, dailyFeedbacks, topics, practiceSessions, flashcards, flashcardAttempts] = await Promise.all([
     client.listRecords<LanguageProfileFields>("languageProfiles", 50),
     client.listRecords<ConversationFields>("conversations", 300),
     client.listRecords<MessageFields>("messages", 500),
@@ -272,7 +277,9 @@ async function getScopedLearningData() {
     client.listRecords<WordOccurrenceFields>("wordOccurrences", 500),
     client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
     client.listRecords<TopicFields>("topics", 300),
-    client.listRecords<Record<string, unknown>>("practiceSessions", 300)
+    client.listRecords<Record<string, unknown>>("practiceSessions", 300),
+    client.listRecords<FlashcardFields>("flashcards", 500),
+    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000)
   ]);
   const profileId = profile?.id;
   const ownProfiles = profiles.filter((item) => item.fields.user_id === user.id);
@@ -280,6 +287,10 @@ async function getScopedLearningData() {
   const conversationIds = new Set(scopedConversations.map((item) => item.id));
   const scopedWords = words.filter((item) => inScope(item, user.id, profileId));
   const wordIds = new Set(scopedWords.map((item) => item.id));
+  const scopedPracticeSessions = practiceSessions.filter((item) => inScope(item, user.id, profileId));
+  const practiceSessionIds = new Set(scopedPracticeSessions.map((item) => item.id));
+  const scopedFlashcards = flashcards.filter((item) => practiceSessionIds.has(item.fields.practice_session_id));
+  const flashcardIds = new Set(scopedFlashcards.map((item) => item.id));
 
   return {
     user,
@@ -292,7 +303,9 @@ async function getScopedLearningData() {
     wordOccurrences: wordOccurrences.filter((item) => wordIds.has(item.fields.word_id) || conversationIds.has(item.fields.conversation_id)),
     dailyFeedbacks: dailyFeedbacks.filter((item) => inScope(item, user.id, profileId)),
     topics: topics.filter((item) => inScope(item, user.id, profileId)),
-    practiceSessions: practiceSessions.filter((item) => inScope(item, user.id, profileId))
+    practiceSessions: scopedPracticeSessions,
+    flashcards: scopedFlashcards,
+    flashcardAttempts: flashcardAttempts.filter((item) => practiceSessionIds.has(item.fields.practice_session_id) || flashcardIds.has(item.fields.flashcard_id))
   };
 }
 

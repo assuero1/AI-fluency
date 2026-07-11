@@ -19,6 +19,7 @@ import {
 } from "./conversation-state";
 import { matchesLearningScope } from "./scope";
 import { createTopic } from "./topics";
+import type { PracticeSessionFields } from "./flashcards";
 
 type ConversationSummary = {
   correction_score?: number;
@@ -39,6 +40,9 @@ export type CalendarDay = {
   hasFeedback: boolean;
   correctionScore?: number;
   fluencyScore?: number;
+  flashcardMinutes: number;
+  flashcardWords: number;
+  flashcardCorrect: number;
 };
 
 export type CalendarSuggestion = {
@@ -200,15 +204,35 @@ export async function getConversationSummary(conversationId: string) {
   return {
     ...context,
     dailyFeedback: dailyFeedback!,
-    words: conversationWords
+    words: conversationWords,
+    occurrences
   };
+}
+
+export async function addSavedWordsToDailyFeedback(conversation: TeableRecord<ConversationFields>, count: number) {
+  if (count <= 0) return;
+  const client = getTeableClient();
+  const feedbacks = await client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180);
+  const date = toDateKey(conversation.fields.ended_at || conversation.fields.started_at);
+  const feedback = feedbacks.find((item) =>
+    item.fields.user_id === conversation.fields.user_id &&
+    item.fields.language_profile_id === conversation.fields.language_profile_id &&
+    toDateKey(item.fields.date) === date
+  );
+  if (feedback) {
+    await client.updateRecord<DailyFeedbackFields>("dailyFeedbacks", feedback.id, {
+      new_words_count: Number(feedback.fields.new_words_count ?? 0) + count
+    });
+  }
 }
 
 export async function getCalendarData(monthInput?: string) {
   const client = getTeableClient();
-  const [user, dailyFeedbacks] = await Promise.all([
+  const [user, dailyFeedbacks, conversations, practiceSessions] = await Promise.all([
     getOrCreatePersonalUser(),
-    client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180)
+    client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
+    client.listRecords<ConversationFields>("conversations", 400),
+    client.listRecords<PracticeSessionFields>("practiceSessions", 400)
   ]);
   const profile = await getActiveLanguageProfile(user);
   const { year, month, key } = normalizeCalendarMonth(monthInput);
@@ -216,6 +240,16 @@ export async function getCalendarData(monthInput?: string) {
   const validFeedbacks = scoped.filter((feedback) => safeDateKey(feedback.fields.date || feedback.fields.created_at));
   const sorted = sortFeedbacks(validFeedbacks);
   const feedbackByDate = new Map<string, TeableRecord<DailyFeedbackFields>>();
+  const flashcardsByDate = new Map<string, { minutes: number; words: number; correct: number }>();
+  for (const session of practiceSessions.filter((item) => item.fields.type === "flashcards" && item.fields.status === "completed" && matchesLearningScope(item.fields, { userId: user.id, profileId: profile?.id }))) {
+    const date = safeDateKey(session.fields.ended_at || session.fields.started_at);
+    if (!date || !date.startsWith(key)) continue;
+    const current = flashcardsByDate.get(date) ?? { minutes: 0, words: 0, correct: 0 };
+    current.minutes += Math.max(0, Math.round(Number(session.fields.duration_seconds ?? 0) / 60));
+    current.words += Number(session.fields.selected_word_count ?? 0);
+    current.correct += Number(session.fields.correct_count ?? 0);
+    flashcardsByDate.set(date, current);
+  }
   for (const feedback of sorted) {
     const date = safeDateKey(feedback.fields.date || feedback.fields.created_at);
     if (date && date.startsWith(key) && !feedbackByDate.has(date)) feedbackByDate.set(date, feedback);
@@ -226,15 +260,31 @@ export async function getCalendarData(monthInput?: string) {
     const day = index + 1;
     const date = `${key}-${String(day).padStart(2, "0")}`;
     const feedback = feedbackByDate.get(date);
+    const flashcards = flashcardsByDate.get(date) ?? { minutes: 0, words: 0, correct: 0 };
     return {
       date,
       day,
       hasFeedback: Boolean(feedback),
       correctionScore: feedback?.fields.correction_score,
-      fluencyScore: feedback?.fields.fluency_score
+      fluencyScore: feedback?.fields.fluency_score,
+      flashcardMinutes: flashcards.minutes,
+      flashcardWords: flashcards.words,
+      flashcardCorrect: flashcards.correct
     };
   });
   const latestFeedback = sorted[0] ?? null;
+  const monthConversations = conversations.filter((conversation) =>
+    conversation.fields.status === "completed" &&
+    matchesLearningScope(conversation.fields, { userId: user.id, profileId: profile?.id }) &&
+    safeDateKey(conversation.fields.ended_at || conversation.fields.started_at)?.startsWith(key)
+  );
+  const totalPracticeSeconds = monthConversations.reduce((sum, item) => sum + Number(item.fields.duration_seconds ?? 0), 0) + [...flashcardsByDate.values()].reduce((sum, item) => sum + item.minutes * 60, 0);
+  const sevenDaysAgo = Date.now() - 7 * 86400000;
+  const weekPracticeSeconds = conversations
+    .filter((conversation) => conversation.fields.status === "completed" &&
+      matchesLearningScope(conversation.fields, { userId: user.id, profileId: profile?.id }) &&
+      new Date(conversation.fields.ended_at || conversation.fields.started_at).getTime() >= sevenDaysAgo)
+    .reduce((sum, item) => sum + Number(item.fields.duration_seconds ?? 0), 0);
 
   return {
     month: key,
@@ -246,6 +296,9 @@ export async function getCalendarData(monthInput?: string) {
     firstWeekday,
     days,
     feedbackCount: feedbackByDate.size,
+    conversationCount: monthConversations.length,
+    totalPracticeSeconds,
+    weekPracticeSeconds,
     latestFeedback,
     suggestedTopics: parseSuggestedTopics(latestFeedback?.fields.suggested_topics)
   };

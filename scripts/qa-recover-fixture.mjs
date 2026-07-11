@@ -19,7 +19,8 @@ const records = {};
 for (const name of [
   "TEABLE_USERS_TABLE_ID", "TEABLE_LANGUAGE_PROFILES_TABLE_ID", "TEABLE_TOPICS_TABLE_ID", "TEABLE_CONVERSATIONS_TABLE_ID",
   "TEABLE_WORDS_TABLE_ID", "TEABLE_MESSAGES_TABLE_ID", "TEABLE_CORRECTIONS_TABLE_ID", "TEABLE_WORD_OCCURRENCES_TABLE_ID",
-  "TEABLE_DAILY_FEEDBACKS_TABLE_ID", "TEABLE_PRACTICE_SESSIONS_TABLE_ID", "TEABLE_APP_EVENTS_TABLE_ID"
+  "TEABLE_DAILY_FEEDBACKS_TABLE_ID", "TEABLE_PRACTICE_SESSIONS_TABLE_ID", "TEABLE_APP_EVENTS_TABLE_ID",
+  "TEABLE_FLASHCARDS_TABLE_ID", "TEABLE_FLASHCARD_ATTEMPTS_TABLE_ID"
 ]) records[name] = await list(name);
 
 const userIds = new Set([
@@ -30,8 +31,12 @@ const profileIds = new Set(records.TEABLE_LANGUAGE_PROFILES_TABLE_ID.filter((rec
 const conversationIds = new Set(records.TEABLE_CONVERSATIONS_TABLE_ID.filter((record) => userIds.has(record.fields?.user_id)).map((record) => record.id));
 const wordIds = new Set(records.TEABLE_WORDS_TABLE_ID.filter((record) => userIds.has(record.fields?.user_id)).map((record) => record.id));
 const messageIds = new Set(records.TEABLE_MESSAGES_TABLE_ID.filter((record) => conversationIds.has(record.fields?.conversation_id)).map((record) => record.id));
+const practiceSessionIds = new Set(records.TEABLE_PRACTICE_SESSIONS_TABLE_ID.filter((record) => userIds.has(record.fields?.user_id)).map((record) => record.id));
+const flashcardIds = new Set(records.TEABLE_FLASHCARDS_TABLE_ID.filter((record) => practiceSessionIds.has(record.fields?.practice_session_id)).map((record) => record.id));
 
 const selected = {
+  TEABLE_FLASHCARD_ATTEMPTS_TABLE_ID: records.TEABLE_FLASHCARD_ATTEMPTS_TABLE_ID.filter((record) => practiceSessionIds.has(record.fields?.practice_session_id) || flashcardIds.has(record.fields?.flashcard_id)),
+  TEABLE_FLASHCARDS_TABLE_ID: records.TEABLE_FLASHCARDS_TABLE_ID.filter((record) => practiceSessionIds.has(record.fields?.practice_session_id)),
   TEABLE_WORD_OCCURRENCES_TABLE_ID: records.TEABLE_WORD_OCCURRENCES_TABLE_ID.filter((record) => wordIds.has(record.fields?.word_id) || conversationIds.has(record.fields?.conversation_id)),
   TEABLE_CORRECTIONS_TABLE_ID: records.TEABLE_CORRECTIONS_TABLE_ID.filter((record) => conversationIds.has(record.fields?.conversation_id) || messageIds.has(record.fields?.message_id)),
   TEABLE_MESSAGES_TABLE_ID: records.TEABLE_MESSAGES_TABLE_ID.filter((record) => conversationIds.has(record.fields?.conversation_id)),

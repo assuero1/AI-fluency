@@ -176,6 +176,14 @@ Fields:
 - `last_used_at`: date
 - `first_used_at`: date
 - `review_due_at`: date
+- `review_interval_days`: number
+- `review_ease`: number, bounded by the versioned SRS algorithm
+- `review_streak`, `lapse_count`: number
+- `last_reviewed_at`: date
+- `last_rating`: single select (`forgot`, `hard`, `good`, `easy`)
+- `average_response_time_ms`: number
+- `review_state`: single select (`new`, `learning`, `review`, `difficult`, `suspended`)
+- `review_version`: text
 
 ## Table: WordOccurrences
 
@@ -249,7 +257,38 @@ Fields:
 - `conversation_id`: relation to Conversations
 - `type`: single select
 - `focus`: text
+- `status`: preparing, active, completed, abandoned or failed
+- `started_at`, `ended_at`, `duration_seconds`
+- `criterion`, `requested_word_count`, `selected_word_count`
+- `unique_card_count`, `presentation_count`
+- `correct_count`, `incorrect_count`, `score`
+- `language_code`, `configuration_json`, `parent_session_id`
 - `created_at`: date
+- `updated_at`: date
+
+## Table: Flashcards
+
+Purpose: immutable card snapshot for one practice session.
+
+Fields:
+
+- `practice_session_id`, `target_word_id`, `supporting_word_ids`
+- `card_type`, `prompt`, `expected_answer`, `accepted_answers`
+- `translation`, `explanation`, `sentence`, `audio_text`
+- `difficulty`, `initial_position`, `generation_source`, `created_at`
+
+## Table: FlashcardAttempts
+
+Purpose: audit every card presentation and learner answer.
+
+Fields:
+
+- `practice_session_id`, `flashcard_id`, `word_id`
+- `presentation_number`, `client_attempt_id`
+- `user_answer`, `normalized_answer`, `match_result`
+- `suggested_rating`, `final_rating`, `was_correct`
+- `response_time_ms`, `used_speech`, `audio_replay_count`
+- `used_slow_audio`, `answered_after_audio_replay`, `audio_failed`, `created_at`
 
 ## Table: AppEvents
 

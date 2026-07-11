@@ -90,6 +90,45 @@ try {
   const restoredWordsBody = await restoredWords.json();
   assert(restoredWords.ok && restoredWordsBody.words?.some((word) => word.displayText === "fixture"), "restoring English restores its vocabulary exactly");
 
+  const flashcardStart = await fetch(`${server.baseUrl}/api/practice/flashcards`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ criterion: "least_used", count: 2 })
+  });
+  const flashcardStartBody = await flashcardStart.json();
+  assert(flashcardStart.status === 201 && flashcardStartBody.sessionId && flashcardStartBody.cards?.length === 2, `flashcard session persists a frozen two-card deck (status ${flashcardStart.status}: ${flashcardStartBody.error ?? "unexpected response"}; ${JSON.stringify(flashcardStartBody.detail ?? {})})`);
+  for (const [index, card] of flashcardStartBody.cards.entries()) {
+    const attempt = await fetch(`${server.baseUrl}/api/practice/flashcards/attempt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sessionId: flashcardStartBody.sessionId,
+        clientAttemptId: `qa-flashcard-attempt-${index + 1}-0001`,
+        cardId: card.id,
+        presentationNumber: 1,
+        userAnswer: card.expectedAnswer,
+        rating: "good",
+        forgot: false,
+        usedSpeech: false,
+        responseTimeMs: 1200,
+        audioReplayCount: index === 0 ? 2 : 0,
+        usedSlowAudio: index === 0,
+        audioFailed: false
+      })
+    });
+    assert(attempt.status === 201, `flashcard attempt ${index + 1} persists idempotently`);
+  }
+  const flashcardComplete = await fetch(`${server.baseUrl}/api/practice/flashcards/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sessionId: flashcardStartBody.sessionId, clientCompletionId: "qa-flashcard-complete-0001", answers: [] })
+  });
+  const flashcardCompleteBody = await flashcardComplete.json();
+  assert(flashcardComplete.ok && flashcardCompleteBody.presentationCount === 2 && flashcardCompleteBody.uniqueCardCount === 2, "flashcard completion derives metrics from persisted attempts");
+  const reviewedWords = await fetch(`${server.baseUrl}/api/words`);
+  const reviewedWordsBody = await reviewedWords.json();
+  assert(reviewedWords.ok && reviewedWordsBody.words?.every((word) => word.reviewIntervalDays === 3 && word.reviewStreak === 1 && word.reviewVersion === "srs-v1" && word.lastRating === "good"), "flashcard completion persists versioned adaptive review fields");
+
   const invalidAudio = await fetch(`${server.baseUrl}/api/voice/${"a".repeat(64)}`);
   assert(invalidAudio.status === 404, "unknown cached audio is rejected");
   assert(invalidAudio.headers.get("cache-control")?.includes("no-store"), "unknown audio is not privately cached");
@@ -97,8 +136,10 @@ try {
   const populatedExport = await fetch(`${server.baseUrl}/api/export`);
   const populatedExportBody = await populatedExport.json();
   assert(populatedExport.ok, "a populated personal export is available");
-  assert(populatedExportBody.schemaVersion === 1, "personal export declares its schema version");
+  assert(populatedExportBody.schemaVersion === 2, "personal export declares its schema version");
   assert(populatedExportBody.language?.code === "en", "personal export declares the active language");
+  assert(populatedExportBody.learningHistory?.flashcards?.length === 2 && populatedExportBody.learningHistory?.flashcardAttempts?.length === 2, "personal export includes flashcards and attempts");
+  assert(populatedExportBody.learningHistory?.flashcardAttempts?.some((attempt) => attempt.fields?.audio_replay_count === 2 && attempt.fields?.used_slow_audio === true && attempt.fields?.answered_after_audio_replay === true), "personal export includes persisted audio telemetry");
   assert(populatedExport.headers.get("content-disposition")?.includes("ai-fluency-en-"), "export filename includes the active language");
   assert(!JSON.stringify(populatedExportBody).includes("API_KEY"), "personal export contains no provider key names");
 
