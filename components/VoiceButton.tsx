@@ -36,6 +36,7 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const loadPromiseRef = useRef<Promise<HTMLAudioElement> | null>(null);
   const ownerRef = useRef(Symbol("voice-button"));
+  const playbackRequestedRef = useRef(false);
 
   const releaseAudio = useCallback(() => {
     const audio = audioRef.current;
@@ -55,6 +56,17 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     setStatus("idle");
   }, []);
 
+  const startDeviceFallback = useCallback(() => {
+    releaseAudio();
+    if (!playDeviceSpeech(text, languageCode, playbackRate, () => setStatus("ended"))) {
+      setStatus("error");
+      onAudioFailure?.();
+      return;
+    }
+    setStatus("playing");
+    onPlayback?.({ replay: false, slow: playbackRate < 1, deviceFallback: true });
+  }, [languageCode, onAudioFailure, onPlayback, playbackRate, releaseAudio, text]);
+
   const playExisting = useCallback(async (audio: HTMLAudioElement) => {
     if (activeVoice?.owner !== ownerRef.current) activeVoice?.stop();
     activeVoice = { owner: ownerRef.current, stop: stopForAnotherVoice };
@@ -64,9 +76,10 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
       setStatus("playing");
       onPlayback?.({ replay: audio.currentTime > 0, slow: playbackRate < 1, deviceFallback: false });
     } catch {
-      setStatus("ready");
+      // Another failure handler may have already consumed this audio element.
+      if (audioRef.current === audio) startDeviceFallback();
     }
-  }, [onPlayback, playbackRate, stopForAnotherVoice]);
+  }, [onPlayback, playbackRate, startDeviceFallback, stopForAnotherVoice]);
 
   const ensureAudio = useCallback(async () => {
     if (audioRef.current) return audioRef.current;
@@ -80,9 +93,15 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
       audioRef.current = audio;
       audio.onended = () => setStatus("ended");
       audio.onerror = () => {
-        releaseAudio();
-        setStatus("error");
-        onAudioFailure?.();
+        if (audioRef.current !== audio) return;
+        // Preload failures stay silent; only user-initiated playback falls back to device speech.
+        if (!playbackRequestedRef.current) {
+          releaseAudio();
+          setStatus("error");
+          onAudioFailure?.();
+          return;
+        }
+        startDeviceFallback();
       };
       audio.load();
       setStatus("ready");
@@ -98,7 +117,7 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     } finally {
       loadPromiseRef.current = null;
     }
-  }, [languageCode, onAudioFailure, releaseAudio, text]);
+  }, [languageCode, onAudioFailure, releaseAudio, startDeviceFallback, text]);
 
   useEffect(() => () => releaseAudio(), [releaseAudio]);
 
@@ -109,6 +128,7 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
 
   async function togglePlayback() {
     if (!text.trim()) return;
+    playbackRequestedRef.current = true;
 
     const existing = audioRef.current;
     if (existing && status === "playing") {
@@ -134,14 +154,7 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
       const audio = await ensureAudio();
       await playExisting(audio);
     } catch {
-      releaseAudio();
-      if (!playDeviceSpeech(text, languageCode, playbackRate, () => setStatus("ended"))) {
-        setStatus("error");
-        onAudioFailure?.();
-      } else {
-        setStatus("playing");
-        onPlayback?.({ replay: false, slow: playbackRate < 1, deviceFallback: true });
-      }
+      startDeviceFallback();
     }
   }
 

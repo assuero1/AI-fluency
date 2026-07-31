@@ -74,10 +74,12 @@ async function loadTutorKnowledge(
   profileId: string | undefined,
   calendarMemoryEnabled: boolean
 ): Promise<TutorKnowledge> {
+  // words/conversations carry a user_id field, so they can be filtered
+  // server-side; corrections/topics/feedbacks still need broader reads.
   const [words, corrections, conversations, topics, feedbacks] = await Promise.all([
-    client.listAllRecords<WordFields>("words"),
+    client.listRecordsWhere<WordFields>("words", "user_id", userId),
     client.listAllRecords<CorrectionFields>("corrections"),
-    client.listAllRecords<ConversationFields>("conversations"),
+    client.listRecordsWhere<ConversationFields>("conversations", "user_id", userId),
     client.listRecords<TopicFields>("topics", 150),
     client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 90)
   ]);

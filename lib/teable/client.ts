@@ -41,6 +41,26 @@ function trimSlash(value: string) {
   return value.replace(/\/+$/, "");
 }
 
+const TEABLE_REQUEST_TIMEOUT_MS = 10_000;
+
+function withTimeoutSignal(signal?: AbortSignal | null) {
+  const timeout = AbortSignal.timeout(TEABLE_REQUEST_TIMEOUT_MS);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
+function toTeableRequestError(error: unknown): TeableRequestError {
+  const name = errorName(error);
+  const message = error instanceof Error ? error.message : String(error);
+  if (name === "TimeoutError" || name === "AbortError") {
+    return new TeableRequestError(`Teable request timed out: ${message}`, 504);
+  }
+  return new TeableRequestError(`Teable network request failed: ${message}`, 502);
+}
+
+function errorName(error: unknown) {
+  return typeof error === "object" && error !== null && "name" in error ? String((error as { name: unknown }).name) : "";
+}
+
 export class TeableClient {
   private baseUrl: string;
   private apiKey: string;
@@ -70,6 +90,25 @@ export class TeableClient {
   }
 
   private async request<T>(path: string, init?: RequestInit): Promise<T> {
+    const isGet = !init?.method || init.method.toUpperCase() === "GET";
+    // Idempotent reads get one retry on network/timeout failures. HTTP error
+    // statuses and writes are never retried.
+    const maxAttempts = isGet ? 2 : 1;
+    let lastError: TeableRequestError | undefined;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        return await this.requestOnce<T>(path, init);
+      } catch (error) {
+        if (error instanceof TeableRequestError) throw error;
+        lastError = toTeableRequestError(error);
+      }
+    }
+
+    throw lastError;
+  }
+
+  private async requestOnce<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       ...init,
       headers: {
@@ -77,7 +116,8 @@ export class TeableClient {
         "Content-Type": "application/json",
         ...(init?.headers ?? {})
       },
-      cache: "no-store"
+      cache: "no-store",
+      signal: withTimeoutSignal(init?.signal)
     });
 
     const contentType = response.headers.get("content-type") ?? "";
@@ -149,6 +189,49 @@ export class TeableClient {
       records.push(...page);
       if (page.length < pageSize) return records;
     }
+  }
+
+  async listRecordsWhere<TFields extends Record<string, unknown> = Record<string, unknown>>(
+    tableKey: TeableTableKey,
+    field: string,
+    value: string
+  ) {
+    const tableId = this.tableId(tableKey);
+    const filter = encodeURIComponent(
+      JSON.stringify({ conjunction: "and", filterSet: [{ fieldId: field, operator: "is", value }] })
+    );
+    const records: TeableRecord<TFields>[] = [];
+    const pageSize = 1000;
+
+    for (let skip = 0; ; skip += pageSize) {
+      const result = await this.request<TeableListResponse<TFields>>(
+        `/api/table/${encodeURIComponent(tableId)}/record?take=${pageSize}&skip=${skip}&fieldKeyType=name&filter=${filter}`
+      );
+      const page = result.records ?? result.data?.records ?? [];
+
+      // Self-hosted Teable (teableio/teable#3041, v1.10.x) can silently ignore
+      // the filter param and return unfiltered rows. Detect that and fall back
+      // to a full client-side filter so results stay correct on any version.
+      if (page.some((record) => String(record.fields?.[field] ?? "") !== value)) {
+        const all = await this.listAllRecords<TFields>(tableKey);
+        return all.filter((record) => String(record.fields?.[field] ?? "") === value);
+      }
+
+      records.push(...page);
+      if (page.length < pageSize) return records;
+    }
+  }
+
+  async getRecord<TFields extends Record<string, unknown> = Record<string, unknown>>(tableKey: TeableTableKey, recordId: string) {
+    const tableId = this.tableId(tableKey);
+    const result = await this.request<TeableRecord<TFields> | { record?: TeableRecord<TFields> } | null>(
+      `/api/table/${encodeURIComponent(tableId)}/record/${encodeURIComponent(recordId)}?fieldKeyType=name`
+    );
+    const record = result && "record" in result && result.record ? result.record : (result as TeableRecord<TFields> | null);
+    if (!record || typeof record.id !== "string" || !record.fields || typeof record.fields !== "object") {
+      throw new TeableRequestError("Teable returned an unexpected record payload.", 502, result);
+    }
+    return record;
   }
 
   async createRecord<TFields extends Record<string, unknown> = Record<string, unknown>>(

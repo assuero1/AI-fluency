@@ -1,9 +1,14 @@
 "use client";
 
 import { RefreshCw } from "lucide-react";
+import { useEffect } from "react";
 import { AppShell } from "@/components/AppShell";
 
-export default function ErrorPage({ reset }: { error: Error & { digest?: string }; reset: () => void }) {
+export default function ErrorPage({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
+  useEffect(() => {
+    console.error(error);
+  }, [error]);
+
   return (
     <AppShell noNav>
       <div className="app-error" role="alert">

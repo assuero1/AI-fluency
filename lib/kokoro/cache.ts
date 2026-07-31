@@ -179,14 +179,15 @@ export async function streamPendingAudio(audioId: string) {
     await rm(path.join(cacheDir, `${audioId}.pending.json`), { force: true }).catch(() => undefined);
     return null;
   }
-  pendingSpeech.delete(audioId);
-  await rm(path.join(cacheDir, `${audioId}.pending.json`), { force: true }).catch(() => undefined);
-
   const result = await streamSpeech(pending.text, {
     voice: pending.voice,
     format: pending.outputFormat,
     speed: pending.speed
   });
+  // The pending record is dropped only after Kokoro accepted the request, so a
+  // failed synthesis leaves the same audio URL retryable until it expires.
+  pendingSpeech.delete(audioId);
+  await rm(path.join(cacheDir, `${audioId}.pending.json`), { force: true }).catch(() => undefined);
   const [playbackStream, cacheStream] = result.audioStream.tee();
   void persistStreamedAudio(audioId, pending, cacheStream, result.contentType).catch(() => undefined);
   return {

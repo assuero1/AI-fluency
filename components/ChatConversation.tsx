@@ -3,7 +3,7 @@
 import { Bot, CalendarDays, ChevronRight, Clock3, Flame, Languages, Loader2, LogOut, Mic, MicOff, Send, Shuffle, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { IconBubble } from "./IconBubble";
 import { CopyButton } from "./CopyButton";
 import { ModalDialog } from "./ModalDialog";
@@ -73,7 +73,6 @@ export function ChatConversation({
   const router = useRouter();
   const [messages, setMessages] = useState(initialMessages);
   const [corrections, setCorrections] = useState(initialCorrections);
-  const [elapsedSeconds, setElapsedSeconds] = useState(() => Math.max(0, Math.floor((Date.now() - new Date(conversation.fields.started_at).getTime()) / 1000)));
   const [selectedText, setSelectedText] = useState("");
   const [selectionContext, setSelectionContext] = useState("");
   const [selectionExplanation, setSelectionExplanation] = useState<SelectionExplanation | null>(null);
@@ -99,12 +98,15 @@ export function ChatConversation({
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const retryRequestRef = useRef<{ text: string; id: string } | null>(null);
   const latestAssistantMessageId = findLatestAssistantMessageId(messages);
-
-  useEffect(() => {
-    if (readOnly) return;
-    const timer = window.setInterval(() => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - new Date(conversation.fields.started_at).getTime()) / 1000))), 1000);
-    return () => window.clearInterval(timer);
-  }, [conversation.fields.started_at, readOnly]);
+  const correctionsByMessageId = useMemo(() => {
+    const grouped = new Map<string, TeableRecord<CorrectionFields>[]>();
+    for (const correction of corrections) {
+      const list = grouped.get(correction.fields.message_id);
+      if (list) list.push(correction);
+      else grouped.set(correction.fields.message_id, [correction]);
+    }
+    return grouped;
+  }, [corrections]);
 
   useEffect(() => {
     const speechWindow = window as SpeechWindow;
@@ -156,11 +158,15 @@ export function ChatConversation({
     setFailedMessage(null);
     setText("");
 
+    const sendAbortController = new AbortController();
+    const sendTimeoutId = window.setTimeout(() => sendAbortController.abort(), 40_000);
+
     try {
       const response = await fetch(`/api/conversations/${conversation.id}/messages`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: cleanText, clientRequestId })
+        body: JSON.stringify({ text: cleanText, clientRequestId }),
+        signal: sendAbortController.signal
       });
       const data = (await response.json()) as {
         ok?: boolean;
@@ -191,6 +197,7 @@ export function ChatConversation({
       setFailedMessage(cleanText);
       setError(normalizeChatError(sendError, "Não foi possível continuar a conversa agora. Sua mensagem foi preservada."));
     } finally {
+      window.clearTimeout(sendTimeoutId);
       setIsSending(false);
     }
   }
@@ -211,7 +218,6 @@ export function ChatConversation({
       setActiveTopicTitle(data.topic?.fields?.title ?? cleanTitle);
       setNextTopicTitle("");
       setIsTopicDialogOpen(false);
-      router.refresh();
     } catch (changeError) {
       setError(normalizeChatError(changeError, "Não foi possível mudar o tema agora. Tente novamente."));
     } finally {
@@ -424,7 +430,7 @@ export function ChatConversation({
             <CalendarDays />
           </Link>
         )}
-        <Pill aria-label={`Tempo de conversa: ${formatElapsedTime(elapsedSeconds)}`}><Clock3 size={16} /> {formatElapsedTime(elapsedSeconds)}</Pill>
+        <ElapsedTimePill readOnly={readOnly} startedAt={conversation.fields.started_at} />
       </div>
 
       <div className="chat-topic">
@@ -487,7 +493,7 @@ export function ChatConversation({
 
       <div className="chat-stack" onPointerUp={captureSelection}>
         {messages.map((message) => {
-          const messageCorrections = corrections.filter((correction) => correction.fields.message_id === message.id);
+          const messageCorrections = correctionsByMessageId.get(message.id) ?? [];
 
           return message.fields.role === "assistant" ? (
             <div className="chat-row" key={message.id}>
@@ -637,6 +643,22 @@ export function ChatConversation({
   );
 }
 
+function ElapsedTimePill({ startedAt, readOnly }: { startedAt: string; readOnly: boolean }) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => computeElapsedSeconds(startedAt));
+
+  useEffect(() => {
+    if (readOnly) return;
+    const timer = window.setInterval(() => setElapsedSeconds(computeElapsedSeconds(startedAt)), 1000);
+    return () => window.clearInterval(timer);
+  }, [startedAt, readOnly]);
+
+  return <Pill aria-label={`Tempo de conversa: ${formatElapsedTime(elapsedSeconds)}`}><Clock3 size={16} /> {formatElapsedTime(elapsedSeconds)}</Pill>;
+}
+
+function computeElapsedSeconds(startedAt: string) {
+  return Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
+}
+
 function createClientRequestId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `message-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
@@ -657,7 +679,7 @@ function mergeSpeechText(existing: string, transcript: string) {
 
 function normalizeChatError(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message.trim() : "";
-  if (!message || /the string did not match the expected pattern|invalidstateerror|failed to fetch|networkerror|network request failed|load failed|unexpected (end|token).*json/i.test(message)) {
+  if (!message || /the string did not match the expected pattern|invalidstateerror|failed to fetch|fetch failed|networkerror|network request failed|load failed|unexpected (end|token).*json|the operation (was aborted|timed out)|signal (is|was) aborted|\babort(ed)?\b|timed? ?out/i.test(message)) {
     return fallback;
   }
   return message;

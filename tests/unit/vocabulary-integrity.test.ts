@@ -106,7 +106,7 @@ describe("vocabulary integrity", () => {
 
     expect(candidates.find((item) => item.id === "user:work")?.occurrenceCount).toBe(3);
     expect(candidates.find((item) => item.id === "assistant:work")?.occurrenceCount).toBe(1);
-    expect(candidates.find((item) => item.id === "user:café")?.occurrenceCount).toBe(1);
+    expect(candidates.find((item) => item.id === "user:cafe")?.occurrenceCount).toBe(1);
   });
 
   it("has deterministic lemma fallbacks for supported languages", async () => {
@@ -148,7 +148,7 @@ describe("vocabulary integrity", () => {
     expect(filtered.map((candidate) => candidate.id)).not.toContain("assistant:work");
     expect(filtered.map((candidate) => candidate.id)).not.toContain("user:worked");
     expect(filtered.map((candidate) => candidate.id)).not.toContain("user:working");
-    expect(filtered.map((candidate) => candidate.id)).toContain("user:café");
+    expect(filtered.map((candidate) => candidate.id)).toContain("user:cafe");
   });
 
   it("increments by each missing occurrence and is idempotent on retries", async () => {

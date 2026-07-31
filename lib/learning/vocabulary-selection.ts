@@ -48,10 +48,110 @@ type VocabularyOccurrence = Omit<VocabularyCandidate, "id" | "occurrenceCount" |
 
 type VocabularyLinguisticData = { lemma: string; translation: string; partOfSpeech: string };
 
+const MAX_VOCABULARY_CANDIDATES = 80;
+const VOCABULARY_ANALYSIS_CHUNK_SIZE = 20;
+const VOCABULARY_ANALYSIS_CACHE_TTL_MS = 10 * 60_000;
+const MAX_VOCABULARY_ANALYSIS_CACHE_ENTRIES = 32;
+
 const vocabularySaveLocks = new Map<string, Promise<Awaited<ReturnType<typeof persistSelectedVocabulary>>>>();
 
+type VocabularyAnalysisCacheEntry = {
+  expiresAt: number;
+  analyses: Record<string, VocabularyLinguisticData>;
+};
+
+// Shares one linguistic analysis between the candidates GET and the save POST so
+// the lemma saved is exactly the one the user picked. Entries are keyed by
+// conversation id plus a stable hash of the analyzed candidate ids; a changed
+// conversation produces new ids and therefore a fresh analysis.
+const vocabularyAnalysisCache = new Map<string, VocabularyAnalysisCacheEntry>();
+
 export function normalizeVocabularyToken(value: string) {
-  return value.normalize("NFKC").trim().toLocaleLowerCase();
+  return value.normalize("NFKC").trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+}
+
+// Common function words per language, stored pre-normalized (lowercase, no
+// diacritics). Portuguese is the learner's native language and is filtered for
+// every target language to kill native-language contamination.
+const VOCABULARY_STOPWORDS: Record<string, ReadonlySet<string>> = {
+  en: new Set([
+    "a", "an", "the", "and", "or", "but", "if", "then", "when", "while", "of", "at", "by", "for", "with", "about",
+    "between", "into", "through", "during", "before", "after", "to", "from", "in", "out", "on", "off", "over", "under",
+    "again", "once", "here", "there", "all", "any", "both", "each", "few", "more", "most", "other", "some", "such",
+    "no", "nor", "not", "only", "same", "so", "than", "too", "very", "now", "i", "me", "my", "we", "our", "you",
+    "your", "he", "him", "his", "she", "her", "it", "its", "they", "them", "their", "this", "that", "these", "those",
+    "am", "is", "are", "was", "were", "be", "been", "being", "have", "has", "had", "do", "does", "did", "would",
+    "could", "should", "as", "what", "which", "who", "how", "because", "until", "up", "down"
+  ]),
+  es: new Set([
+    "el", "la", "los", "las", "un", "una", "unos", "unas", "al", "de", "del", "en", "a", "ante", "con", "contra",
+    "desde", "entre", "hacia", "hasta", "para", "por", "segun", "sin", "sobre", "tras", "y", "o", "ni", "que",
+    "porque", "como", "cuando", "donde", "quien", "cual", "cuales", "este", "esta", "esto", "estos", "estas", "ese",
+    "esa", "eso", "esos", "esas", "aquel", "aquella", "aquello", "aquellos", "aquellas", "yo", "tu", "ella", "usted",
+    "nosotros", "vosotros", "ellos", "ellas", "me", "te", "se", "lo", "le", "nos", "mi", "mis", "su", "sus", "es",
+    "son", "soy", "eres", "somos", "sois", "estoy", "estan", "fue", "fui", "ser", "hay", "habia", "he", "has", "han",
+    "hemos", "mas", "muy", "ya", "no", "si", "tambien", "tampoco", "pero", "sino", "aunque", "asi", "ahi", "aqui",
+    "alla", "ahora", "hoy", "ayer", "siempre", "nunca", "todo", "toda", "todos", "todas", "algo", "nada", "alguien",
+    "nadie", "otro", "otra", "otros", "otras", "mismo", "misma", "cada", "tanto", "tanta", "poco", "poca", "mucho", "mucha"
+  ]),
+  fr: new Set([
+    "le", "la", "les", "un", "une", "des", "de", "du", "au", "aux", "en", "dans", "sur", "sous", "chez", "pour",
+    "par", "avec", "sans", "vers", "entre", "avant", "apres", "pendant", "depuis", "et", "ou", "mais", "donc", "ni",
+    "car", "que", "qui", "quoi", "dont", "quand", "comme", "si", "ce", "cet", "cette", "ces", "mon", "ma", "mes",
+    "ton", "ta", "tes", "son", "sa", "ses", "notre", "nos", "votre", "vos", "leur", "leurs", "je", "tu", "il",
+    "elle", "on", "nous", "vous", "ils", "elles", "me", "te", "se", "lui", "y", "est", "sont", "suis", "es",
+    "sommes", "etes", "etait", "etaient", "etre", "avoir", "ai", "as", "avons", "avez", "ont", "avait", "plus",
+    "moins", "tres", "bien", "aussi", "trop", "peu", "beaucoup", "ne", "pas", "jamais", "toujours", "souvent",
+    "ici", "maintenant", "meme", "tout", "tous", "toute", "toutes", "autre", "autres", "cela", "ca", "alors",
+    "deja", "encore"
+  ]),
+  it: new Set([
+    "il", "lo", "la", "i", "gli", "le", "un", "uno", "una", "di", "del", "dello", "della", "dei", "degli", "delle",
+    "a", "al", "alla", "ai", "agli", "alle", "da", "dal", "dalla", "in", "nel", "nella", "con", "su", "sul", "per",
+    "tra", "fra", "e", "o", "ma", "anche", "se", "che", "chi", "cui", "quale", "questo", "questa", "questi",
+    "queste", "quello", "quella", "quelli", "quelle", "io", "tu", "lui", "lei", "noi", "voi", "loro", "mi", "ti",
+    "si", "ci", "vi", "ne", "mio", "mia", "tuo", "tua", "suo", "sua", "nostro", "nostra", "vostro", "vostra",
+    "sono", "sei", "siamo", "siete", "era", "erano", "essere", "avere", "ho", "hai", "ha", "abbiamo", "avete",
+    "hanno", "aveva", "piu", "meno", "molto", "poco", "troppo", "tanto", "tutto", "tutta", "tutti", "tutte", "non",
+    "gia", "ancora", "sempre", "mai", "qui", "qua", "ora", "adesso", "oggi", "ieri", "domani", "come", "quando",
+    "dove", "perche", "cosi", "cosa", "stesso", "stessa", "ogni", "qualche"
+  ]),
+  pt: new Set([
+    "o", "a", "os", "as", "um", "uma", "uns", "umas", "de", "do", "da", "dos", "das", "em", "no", "na", "nos",
+    "nas", "ao", "aos", "por", "pelo", "pela", "pelos", "pelas", "para", "pra", "com", "sem", "sob", "sobre", "entre", "ate", "apos", "antes",
+    "depois", "desde", "contra", "e", "ou", "mas", "nem", "que", "porque", "pois", "como", "quando", "onde",
+    "quem", "cujo", "cuja", "este", "esta", "isto", "estes", "estas", "esse", "essa", "isso", "esses", "essas",
+    "aquele", "aquela", "aquilo", "eu", "tu", "ele", "ela", "eles", "elas", "voce", "voces", "me", "te", "se",
+    "lhe", "meu", "minha", "teu", "tua", "seu", "sua", "nosso", "nossa", "ser", "sou", "es", "somos", "sao",
+    "era", "eram", "estar", "estou", "estao", "estava", "ter", "tenho", "tem", "temos", "ha", "mais", "menos",
+    "muito", "muita", "pouco", "pouca", "tanto", "tanta", "todo", "toda", "todos", "todas", "outro", "outra",
+    "mesmo", "mesma", "ja", "ainda", "sempre", "nunca", "nao", "sim", "tambem", "aqui", "ai", "ali", "la",
+    "agora", "hoje", "ontem", "amanha", "assim", "entao", "cada", "algum", "alguma", "nenhum", "nenhuma", "algo",
+    "nada", "alguem", "ninguem", "tudo", "bem", "num", "numa", "nuns", "numas"
+  ]),
+  de: new Set([
+    "der", "die", "das", "den", "dem", "des", "ein", "eine", "einer", "einem", "einen", "und", "oder", "aber",
+    "denn", "sondern", "wenn", "als", "dass", "weil", "ob", "obwohl", "wie", "wo", "wer", "was", "wen", "wem",
+    "welche", "welcher", "welches", "dieser", "diese", "dieses", "ich", "du", "er", "sie", "es", "wir", "ihr",
+    "man", "mich", "dich", "sich", "uns", "euch", "mir", "dir", "ihm", "ihnen", "mein", "meine", "dein", "deine",
+    "sein", "seine", "unser", "euer", "in", "im", "am", "an", "auf", "aus", "bei", "mit", "nach", "von", "zu",
+    "zur", "zum", "durch", "fur", "gegen", "ohne", "um", "uber", "unter", "vor", "hinter", "neben", "zwischen",
+    "seit", "bis", "ist", "sind", "bin", "bist", "seid", "war", "waren", "haben", "habe", "hast", "hat", "hatte",
+    "werden", "wird", "wurde", "kann", "konnen", "muss", "mussen", "soll", "sollen", "will", "wollen", "darf",
+    "mag", "nicht", "kein", "keine", "auch", "noch", "schon", "nur", "sehr", "mehr", "viel", "viele", "wenig",
+    "alle", "alles", "jeder", "jede", "manche", "hier", "da", "dort", "jetzt", "heute", "gestern", "morgen",
+    "immer", "nie", "oft", "dann", "so", "ja", "nein", "doch"
+  ])
+};
+
+const PORTUGUESE_STOPWORDS = VOCABULARY_STOPWORDS.pt;
+
+export function isVocabularyStopword(value: string, language: string) {
+  const word = normalizeVocabularyToken(value);
+  if (!word) return false;
+  if (PORTUGUESE_STOPWORDS.has(word)) return true;
+  const code = language.toLowerCase().split(/[-_]/)[0];
+  return VOCABULARY_STOPWORDS[code]?.has(word) ?? false;
 }
 
 export function canonicalVocabularyKey(userId: string, profileId: string, lemma: string) {
@@ -96,7 +196,8 @@ export function findChangedOriginalTokens(originalText: string, correctedText: s
 
 export function extractVocabularyOccurrences(
   messages: TeableRecord<MessageFields>[],
-  corrections: TeableRecord<CorrectionFields>[] = []
+  corrections: TeableRecord<CorrectionFields>[] = [],
+  language = ""
 ) {
   const incorrectByMessage = new Map<string, Map<string, number>>();
   for (const correction of corrections) {
@@ -113,7 +214,7 @@ export function extractVocabularyOccurrences(
     for (const match of message.fields.text.matchAll(/[\p{L}À-ÿ]+(?:['’][\p{L}À-ÿ]+)*/gu)) {
       const text = match[0];
       const normalized = normalizeVocabularyToken(text);
-      if (normalized.length < 2) continue;
+      if (normalized.length < 2 || isVocabularyStopword(normalized, language)) continue;
       const occurrenceOrdinal = (ordinalByToken.get(normalized) ?? 0) + 1;
       ordinalByToken.set(normalized, occurrenceOrdinal);
       const incorrectCounts = incorrectByMessage.get(message.id);
@@ -136,10 +237,11 @@ export function extractVocabularyOccurrences(
 
 export function extractVocabularyCandidates(
   messages: TeableRecord<MessageFields>[],
-  corrections: TeableRecord<CorrectionFields>[] = []
+  corrections: TeableRecord<CorrectionFields>[] = [],
+  language = ""
 ) {
   const candidates = new Map<string, VocabularyCandidate>();
-  for (const occurrence of extractVocabularyOccurrences(messages, corrections)) {
+  for (const occurrence of extractVocabularyOccurrences(messages, corrections, language)) {
     const id = vocabularyCandidateId(occurrence.source, occurrence.normalized);
     const existing = candidates.get(id);
     if (existing) {
@@ -185,10 +287,13 @@ export function filterNewVocabularyCandidates(
 export async function groupNewVocabularyCandidates(
   candidates: VocabularyCandidate[],
   existingWords: ExistingVocabularyFamily[],
-  language: string
+  language: string,
+  conversationId?: string
 ) {
-  const limited = candidates.slice(0, 80);
-  const linguisticData = await analyzeVocabulary(limited, language);
+  const limited = rankVocabularyCandidates(candidates).slice(0, MAX_VOCABULARY_CANDIDATES);
+  const linguisticData = conversationId
+    ? await analyzeConversationVocabulary(conversationId, limited, language)
+    : await analyzeVocabulary(limited, language);
   const groups = groupCandidatesByLemma(limited, linguisticData);
   const existingKeys = new Set(existingWords.flatMap((word) => [
     normalizeVocabularyToken(word.lemma || word.displayText),
@@ -208,18 +313,20 @@ export async function getConversationVocabularyGroups(conversationId: string) {
     throw new LearningStateError("Finalize a conversa antes de escolher palavras.", 409);
   }
   const words = await getTeableClient().listAllRecords<WordFields>("words");
+  const language = context.profile?.fields.language_code ?? "auto";
   const scope = {
     userId: context.conversation.fields.user_id,
     profileId: context.conversation.fields.language_profile_id
   };
   return groupNewVocabularyCandidates(
-    extractVocabularyCandidates(context.messages, context.corrections),
+    extractVocabularyCandidates(context.messages, context.corrections, language),
     words.filter((word) => matchesLearningScope(word.fields, scope)).map((word) => ({
       lemma: word.fields.lemma,
       displayText: word.fields.display_text,
       formsJson: word.fields.forms_json
     })),
-    context.profile?.fields.language_code ?? "auto"
+    language,
+    conversationId
   );
 }
 
@@ -306,16 +413,19 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
   if (context.conversation.fields.status !== "completed") {
     throw new LearningStateError("Finalize a conversa antes de salvar palavras.", 409);
   }
-  const allOccurrences = extractVocabularyOccurrences(context.messages, context.corrections);
-  const allowed = new Map(extractVocabularyCandidates(context.messages, context.corrections).map((item) => [item.id, item]));
-  const selected = [...new Set(candidateIds)].map((id) => allowed.get(id)).filter((item): item is VocabularyCandidate => Boolean(item)).slice(0, 80);
+  const language = context.profile?.fields.language_code ?? "auto";
+  const allOccurrences = extractVocabularyOccurrences(context.messages, context.corrections, language);
+  const allowed = new Map(extractVocabularyCandidates(context.messages, context.corrections, language).map((item) => [item.id, item]));
+  const selected = rankVocabularyCandidates(
+    [...new Set(candidateIds)].map((id) => allowed.get(id)).filter((item): item is VocabularyCandidate => Boolean(item))
+  ).slice(0, MAX_VOCABULARY_CANDIDATES);
   if (!selected.length) throw new LearningStateError("Selecione ao menos uma palavra.", 400);
 
   const client = getTeableClient();
   const [existingWords, usageSummaries, linguisticData] = await Promise.all([
     client.listAllRecords<WordFields>("words"),
     client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries"),
-    analyzeVocabulary(selected, context.profile?.fields.language_code ?? "auto")
+    analyzeConversationVocabulary(conversationId, selected, language)
   ]);
   const now = new Date().toISOString();
   const reviewDue = new Date(Date.now() + 7 * 86400000).toISOString();
@@ -336,9 +446,12 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
     const canonicalKey = canonicalVocabularyKey(scope.userId, scope.profileId, family.lemma);
     const forms = uniqueVocabularyForms([...family.forms, ...relevant.map((occurrence) => occurrence.text)]);
     const correctUseCount = relevant.filter((occurrence) => occurrence.source === "user").length;
+    const familyKeys = new Set([family.lemma, ...family.forms.map(normalizeVocabularyToken)]);
     let word = existingWords.find((item) =>
       matchesLearningScope(item.fields, scope) &&
-      (item.fields.canonical_key === canonicalKey || normalizeVocabularyToken(item.fields.lemma || item.fields.display_text) === family.lemma)
+      (matchesCanonicalVocabularyKey(item.fields.canonical_key, canonicalKey) ||
+        familyKeys.has(normalizeVocabularyToken(item.fields.lemma || item.fields.display_text)) ||
+        parseVocabularyForms(item.fields.forms_json).some((form) => familyKeys.has(normalizeVocabularyToken(form))))
     );
     let createdWord = false;
     if (!word) {
@@ -365,7 +478,7 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
       } catch (error) {
         if (!(error instanceof TeableRequestError) || ![400, 409, 422].includes(error.status)) throw error;
         const refreshed = await client.listAllRecords<WordFields>("words");
-        word = refreshed.find((item) => item.fields.canonical_key === canonicalKey);
+        word = refreshed.find((item) => matchesCanonicalVocabularyKey(item.fields.canonical_key, canonicalKey));
         if (!word) throw error;
       }
     }
@@ -402,7 +515,11 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
     if (createdWord) newWordCount += 1;
     else updatedWordCount += 1;
   }
-  await addSavedWordsToDailyFeedback(context.conversation, newWordCount);
+  try {
+    await addSavedWordsToDailyFeedback(context.conversation, newWordCount);
+  } catch (error) {
+    console.warn("Words were saved but the daily feedback word count could not be updated.", error);
+  }
   return { savedCount, newWordCount, updatedWordCount, rejectedCount };
 }
 
@@ -432,57 +549,169 @@ async function upsertWordUsageSummary(
   }
 }
 
-async function analyzeVocabulary(candidates: VocabularyCandidate[], language: string) {
-  const fallback = Object.fromEntries(candidates.map((candidate) => [candidate.id, {
+/**
+ * Legacy rows store canonical_key values built with the previous normalization
+ * (which kept diacritics). Both sides are normalized at lookup time so an old
+ * "café" key still matches the new "cafe" key instead of duplicating the word.
+ */
+function matchesCanonicalVocabularyKey(storedKey: string | undefined, canonicalKey: string) {
+  if (!storedKey) return false;
+  if (storedKey === canonicalKey) return true;
+  try {
+    const parsed = JSON.parse(storedKey) as unknown;
+    if (!Array.isArray(parsed) || parsed.length !== 3) return false;
+    const [userId, profileId, lemma] = parsed;
+    if (typeof userId !== "string" || typeof profileId !== "string" || typeof lemma !== "string") return false;
+    return canonicalVocabularyKey(userId, profileId, lemma) === canonicalKey;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Puts learner-produced words first, then orders by frequency, so the
+ * candidate cap keeps the words the learner actually used most.
+ */
+function rankVocabularyCandidates(candidates: VocabularyCandidate[]) {
+  return [...candidates].sort((left, right) => {
+    if (left.source !== right.source) return left.source === "user" ? -1 : 1;
+    return right.occurrenceCount - left.occurrenceCount;
+  });
+}
+
+async function analyzeConversationVocabulary(conversationId: string, candidates: VocabularyCandidate[], language: string) {
+  const cached = readVocabularyAnalysisCache(conversationId);
+  const missing = candidates.filter((candidate) => !cached?.analyses[candidate.id]);
+  const analyzed = missing.length ? await analyzeVocabulary(missing, language) : {};
+  const analyses = { ...cached?.analyses, ...analyzed };
+  if (Object.keys(analyses).length) writeVocabularyAnalysisCache(conversationId, analyses);
+  return Object.fromEntries(candidates.map((candidate) => [candidate.id, analyses[candidate.id] ?? {
     lemma: fallbackVocabularyLemma(candidate.normalized, language),
     translation: "",
     partOfSpeech: ""
   }])) as Record<string, VocabularyLinguisticData>;
+}
+
+function readVocabularyAnalysisCache(conversationId: string) {
+  const prefix = `${conversationId}:`;
+  let freshest: VocabularyAnalysisCacheEntry | undefined;
+  for (const [key, entry] of vocabularyAnalysisCache) {
+    if (!key.startsWith(prefix)) continue;
+    if (entry.expiresAt <= Date.now()) {
+      vocabularyAnalysisCache.delete(key);
+      continue;
+    }
+    if (!freshest || entry.expiresAt > freshest.expiresAt) freshest = entry;
+  }
+  return freshest;
+}
+
+function writeVocabularyAnalysisCache(conversationId: string, analyses: Record<string, VocabularyLinguisticData>) {
+  const key = `${conversationId}:${stableVocabularyAnalysisHash(Object.keys(analyses))}`;
+  for (const [existingKey, entry] of vocabularyAnalysisCache) {
+    if (entry.expiresAt <= Date.now() || (existingKey.startsWith(`${conversationId}:`) && existingKey !== key)) {
+      vocabularyAnalysisCache.delete(existingKey);
+    }
+  }
+  while (vocabularyAnalysisCache.size >= MAX_VOCABULARY_ANALYSIS_CACHE_ENTRIES) {
+    const oldestKey = vocabularyAnalysisCache.keys().next().value;
+    if (!oldestKey) break;
+    vocabularyAnalysisCache.delete(oldestKey);
+  }
+  vocabularyAnalysisCache.set(key, { expiresAt: Date.now() + VOCABULARY_ANALYSIS_CACHE_TTL_MS, analyses });
+}
+
+function stableVocabularyAnalysisHash(ids: string[]) {
+  let hash = 5381;
+  const value = [...ids].sort().join("|");
+  for (let index = 0; index < value.length; index += 1) {
+    hash = ((hash << 5) + hash + value.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(36);
+}
+
+async function analyzeVocabulary(candidates: VocabularyCandidate[], language: string) {
+  const merged = Object.fromEntries(candidates.map((candidate) => [candidate.id, {
+    lemma: fallbackVocabularyLemma(candidate.normalized, language),
+    translation: "",
+    partOfSpeech: ""
+  }])) as Record<string, VocabularyLinguisticData>;
+  // Batching keeps each response small enough to avoid the truncated JSON that
+  // used to push every candidate silently onto the fallback lemma. Chunks run
+  // sequentially to stay clear of provider rate limits.
+  for (let index = 0; index < candidates.length; index += VOCABULARY_ANALYSIS_CHUNK_SIZE) {
+    const chunk = candidates.slice(index, index + VOCABULARY_ANALYSIS_CHUNK_SIZE);
+    Object.assign(merged, await analyzeVocabularyChunk(chunk, language));
+  }
+  return merged;
+}
+
+async function analyzeVocabularyChunk(chunk: VocabularyCandidate[], language: string) {
+  let content: string;
   try {
     const response = await createChatCompletion([
       {
         role: "system",
         content: "Analise vocabulário no idioma informado. Responda somente JSON válido: um array com objetos {id, lemma, translation, part_of_speech}. Preserve cada id exatamente, agrupe flexões usando o mesmo lemma canônico de dicionário, traduza brevemente para português brasileiro e informe a classe gramatical no idioma alvo."
       },
-      { role: "user", content: `Idioma: ${language}\nItens: ${JSON.stringify(candidates.map((candidate) => ({ id: candidate.id, text: candidate.text, context: candidate.context })))}` }
-    ], { temperature: 0, maxTokens: 900, timeoutMs: 4_500 });
-    const match = response.content.match(/\[[\s\S]*\]/);
+      { role: "user", content: `Idioma: ${language}\nItens: ${JSON.stringify(chunk.map((candidate) => ({ id: candidate.id, text: candidate.text, context: candidate.context })))}` }
+    ], { temperature: 0, maxTokens: 600, timeoutMs: 4_500 });
+    content = response.content;
+  } catch (error) {
+    console.warn(`Vocabulary analysis failed for ${chunk.length} candidate(s); keeping fallback lemmas.`, error);
+    return {} as Record<string, VocabularyLinguisticData>;
+  }
+  try {
+    const match = content.match(/\[[\s\S]*\]/);
     const parsed = JSON.parse(match?.[0] ?? "[]") as unknown;
-    if (!Array.isArray(parsed)) return fallback;
-    const allowedIds = new Set(candidates.map((candidate) => candidate.id));
+    if (!Array.isArray(parsed)) throw new Error("Vocabulary analysis did not return a JSON array.");
+    const result: Record<string, VocabularyLinguisticData> = {};
+    const allowedIds = new Set(chunk.map((candidate) => candidate.id));
     for (const value of parsed) {
       if (!value || typeof value !== "object" || Array.isArray(value)) continue;
       const item = value as Record<string, unknown>;
       if (typeof item.id !== "string" || !allowedIds.has(item.id) || typeof item.lemma !== "string") continue;
       const lemma = normalizeVocabularyToken(item.lemma);
       if (!lemma) continue;
-      fallback[item.id] = {
+      result[item.id] = {
         lemma,
         translation: typeof item.translation === "string" ? item.translation.trim() : "",
         partOfSpeech: typeof item.part_of_speech === "string" ? item.part_of_speech.trim() : ""
       };
     }
-    return fallback;
-  } catch {
-    return fallback;
+    return result;
+  } catch (error) {
+    console.warn("Vocabulary analysis response could not be parsed; keeping fallback lemmas.", error);
+    return {} as Record<string, VocabularyLinguisticData>;
   }
+}
+
+const IRREGULAR_LEMMAS = normalizeIrregularLemmas({
+  en: { went: "go", gone: "go", was: "be", were: "be", been: "be", did: "do", done: "do", had: "have", made: "make" },
+  pt: {
+    fui: "ir", foi: "ir", fomos: "ir", foram: "ir", vou: "ir", vai: "ir", vamos: "ir", vão: "ir",
+    sou: "ser", somos: "ser", são: "ser", era: "ser", eram: "ser",
+    tive: "ter", teve: "ter", tivemos: "ter", tiveram: "ter"
+  },
+  es: { fui: "ir", fue: "ir", fuimos: "ir", fueron: "ir", voy: "ir", va: "ir", vamos: "ir", van: "ir" },
+  fr: { étais: "être", était: "être", étions: "être", étaient: "être" },
+  it: { sono: "essere", era: "essere", erano: "essere", siamo: "essere" }
+});
+
+// Keys and lemmas are stored normalized so lookups stay diacritic-insensitive.
+function normalizeIrregularLemmas(value: Record<string, Record<string, string>>) {
+  return Object.fromEntries(
+    Object.entries(value).map(([code, forms]) => [
+      code,
+      Object.fromEntries(Object.entries(forms).map(([form, lemma]) => [normalizeVocabularyToken(form), normalizeVocabularyToken(lemma)]))
+    ])
+  );
 }
 
 export function fallbackVocabularyLemma(value: string, language: string) {
   const word = normalizeVocabularyToken(value);
-  const code = language.toLocaleLowerCase().split(/[-_]/)[0];
-  const irregular: Record<string, Record<string, string>> = {
-    en: { went: "go", gone: "go", was: "be", were: "be", been: "be", did: "do", done: "do", had: "have", made: "make" },
-    pt: {
-      fui: "ir", foi: "ir", fomos: "ir", foram: "ir", vou: "ir", vai: "ir", vamos: "ir", vão: "ir",
-      sou: "ser", somos: "ser", são: "ser", era: "ser", eram: "ser",
-      tive: "ter", teve: "ter", tivemos: "ter", tiveram: "ter"
-    },
-    es: { fui: "ir", fue: "ir", fuimos: "ir", fueron: "ir", voy: "ir", va: "ir", vamos: "ir", van: "ir" },
-    fr: { étais: "être", était: "être", étions: "être", étaient: "être" },
-    it: { sono: "essere", era: "essere", erano: "essere", siamo: "essere" }
-  };
-  if (irregular[code]?.[word]) return irregular[code][word];
+  const code = language.toLowerCase().split(/[-_]/)[0];
+  if (IRREGULAR_LEMMAS[code]?.[word]) return IRREGULAR_LEMMAS[code][word];
   if (code === "en") {
     if (word.length > 5 && word.endsWith("ies")) return `${word.slice(0, -3)}y`;
     if (word.length > 5 && word.endsWith("ing")) return undoubleFinalConsonant(word.slice(0, -3));

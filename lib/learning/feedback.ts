@@ -54,7 +54,23 @@ const COMPLETION_CACHE_TTL_MS = 30_000;
 const MAX_COMPLETION_CACHE_ENTRIES = 24;
 const completionCache = new Map<string, { expiresAt: number; value: Awaited<ReturnType<typeof buildCompletionSummary>> }>();
 
+const conversationEndLocks = new Map<string, Promise<Awaited<ReturnType<typeof finalizeConversation>>>>();
+
 export async function endConversation(conversationId: string) {
+  // Serializes concurrent /end calls for the same conversation: the second call
+  // waits for the first, then sees the completed status below and returns the
+  // persisted result instead of creating a duplicate daily feedback.
+  const previous = conversationEndLocks.get(conversationId) ?? Promise.resolve(undefined);
+  const current = previous.catch(() => undefined).then(() => finalizeConversation(conversationId));
+  conversationEndLocks.set(conversationId, current);
+  try {
+    return await current;
+  } finally {
+    if (conversationEndLocks.get(conversationId) === current) conversationEndLocks.delete(conversationId);
+  }
+}
+
+async function finalizeConversation(conversationId: string) {
   const context = await getConversation(conversationId);
   if (!context) throw new LearningStateError("Conversa não encontrada.", 404);
   if (!isMutableConversationStatus(context.conversation.fields.status)) {

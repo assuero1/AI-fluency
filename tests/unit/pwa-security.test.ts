@@ -10,7 +10,8 @@ const audioRoute = fs.readFileSync(path.join(root, "app/api/voice/[audioId]/rout
 
 describe("PWA privacy policy", () => {
   it("uses network-first navigation with the offline page and never writes navigation HTML to cache", () => {
-    expect(worker).toContain('fetch(request).catch(() => caches.match("/offline"))');
+    expect(worker).toContain("fetch(request).catch(() => offlineNavigationFallback(request))");
+    expect(worker).toContain('caches.match("/offline")');
     expect(worker).not.toContain("cache.put(request, copy)");
     expect(worker).toContain('url.pathname.startsWith("/_next/static/")');
     expect(worker).not.toContain('APP_SHELL = ["/",');

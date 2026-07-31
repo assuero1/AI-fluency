@@ -1,5 +1,6 @@
 import { handleApiError, jsonOk } from "@/lib/api/responses";
-import { startConversation } from "@/lib/learning/conversations";
+import { after } from "next/server";
+import { flushConversationEventWrites, startConversation } from "@/lib/learning/conversations";
 
 export async function POST(request: Request) {
   try {
@@ -11,6 +12,8 @@ export async function POST(request: Request) {
       source: typeof body.source === "string" ? body.source : undefined,
       reason: typeof body.reason === "string" ? body.reason : undefined
     });
+
+    after(() => flushConversationEventWrites());
 
     return jsonOk({ ok: true, ...result }, { status: 201 });
   } catch (error) {

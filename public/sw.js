@@ -11,9 +11,11 @@ self.addEventListener("message", (event) => {
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+    caches
+      .keys()
+      .then((keys) => Promise.all(keys.filter((key) => key.startsWith("ai-fluency-") && key !== CACHE_NAME).map((key) => caches.delete(key))))
+      .then(() => self.clients.claim())
   );
-  self.clients.claim();
 });
 
 self.addEventListener("fetch", (event) => {
@@ -23,7 +25,7 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") {
     // Learner pages are always requested from the network; offline never serves stale personal data.
-    event.respondWith(fetch(request).catch(() => caches.match("/offline")));
+    event.respondWith(fetch(request).catch(() => offlineNavigationFallback(request)));
     return;
   }
 
@@ -40,3 +42,17 @@ self.addEventListener("fetch", (event) => {
     );
   }
 });
+
+function offlineNavigationFallback(request) {
+  return caches.match("/offline").then(
+    (cached) =>
+      cached ??
+      fetch(request).catch(
+        () =>
+          new Response("Você está offline. Reconecte para continuar.", {
+            status: 503,
+            headers: { "Content-Type": "text/plain; charset=utf-8" }
+          })
+      )
+  );
+}

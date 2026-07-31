@@ -1,6 +1,7 @@
 import { createChatCompletion } from "@/lib/ai/client";
 import { getAiConfig } from "@/lib/ai/config";
-import { getTeableClient, TeableRecord } from "@/lib/teable/client";
+import { getTeableClient, TeableClient, TeableRecord, TeableRequestError } from "@/lib/teable/client";
+import { TeableTableKey } from "@/lib/teable/schema";
 import { createTopic } from "./topics";
 import { assertPracticeReady, LearningStateError } from "./access";
 import { isMutableConversationStatus, selectScopedConversation } from "./conversation-state";
@@ -122,6 +123,30 @@ type LearningAnalysis = {
 type LearningCorrection = NonNullable<LearningAnalysis["corrections"]>[number];
 type LearningWord = NonNullable<LearningAnalysis["words"]>[number];
 
+// Analytics event writes are fire-and-forget: they start immediately, never
+// block the user-visible response, and failures are swallowed. Route handlers
+// await flushConversationEventWrites() via after() so serverless does not
+// freeze in-flight writes before they complete.
+const pendingEventWrites = new Set<Promise<void>>();
+
+function trackConversationEvent(
+  client: TeableClient,
+  userId: string | undefined,
+  eventName: string,
+  payload: Record<string, unknown>
+) {
+  const write = client.createEvent(userId, eventName, payload).then(
+    () => undefined,
+    () => undefined
+  );
+  pendingEventWrites.add(write);
+  void write.finally(() => pendingEventWrites.delete(write));
+}
+
+export async function flushConversationEventWrites() {
+  await Promise.all(Array.from(pendingEventWrites));
+}
+
 export async function startConversation(input: {
   topicId?: string;
   title?: string;
@@ -182,7 +207,7 @@ export async function startConversation(input: {
     created_at: now
   });
 
-  await client.createEvent(user.id, "conversation_started", {
+  trackConversationEvent(client, user.id, "conversation_started", {
     conversation_id: conversation.id,
     topic_id: topicId,
     mode: conversation.fields.mode,
@@ -258,26 +283,48 @@ export async function getConversation(conversationId?: string) {
   const client = getTeableClient();
   const user = await getExistingPersonalUser();
   if (!user) return null;
+
+  // With a known conversation id, messages/corrections/the conversation row do
+  // not depend on the user or profile loads, so start them immediately in
+  // parallel. Rejections are silenced until awaited because an early return
+  // below may make some of these loads unnecessary.
+  const messagesPromise = conversationId
+    ? silenceRejection(client.listRecordsWhere<MessageFields>("messages", "conversation_id", conversationId))
+    : undefined;
+  const correctionsPromise = conversationId
+    ? silenceRejection(client.listRecordsWhere<CorrectionFields>("corrections", "conversation_id", conversationId))
+    : undefined;
+  const conversationPromise = conversationId
+    ? silenceRejection(getRecordOrNull<ConversationFields>(client, "conversations", conversationId))
+    : undefined;
+
   const profile = await getActiveLanguageProfile(user);
   if (!profile) return null;
-  const conversations = await client.listAllRecords<ConversationFields>("conversations");
-  const conversation = selectScopedConversation(conversations, { userId: user.id, profileId: profile.id }, conversationId);
 
-  if (!conversation) return null;
+  let conversation: TeableRecord<ConversationFields>;
+  if (conversationPromise) {
+    const record = await conversationPromise;
+    if (!record || record.fields.user_id !== user.id || record.fields.language_profile_id !== profile.id) return null;
+    conversation = record;
+  } else {
+    const conversations = await client.listRecordsWhere<ConversationFields>("conversations", "user_id", user.id);
+    const selected = selectScopedConversation(conversations, { userId: user.id, profileId: profile.id });
+    if (!selected) return null;
+    conversation = selected;
+  }
 
-  const [messages, topics, profiles, corrections] = await Promise.all([
-    client.listAllRecords<MessageFields>("messages"),
-    client.listAllRecords<{ title?: string; Name?: string; reason?: string }>("topics"),
-    client.listAllRecords<LanguageProfileFields>("languageProfiles"),
-    client.listAllRecords<CorrectionFields>("corrections")
+  const [messages, topic, corrections] = await Promise.all([
+    messagesPromise ?? client.listRecordsWhere<MessageFields>("messages", "conversation_id", conversation.id),
+    conversation.fields.topic_id
+      ? getRecordOrNull<{ title?: string; Name?: string; reason?: string }>(client, "topics", conversation.fields.topic_id)
+      : Promise.resolve(null),
+    correctionsPromise ?? client.listRecordsWhere<CorrectionFields>("corrections", "conversation_id", conversation.id)
   ]);
 
   const conversationMessages = messages
     .filter((message) => message.fields.conversation_id === conversation.id)
     .sort((a, b) => new Date(a.fields.created_at).getTime() - new Date(b.fields.created_at).getTime());
 
-  const topic = topics.find((record) => record.id === conversation.fields.topic_id);
-  const conversationProfile = profiles.find((record) => record.id === conversation.fields.language_profile_id && record.id === profile.id) ?? null;
   const conversationCorrections = corrections
     .filter((correction) => correction.fields.conversation_id === conversation.id)
     .sort((a, b) => new Date(a.fields.created_at).getTime() - new Date(b.fields.created_at).getTime());
@@ -289,8 +336,29 @@ export async function getConversation(conversationId?: string) {
     corrections: conversationCorrections,
     topicTitle: topic?.fields.title ?? topic?.fields.Name ?? conversation.fields.Name ?? "Conversa livre",
     topicReason: topic?.fields.reason ?? "",
-    profile: conversationProfile
+    profile
   };
+}
+
+// Loads started before the ownership checks may become unnecessary when an
+// early return happens; mark them handled so a late rejection never surfaces
+// as an unhandled rejection. Awaiting the promise later still rethrows.
+function silenceRejection<T>(promise: Promise<T>): Promise<T> {
+  void promise.catch(() => {});
+  return promise;
+}
+
+async function getRecordOrNull<TFields extends Record<string, unknown>>(
+  client: TeableClient,
+  tableKey: TeableTableKey,
+  recordId: string
+) {
+  try {
+    return await client.getRecord<TFields>(tableKey, recordId);
+  } catch (error) {
+    if (error instanceof TeableRequestError && error.status === 404) return null;
+    throw error;
+  }
 }
 
 export async function getConversationWithTutorStart(conversationId?: string) {
@@ -376,7 +444,7 @@ export async function runConversationQuickAction(conversationId: string, action:
         content: `[Interface action; do not treat this as a learner utterance.] ${getConversationQuickActionPrompt(action)}`
       }
     ],
-    { temperature: 0.45, maxTokens: 520 }
+    { temperature: 0.45, maxTokens: 520, timeoutMs: 25_000 }
   );
   const quickActionReply = safeTutorReply(ai.content, context.profile);
   const now = new Date().toISOString();
@@ -392,7 +460,7 @@ export async function runConversationQuickAction(conversationId: string, action:
     created_at: now
   });
 
-  await getTeableClient().createEvent(context.conversation.fields.user_id, "conversation_quick_action_used", {
+  trackConversationEvent(getTeableClient(), context.conversation.fields.user_id, "conversation_quick_action_used", {
     conversation_id: context.conversation.id,
     assistant_message_id: assistantMessage.id,
     action
@@ -410,7 +478,7 @@ async function completeConversationTurn(
   const history = context.messages.some((message) => message.id === userMessage.id) ? context.messages : [...context.messages, userMessage];
   const analysisTurn = await createAnalyzedAssistantTurn(context.conversation, context.topicTitle, context.topicReason, context.profile, history, userMessage);
 
-  await client.createEvent(context.conversation.fields.user_id, "conversation_message_sent", {
+  trackConversationEvent(client, context.conversation.fields.user_id, "conversation_message_sent", {
     conversation_id: context.conversation.id,
     user_message_id: userMessage.id,
     assistant_message_id: analysisTurn.assistantMessage.id,
@@ -469,7 +537,7 @@ async function createAnalyzedAssistantTurn(
         content: message.fields.text
       }))
     ],
-    { temperature: 0.4, maxTokens: 560 }
+    { temperature: 0.4, maxTokens: 560, timeoutMs: 25_000 }
   );
 
   const analysis = parseLearningAnalysis(ai.content);
@@ -530,7 +598,7 @@ async function createAssistantMessage(
           ]
         : [])
     ],
-    { temperature: 0.5, maxTokens: 220 }
+    { temperature: 0.5, maxTokens: 220, timeoutMs: 25_000 }
   );
   const assistantReply = safeTutorReply(ai.content, profile);
 

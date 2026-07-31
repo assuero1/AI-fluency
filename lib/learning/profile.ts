@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { getConnectionStatus } from "@/lib/settings/status";
 import { getEnv } from "@/lib/env";
 import { getTeableClient, safeUpdateRecord, TeableRecord } from "@/lib/teable/client";
@@ -60,10 +61,12 @@ export async function getOrCreatePersonalUser(payload?: Pick<OnboardingPayload, 
   });
 }
 
-export async function getExistingPersonalUser() {
+// Cached per server request (React cache) so repeated callers within one
+// request share a single Teable read; outside a request it is a passthrough.
+export const getExistingPersonalUser = cache(async function getExistingPersonalUser() {
   const users = await getTeableClient().listRecords<UserFields>("users", 100);
   return resolvePersonalUser(users, getEnv("AI_FLUENCY_USER_ID"));
-}
+});
 
 export function resolvePersonalUser(users: TeableRecord<UserFields>[], configuredUserId?: string) {
   if (configuredUserId) {
@@ -85,7 +88,9 @@ export function resolvePersonalUser(users: TeableRecord<UserFields>[], configure
   );
 }
 
-export async function getActiveLanguageProfile(user?: TeableRecord<UserFields>) {
+// Cached per server request (React cache) so repeated callers within one
+// request share a single Teable read; outside a request it is a passthrough.
+export const getActiveLanguageProfile = cache(async function getActiveLanguageProfile(user?: TeableRecord<UserFields>) {
   const client = getTeableClient();
   const profileId = user?.fields.active_language_id;
   const profiles = await client.listRecords<LanguageProfileFields>("languageProfiles", 50);
@@ -96,7 +101,7 @@ export async function getActiveLanguageProfile(user?: TeableRecord<UserFields>) 
   }
 
   return profiles.find((profile) => profile.fields.user_id === user?.id) ?? null;
-}
+});
 
 export async function createLanguageProfile(user: TeableRecord<UserFields>, payload: OnboardingPayload) {
   const client = getTeableClient();
