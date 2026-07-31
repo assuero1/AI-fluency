@@ -2187,3 +2187,9 @@ textarea:focus-visible,
 
 /* Chevron das list-rows segue o tom da seção (lucide fixa stroke="#2f9d4a") */
 .list-row > svg.lucide-chevron-right { stroke: var(--section-text); }
+
+/* === Recolors de seção: complementos pós-review (aliases --primary congelados) === */
+.progress-line span { background: var(--section); }
+.bubble.user { background: var(--section-soft); }
+.mic-button { background: var(--section-soft); }
+.list-row:hover { transform: translateY(-2px); }

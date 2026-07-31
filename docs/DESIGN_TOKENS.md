@@ -34,7 +34,7 @@ Cada seção tem 4 tokens: sólida, `-deep` (sombra 3D e estados pressionados), 
 | Progresso (`--progresso*`) | `#ffc800` | `#c79a00` | `#fff3c4` | `/progresso` |
 | Neutro (`--neutral*`) | `#52667a` | `#3f5062` | `#e9eef3` | `/perfil`, `/settings/*`, erros, `/offline` |
 
-Mecanismo: `AppShell` recebe `section` e aplica `.section-<valor>` no `.phone-shell`, que define `--section`, `--section-deep`, `--section-soft`, `--section-text`. Componentes consomem essas variáveis. Aliases legados `--primary: var(--section)` e `--primary-soft: var(--section-soft)` mantêm seletores antigos section-aware. Textos/ícones sobre fundos claros usam `--section-text` (contraste).
+Mecanismo: `AppShell` recebe `section` e aplica `.section-<valor>` no `.phone-shell`, que define `--section`, `--section-deep`, `--section-soft`, `--section-text`. Componentes consomem essas variáveis. Os aliases legados `--primary` / `--primary-soft` ficam **congelados no verde da marca** (custom properties resolvem `var()` no `:root` e herdam o valor computado), como `--border`: seletores antigos que os usam NÃO seguem a seção — consumidores em telas coloridas recebem overrides section-aware no fim do `globals.css`. Em código novo, use sempre `var(--section*)`, nunca `var(--primary)`. Textos/ícones sobre fundos claros usam `--section-text` (contraste).
 
 Exceção de contraste: na seção progresso (amarela), `.green-button` usa texto `#4a3c00` em vez de branco.
 
