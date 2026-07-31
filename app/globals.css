@@ -2155,3 +2155,9 @@ textarea:focus-visible,
 .mic-button.listening {
   animation: pulse-halo 1.6s ease-out infinite;
 }
+
+/* === Micro-interações chunky === */
+.chat-row { animation: pop-in .38s cubic-bezier(.34, 1.4, .64, 1) both; }
+.pill svg.lucide-flame { transform-origin: center; animation: flame-pulse 1.8s ease-in-out infinite; }
+.flashcard-card-inner { transition: transform .55s cubic-bezier(.34, 1.3, .64, 1); }
+.list-row { transition: transform .12s ease, box-shadow .12s ease; }

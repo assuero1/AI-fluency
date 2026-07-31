@@ -102,4 +102,13 @@ describe("chunky playful redesign contracts", () => {
     expect(css).toContain(".mic-button.listening");
     expect(css).toContain("animation: pulse-halo");
   });
+
+  it("adds chunky micro-interactions", () => {
+    const css = read("app/globals.css");
+    expect(css).toContain(".chat-row { animation: pop-in");
+    expect(css).toContain("lucide-flame");
+    expect(css).toContain("animation: flame-pulse");
+    expect(css).toContain(".flashcard-card-inner");
+    expect(css).toContain("cubic-bezier(.34, 1.3, .64, 1)");
+  });
 });
