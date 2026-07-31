@@ -2115,3 +2115,29 @@ textarea:focus-visible,
 }
 .loading-dot:nth-child(3) { animation-delay: .15s; }
 .loading-dot:nth-child(4) { animation-delay: .3s; }
+
+
+/* === Skeletons com shimmer === */
+.screen-skeleton { display: grid; gap: 18px; margin-top: 12px; }
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  background: linear-gradient(90deg, var(--line) 25%, #f4f0e8 50%, var(--line) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+}
+.skeleton-line { width: 100%; height: 16px; }
+.skeleton-card { width: 100%; height: 120px; border-radius: 24px; }
+.skeleton-circle { width: 62px; height: 62px; border-radius: 999px; }
+
+/* === Loading de rota: marca saltitante (substitui o ring spinner) === */
+.loading-mark {
+  width: 56px;
+  height: 56px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--section);
+  box-shadow: 0 5px 0 var(--section-deep);
+  animation: bounce-in .6s cubic-bezier(.34, 1.56, .64, 1) both;
+}

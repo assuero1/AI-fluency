@@ -80,4 +80,15 @@ describe("chunky playful redesign contracts", () => {
     expect(css).toContain(".loading-dot");
     expect(css).toContain("animation: dot-bounce");
   });
+
+  it("provides skeleton-based route loading screens", () => {
+    expect(read("components/Skeleton.tsx")).toContain("skeleton-");
+    expect(read("app/palavras/loading.tsx")).toContain("<Skeleton");
+    expect(read("app/progresso/loading.tsx")).toContain("<Skeleton");
+    expect(read("app/calendario/loading.tsx")).toContain("<Skeleton");
+    expect(read("app/loading.tsx")).toContain("<LoadingDots");
+    const css = read("app/globals.css");
+    expect(css).toContain("animation: shimmer");
+    expect(css).toContain("animation: bounce-in");
+  });
 });
