@@ -21,7 +21,7 @@ describe("accessibility contracts", () => {
     const css = read("app/globals.css");
     expect(css).toContain(":focus-visible");
     expect(css).toContain("prefers-reduced-motion: reduce");
-    expect(css).toContain("--primary: #217a38");
+    expect(css).toContain("--brand: #58cc02");
   });
 
   it("keeps dialogs keyboard-bound and isolates their background", () => {

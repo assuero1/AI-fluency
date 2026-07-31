@@ -1,19 +1,54 @@
 :root {
-  --bg: #ffffff;
+  /* Superfícies e texto */
+  --bg: #faf8f5;
+  --surface: #ffffff;
   --text: #1f1f1f;
-  --muted: #666666;
-  --subtle: #6f6f6f;
-  --line: #e5e5e5;
-  --primary: #217a38;
-  --primary-soft: #e7f5e9;
+  --muted: #66625c;
+  --subtle: #6f6a63;
+  --line: #e8e2d8;
+  --line-deep: #d9d0c2;
+  --border: var(--line);
+
+  /* Marca e seções: sólida / deep (sombra 3D) / soft (pastel) */
+  --brand: #58cc02;
+  --brand-deep: #58a700;
+  --brand-soft: #e7f8d5;
+  --chat: #1cb0f6;
+  --chat-deep: #148fd6;
+  --chat-soft: #ddf1fe;
+  --palavras: #a560ff;
+  --palavras-deep: #8549e8;
+  --palavras-soft: #f1e6ff;
+  --calendario: #ff9600;
+  --calendario-deep: #d97c00;
+  --calendario-soft: #ffeed6;
+  --progresso: #ffc800;
+  --progresso-deep: #c79a00;
+  --progresso-soft: #fff3c4;
+  --neutral: #52667a;
+  --neutral-deep: #3f5062;
+  --neutral-soft: #e9eef3;
+
+  /* Semânticas */
   --warning: #805900;
   --warning-soft: #fff3cf;
   --info: #1f64b3;
   --info-soft: #e7f1ff;
-  --danger: #bd3f30;
-  --danger-soft: #ffe9e5;
+  --danger: #ff4b4b;
+  --danger-deep: #d9372b;
+  --danger-soft: #ffe5e3;
   --dark-cta: #111111;
-  --surface: #ffffff;
+
+  /* Seção ativa (default = marca); sobrescrita por .section-* no .phone-shell */
+  --section: var(--brand);
+  --section-deep: var(--brand-deep);
+  --section-soft: var(--brand-soft);
+  --section-text: var(--brand-deep);
+
+  /* Aliases legados: seletores existentes herdam a cor da seção */
+  --primary: var(--section);
+  --primary-soft: var(--section-soft);
+
   --nav-height: 86px;
   --screen-pad: 24px;
   --radius-lg: 28px;
@@ -21,6 +56,13 @@
   --shadow-soft: 0 16px 40px rgba(31, 31, 31, 0.08);
   color-scheme: light;
 }
+
+/* Cor de seção por tela — aplicada no .phone-shell via prop `section` do AppShell */
+.section-chat { --section: var(--chat); --section-deep: var(--chat-deep); --section-soft: var(--chat-soft); --section-text: var(--chat-deep); }
+.section-palavras { --section: var(--palavras); --section-deep: var(--palavras-deep); --section-soft: var(--palavras-soft); --section-text: var(--palavras-deep); }
+.section-calendario { --section: var(--calendario); --section-deep: var(--calendario-deep); --section-soft: var(--calendario-soft); --section-text: var(--calendario-deep); }
+.section-progresso { --section: var(--progresso); --section-deep: var(--progresso-deep); --section-soft: var(--progresso-soft); --section-text: var(--progresso-deep); }
+.section-neutral { --section: var(--neutral); --section-deep: var(--neutral-deep); --section-soft: var(--neutral-soft); --section-text: var(--neutral-deep); }
 
 * {
   box-sizing: border-box;
