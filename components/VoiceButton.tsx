@@ -19,9 +19,9 @@ type VoiceStatus = "idle" | "loading" | "ready" | "playing" | "paused" | "ended"
 let activeVoice: { owner: symbol; stop: () => void } | null = null;
 const speechRequests = new Map<string, Promise<string>>();
 
-function Wave() {
+function Wave({ playing = false }: { playing?: boolean }) {
   return (
-    <span className="wave" aria-hidden="true">
+    <span className={playing ? "wave playing" : "wave"} aria-hidden="true">
       <span />
       <span />
       <span />
@@ -171,8 +171,8 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
 
   return (
     <button aria-label={accessibleLabel} className={status === "error" ? "audio-pill audio-error" : "audio-pill"} onClick={togglePlayback} type="button">
-      <StatusIcon className={status === "loading" ? "spin" : undefined} fill={StatusIcon === Play ? "#217a38" : undefined} />
-      <Wave />
+      <StatusIcon className={status === "loading" ? "spin" : undefined} />
+      <Wave playing={status === "playing"} />
       <span aria-live="polite">{voiceStatusText(status, label)}</span>
     </button>
   );

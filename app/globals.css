@@ -2141,3 +2141,17 @@ textarea:focus-visible,
   box-shadow: 0 5px 0 var(--section-deep);
   animation: bounce-in .6s cubic-bezier(.34, 1.56, .64, 1) both;
 }
+
+/* === Wave: equalizador animado durante a reprodução === */
+.wave span { transform-origin: center; }
+.wave.playing span { animation: wave-eq .9s ease-in-out infinite; }
+.wave.playing span:nth-child(1) { animation-delay: 0s; }
+.wave.playing span:nth-child(2) { animation-delay: .12s; }
+.wave.playing span:nth-child(3) { animation-delay: .24s; }
+.wave.playing span:nth-child(4) { animation-delay: .36s; }
+.wave.playing span:nth-child(5) { animation-delay: .48s; }
+
+/* === Microfone ouvindo: halo pulsante === */
+.mic-button.listening {
+  animation: pulse-halo 1.6s ease-out infinite;
+}

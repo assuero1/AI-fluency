@@ -91,4 +91,15 @@ describe("chunky playful redesign contracts", () => {
     expect(css).toContain("animation: shimmer");
     expect(css).toContain("animation: bounce-in");
   });
+
+  it("animates the audio wave while playing and the mic halo while listening", () => {
+    const voice = read("components/VoiceButton.tsx");
+    expect(voice).toContain("wave playing");
+    expect(voice).not.toContain("#217a38");
+    const css = read("app/globals.css");
+    expect(css).toContain(".wave.playing span");
+    expect(css).toContain("animation: wave-eq");
+    expect(css).toContain(".mic-button.listening");
+    expect(css).toContain("animation: pulse-halo");
+  });
 });
