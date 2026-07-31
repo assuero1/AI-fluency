@@ -2039,3 +2039,62 @@ textarea:focus-visible,
   0%, 100% { transform: scale(1); }
   50% { transform: scale(1.18); }
 }
+
+/* === Camada chunky: botões 3D === */
+.outline-button,
+.dark-button,
+.green-button {
+  border-width: 2px;
+  border-radius: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 4px 0 var(--line-deep);
+  transition: transform .1s ease, box-shadow .1s ease, filter .15s ease;
+}
+.dark-button { box-shadow: 0 4px 0 #000; }
+.green-button {
+  border-color: var(--section);
+  background: var(--section);
+  box-shadow: 0 4px 0 var(--section-deep);
+}
+.section-progresso .green-button { color: #4a3c00; }
+.outline-button:hover:not(:disabled),
+.dark-button:hover:not(:disabled),
+.green-button:hover:not(:disabled) { filter: brightness(1.04); }
+.outline-button:active:not(:disabled),
+.dark-button:active:not(:disabled),
+.green-button:active:not(:disabled) {
+  transform: translateY(4px);
+  box-shadow: 0 0 0 transparent;
+}
+.dark-button:disabled,
+.green-button:disabled,
+.outline-button:disabled {
+  transform: none;
+  box-shadow: 0 2px 0 var(--line-deep);
+}
+
+/* === Camada chunky: cards com borda 2px e sombra sólida sutil === */
+.choice-card,
+.settings-card,
+.topic-card,
+.soft-card,
+.progress-level-card,
+.progress-focus-card,
+.calendar-feedback-card {
+  border: 2px solid var(--line);
+  box-shadow: 0 3px 0 rgba(31, 25, 16, .05);
+}
+.choice-card { transition: transform .12s ease, box-shadow .12s ease; }
+.choice-card:hover { transform: translateY(-2px); box-shadow: 0 5px 0 rgba(31, 25, 16, .07); }
+.choice-card.active { border-color: var(--section); }
+
+/* === Textos e ícones sobre fundos claros usam o tom profundo da seção === */
+.pill.primary { color: var(--section-text); }
+.icon-circle.green { color: var(--section-text); }
+.link-action { color: var(--section-text); }
+.audio-pill { color: var(--section-text); }
+.voice-icon-button { color: var(--section-text); }
+.mic-button { color: var(--section-text); }
+.nav-item.active { color: var(--section-text); }
+.nav-item.active svg { fill: var(--section-text); stroke: var(--section-text); }

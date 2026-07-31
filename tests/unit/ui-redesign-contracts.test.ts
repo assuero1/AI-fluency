@@ -63,4 +63,11 @@ describe("chunky playful redesign contracts", () => {
       expect(css).toContain(`@keyframes ${name}`);
     }
   });
+
+  it("applies chunky 3D buttons and card borders", () => {
+    const css = read("app/globals.css");
+    expect(css).toContain("box-shadow: 0 4px 0 var(--section-deep)");
+    expect(css).toContain("transform: translateY(4px)");
+    expect(css).toContain("box-shadow: 0 3px 0 rgba(31, 25, 16, .05)");
+  });
 });
