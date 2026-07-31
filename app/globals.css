@@ -2161,3 +2161,29 @@ textarea:focus-visible,
 .pill svg.lucide-flame { transform-origin: center; animation: flame-pulse 1.8s ease-in-out infinite; }
 .flashcard-card-inner { transition: transform .55s cubic-bezier(.34, 1.3, .64, 1); }
 .list-row { transition: transform .12s ease, box-shadow .12s ease; }
+
+/* === QA visual (task 10): restos de verde fixo que ignoravam a seção === */
+.word-search-form button { background: var(--section-soft); color: var(--section-text); }
+.pill.primary { background: var(--section-soft); }
+.icon-circle.green { background: var(--section-soft); }
+.choice-card.active { background: var(--section-soft); }
+.calendar-day.has-note { background: var(--section-soft); color: var(--section-text); }
+.calendar-grid-interactive .calendar-day.today { border-color: var(--section-text); color: var(--section-text); }
+.calendar-feedback-date { color: var(--section-text); }
+.metric-foot { color: var(--section-text); }
+.back-link { color: var(--section-text); }
+
+/* Select do perfil: tom da seção e reticências em vez de texto cortado */
+.profile-select-row select { max-width: 64%; color: var(--section-text); text-overflow: ellipsis; }
+
+/* Pills de revisão: 3 colunas até 429px para não quebrar rótulos no meio da palavra */
+@media (max-width: 429px) {
+  .word-review-states { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+/* Ícones de destaque do calendário seguem o tom da seção (lucide fixa stroke="#2f9d4a") */
+.calendar-feedback-card .top-row > svg { stroke: var(--section-text); }
+.section-calendario .top-row > .section-title + svg { stroke: var(--section-text); }
+
+/* Chevron das list-rows segue o tom da seção (lucide fixa stroke="#2f9d4a") */
+.list-row > svg.lucide-chevron-right { stroke: var(--section-text); }

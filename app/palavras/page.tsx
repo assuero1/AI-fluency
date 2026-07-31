@@ -42,7 +42,7 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
             <div className="row-meta">usos em conversas</div>
           </div>
           <div>
-            <div className="row-title" style={{ color: "var(--primary)" }}>
+            <div className="row-title" style={{ color: "var(--section-text)" }}>
               +{data.summary.weeklyNew}
             </div>
             <div className="row-meta">novas esta semana</div>

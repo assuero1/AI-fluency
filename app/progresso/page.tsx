@@ -48,7 +48,7 @@ export default async function ProgressPage() {
       <ScreenHeader title="Progresso" subtitle="Seu panorama de fluência" streak={progress.streak} />
       <section className="section">
         <div className="progress-level-card">
-          <div className="word-big" style={{ color: "var(--primary)" }}>
+          <div className="word-big" style={{ color: "var(--section-text)" }}>
             {shortLevel(progress.profile.level)}
           </div>
           <div className="row-title">{progress.profile.level}</div>
