@@ -1,129 +1,76 @@
-# Design Tokens
+# Design Tokens — AI Fluency
 
-These tokens translate the visual references into implementation rules. They are intentionally practical rather than final brand guidelines.
+Fonte da verdade: `app/globals.css` (`:root` + blocos anexados ao fim). Este documento descreve o sistema; em caso de divergência, o CSS vence.
 
-## Visual Direction
+## Identidade
 
-Use the design from `assets/screens`:
+- Estilo: "chunky playful" — cartunesco e colorido estilo Duolingo, sem ser infantil (público adulto).
+- Fonte: `Nunito` (variable, pesos usados 620–900), carregada via `next/font` em `app/layout.tsx` como `--font-nunito`.
+- Fundo do app: off-white quente `--bg: #faf8f5`.
+- Cor da marca (seção default): `--brand: #58cc02`.
 
-- white background,
-- friendly Duolingo-like energy,
-- green primary actions,
-- black typography,
-- pastel circular icon backgrounds,
-- rounded outline buttons,
-- light dividers,
-- spacious mobile layout.
+## Superfícies e texto
 
-## Navigation
+| Token | Valor | Uso |
+|---|---|---|
+| `--bg` | `#faf8f5` | fundo do app e `.phone-shell` |
+| `--surface` | `#ffffff` | cards e inputs |
+| `--text` | `#1f1f1f` | texto principal |
+| `--muted` / `--subtle` | `#66625c` / `#6f6a63` | texto secundário |
+| `--line` | `#e8e2d8` | bordas (2px no estilo chunky) |
+| `--line-deep` | `#d9d0c2` | sombra 3D de botões outline |
+| `--border` | `var(--line)` | alias legado (não usar em código novo) |
 
-Bottom navigation labels:
+## Paleta de seções (multi-cor por área)
 
-1. Inicio
-2. Chat
-3. Palavras
-4. Calendario
-5. Perfil
+Cada seção tem 4 tokens: sólida, `-deep` (sombra 3D e estados pressionados), `-soft` (fundo pastel) e o texto derivado.
 
-Rules:
+| Seção | Sólida | Deep | Soft | Telas |
+|---|---|---|---|---|
+| Marca (`--brand*`) | `#58cc02` | `#58a700` | `#e7f8d5` | home, onboarding (default) |
+| Chat (`--chat*`) | `#1cb0f6` | `#148fd6` | `#ddf1fe` | `/chat`, `/resumo` |
+| Palavras (`--palavras*`) | `#a560ff` | `#8549e8` | `#f1e6ff` | `/palavras`, `/palavras/treino`, `/palavras/[wordId]` |
+| Calendário (`--calendario*`) | `#ff9600` | `#d97c00` | `#ffeed6` | `/calendario`, `/calendario/[date]` |
+| Progresso (`--progresso*`) | `#ffc800` | `#c79a00` | `#fff3c4` | `/progresso` |
+| Neutro (`--neutral*`) | `#52667a` | `#3f5062` | `#e9eef3` | `/perfil`, `/settings/*`, erros, `/offline` |
 
-- Use the same nav on every main screen.
-- Chat screen highlights `Chat`, not `Conversa`.
-- Progresso is not a bottom nav item.
-- Progresso is an internal screen accessed from Inicio, Calendario, or Perfil.
+Mecanismo: `AppShell` recebe `section` e aplica `.section-<valor>` no `.phone-shell`, que define `--section`, `--section-deep`, `--section-soft`, `--section-text`. Componentes consomem essas variáveis. Aliases legados `--primary: var(--section)` e `--primary-soft: var(--section-soft)` mantêm seletores antigos section-aware. Textos/ícones sobre fundos claros usam `--section-text` (contraste).
 
-## Color Tokens
+Exceção de contraste: na seção progresso (amarela), `.green-button` usa texto `#4a3c00` em vez de branco.
 
-```css
-:root {
-  --color-bg: #ffffff;
-  --color-text: #1f1f1f;
-  --color-muted: #666666;
-  --color-line: #e5e5e5;
-  --color-primary: #2f9d4a;
-  --color-primary-soft: #e7f5e9;
-  --color-warning: #e6a400;
-  --color-warning-soft: #fff3cf;
-  --color-info: #2f7edb;
-  --color-info-soft: #e7f1ff;
-  --color-danger: #ef6b57;
-  --color-danger-soft: #ffe9e5;
-  --color-cta-dark: #111111;
-}
-```
+## Semânticas
 
-## Type Scale
+| Token | Valor | Uso |
+|---|---|---|
+| `--warning` / `--warning-soft` | `#805900` / `#fff3cf` | lembretes, streak |
+| `--info` / `--info-soft` | `#1f64b3` / `#e7f1ff` | informações |
+| `--danger` / `--danger-deep` / `--danger-soft` | `#ff4b4b` / `#d9372b` / `#ffe5e3` | correções, zona destrutiva, mic ouvindo |
+| `--dark-cta` | `#111111` | botão escuro |
 
-Mobile-first defaults:
+## Estilo chunky
 
-- Screen title: 28-32px, bold.
-- Section title: 18-22px, bold.
-- Body: 16px.
-- Supporting text: 14px.
-- Nav label: 12-13px.
-- Metric number: 32-42px, bold.
+- Botões (`.outline-button`, `.dark-button`, `.green-button`): borda 2px, raio 16px, `box-shadow: 0 4px 0 <tom deep>`; `:active` faz `translateY(4px)` e colapsa a sombra.
+- Cards (`.choice-card`, `.settings-card`, `.topic-card`, `.soft-card`, `.progress-*-card`, `.calendar-feedback-card`): borda 2px `var(--line)`, `box-shadow: 0 3px 0 rgba(31,25,16,.05)`.
+- Raios: `--radius-lg: 28px`, `--radius-md: 20px`; pills 999px.
+- Layout: `--nav-height: 86px`, `--screen-pad: 24px`, shell `min(100%, 430px)`.
 
-Rules:
+## Animações
 
-- Keep text readable on mobile.
-- Avoid tiny explanatory text.
-- Do not use viewport-scaled font sizes.
-- Do not let Portuguese labels overflow controls.
+Todas CSS puras e neutralizadas por `@media (prefers-reduced-motion: reduce)`:
 
-## Radius
+| Keyframe | Uso |
+|---|---|
+| `dot-bounce` | `LoadingDots` (typing do chat, loading raiz) |
+| `shimmer` | `Skeleton` dos loadings de rota |
+| `wave-eq` | wave equalizador do `VoiceButton` durante reprodução |
+| `pulse-halo` | halo do `.mic-button.listening` |
+| `pop-in` | entrada das `.chat-row` |
+| `bounce-in` | `.loading-mark` do loading de rota |
+| `flame-pulse` | chama do streak (`.pill svg.lucide-flame`) |
+| `spin` (legado) | spinners `Loader2` |
 
-- Large cards: 22-28px.
-- Buttons: 16-22px.
-- Input cards: 22-28px.
-- Icon circles: 50%.
-- Bottom nav active icon shape can be rounded/pill.
+## Componentes de feedback
 
-## Spacing
-
-- Screen horizontal padding: 22-24px.
-- Section gap: 28-36px.
-- Row vertical padding: 16-20px.
-- Card internal padding: 18-24px.
-- Bottom safe area: respect mobile safe-area inset.
-
-## Components
-
-Required shared components:
-
-- `AppShell`
-- `BottomNav`
-- `ScreenHeader`
-- `LanguageLevelBar`
-- `TopicInputCard`
-- `SuggestionRow`
-- `MetricSummary`
-- `WordSummary`
-- `ChatTopicCard`
-- `ChatBubble`
-- `AudioPlayer`
-- `CorrectionBlock`
-- `SavedWordsBar`
-- `QuickActionButton`
-- `CalendarGrid`
-- `SettingsRow`
-- `ConnectionStatusBadge`
-
-## Screen References
-
-- Onboarding: `assets/screens/01-onboarding-idioma.png`
-- Inicio: `assets/screens/02-inicio-tema.png`
-- Chat: `assets/screens/03-chat-conversa.png`
-- Palavras: `assets/screens/04-palavras-vocabulario.png`
-- Calendario: `assets/screens/05-calendario-feedback.png`
-- Progresso: `assets/screens/06-progresso.png`
-- Perfil: `assets/screens/07-perfil-preferencias.png`
-- Resumo: `assets/screens/08-resumo-pos-conversa.png`
-
-## Acceptance Rules
-
-- UI must be checked against the reference image for each screen.
-- Bottom nav must be corrected everywhere.
-- No new visual theme should be introduced.
-- No dense dashboard styling.
-- No marketing-style landing page.
-- The first screen after onboarding is the actual app home.
+- `components/LoadingDots.tsx` — 3 pontos saltitantes com `role="status"` e `srText` para leitores de tela.
+- `components/Skeleton.tsx` — variantes `line`/`card`/`circle`, `aria-hidden`.
+- `app/loading.tsx` + `app/{palavras,progresso,calendario}/loading.tsx` — loading raiz animado e skeletons por rota.

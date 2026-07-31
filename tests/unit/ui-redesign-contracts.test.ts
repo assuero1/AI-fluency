@@ -111,4 +111,11 @@ describe("chunky playful redesign contracts", () => {
     expect(css).toContain(".flashcard-card-inner");
     expect(css).toContain("cubic-bezier(.34, 1.3, .64, 1)");
   });
+
+  it("documents the new token system", () => {
+    const doc = read("docs/DESIGN_TOKENS.md");
+    expect(doc).toContain("--brand: #58cc02");
+    expect(doc).toContain("--section");
+    expect(doc).toContain("Nunito");
+  });
 });
