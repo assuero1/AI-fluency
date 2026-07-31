@@ -2098,3 +2098,20 @@ textarea:focus-visible,
 .mic-button { color: var(--section-text); }
 .nav-item.active { color: var(--section-text); }
 .nav-item.active svg { fill: var(--section-text); stroke: var(--section-text); }
+
+
+/* === Loading: pontinhos saltitantes === */
+.loading-dots {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.loading-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--section);
+  animation: dot-bounce 1.05s ease-in-out infinite;
+}
+.loading-dot:nth-child(3) { animation-delay: .15s; }
+.loading-dot:nth-child(4) { animation-delay: .3s; }

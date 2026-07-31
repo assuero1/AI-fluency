@@ -70,4 +70,14 @@ describe("chunky playful redesign contracts", () => {
     expect(css).toContain("transform: translateY(4px)");
     expect(css).toContain("box-shadow: 0 3px 0 rgba(31, 25, 16, .05)");
   });
+
+  it("renders animated typing dots in the chat instead of static text", () => {
+    expect(read("components/LoadingDots.tsx")).toContain('role="status"');
+    const chat = read("components/ChatConversation.tsx");
+    expect(chat).toContain("<LoadingDots");
+    expect(chat).toContain('srText="A IA está preparando a próxima resposta..."');
+    const css = read("app/globals.css");
+    expect(css).toContain(".loading-dot");
+    expect(css).toContain("animation: dot-bounce");
+  });
 });

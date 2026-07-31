@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IconBubble } from "./IconBubble";
 import { CopyButton } from "./CopyButton";
+import { LoadingDots } from "@/components/LoadingDots";
 import { ModalDialog } from "./ModalDialog";
 import { Pill } from "./Pill";
 import { TranslationButton } from "./TranslationButton";
@@ -550,7 +551,7 @@ export function ChatConversation({
           <div className="chat-row">
             <IconBubble Icon={Bot} />
             <div className="bubble ai typing-bubble">
-              <Loader2 className="spin" /> A IA está preparando a próxima resposta...
+              <LoadingDots srText="A IA está preparando a próxima resposta..." />
             </div>
           </div>
         ) : null}
