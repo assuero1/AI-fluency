@@ -10,7 +10,7 @@ export default async function ProfilePage() {
   const [profile, progress] = await Promise.all([getProfileSettings(), getProgressData()]);
 
   return (
-    <AppShell activeNav="perfil">
+    <AppShell activeNav="perfil" section="neutral">
       <ScreenHeader title="Perfil" subtitle="Preferências da sua IA" />
       <ProfilePreferences initial={profile} streak={progress.streak} />
     </AppShell>

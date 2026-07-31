@@ -24,7 +24,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <AppShell activeNav="calendario">
+    <AppShell activeNav="calendario" section="calendario">
       <ScreenHeader title="Calendário" subtitle="Conversas e revisões em um só panorama" />
       <section className="section">
         <div className="calendar-month-nav">

@@ -57,7 +57,7 @@ export default function ConnectionsPage() {
   const status = getConnectionStatus();
 
   return (
-    <AppShell activeNav="perfil">
+    <AppShell activeNav="perfil" section="neutral">
       <div className="top-row">
         <Link className="outline-button" href="/perfil" aria-label="Voltar">
           <ChevronLeft />

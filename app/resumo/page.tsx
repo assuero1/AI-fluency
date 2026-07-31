@@ -63,7 +63,7 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
   ];
 
   return (
-    <AppShell activeNav="chat">
+    <AppShell activeNav="chat" section="chat">
       <div className="top-row">
         <div>
           <h1 className="title">Conversa finalizada</h1>
@@ -132,7 +132,7 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
 
 function SummaryUnavailable({ message }: { message: string }) {
   return (
-    <AppShell activeNav="chat">
+    <AppShell activeNav="chat" section="chat">
       <section className="section empty-state summary-unavailable">
         <IconBubble Icon={MessageSquareOff} tone="info" />
         <h1 className="title">Resumo indisponível</h1>

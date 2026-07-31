@@ -44,7 +44,7 @@ export default async function ProgressPage() {
     : `${progress.profile.fluencyChange >= 0 ? "+" : ""}${progress.profile.fluencyChange}% de fluidez neste mês`;
 
   return (
-    <AppShell>
+    <AppShell section="progresso">
       <ScreenHeader title="Progresso" subtitle="Seu panorama de fluência" streak={progress.streak} />
       <section className="section">
         <div className="progress-level-card">
@@ -82,7 +82,7 @@ export default async function ProgressPage() {
         <h2 className="section-title">Foco da semana</h2>
         <div className="progress-focus-card">
           <div className="top-row">
-            <Target color="#2f9d4a" />
+            <Target />
             <Pill tone="primary">recomendado</Pill>
           </div>
           <div className="row-title" style={{ marginTop: 16 }}>

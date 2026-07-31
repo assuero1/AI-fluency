@@ -26,7 +26,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
 
   if (!context) {
     return (
-      <AppShell activeNav="chat">
+      <AppShell activeNav="chat" section="chat">
         <section className="section empty-state">
           <div className="row-title">Nenhuma conversa em andamento</div>
           <div className="row-meta">Escolha um tema ou inicie uma conversa livre para começar a praticar.</div>
@@ -41,7 +41,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
   const isActiveTraining = context.conversation.fields.status === "active";
 
   return (
-    <AppShell activeNav="chat" noNav={isActiveTraining}>
+    <AppShell activeNav="chat" noNav={isActiveTraining} section="chat">
       <ChatConversation
         corrections={context.corrections}
         conversation={context.conversation}

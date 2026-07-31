@@ -30,7 +30,7 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
   const progress = Math.max(0, Math.min(100, (data.summary.weeklyNew / Math.max(1, data.summary.weeklyGoal)) * 100));
 
   return (
-    <AppShell activeNav="palavras">
+    <AppShell activeNav="palavras" section="palavras">
       <ScreenHeader title="Suas palavras" subtitle={`${data.summary.totalWords} palavras salvas`} />
       <Link className="flashcard-entry" href="/palavras/treino">
         <div className="flashcard-entry-icon"><Brain /></div><div className="row-copy"><div className="eyebrow"><Sparkles size={14} /> Revisão inteligente</div><div className="row-title">Treinar com cards</div><div className="row-meta">Palavras e frases do seu vocabulário</div></div><ChevronRight />

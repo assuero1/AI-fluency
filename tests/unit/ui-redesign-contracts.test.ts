@@ -38,4 +38,22 @@ describe("chunky playful redesign contracts", () => {
       expect(css).toContain(cls);
     }
   });
+
+  it("applies section classes through AppShell on every routed screen", () => {
+    const shell = read("components/AppShell.tsx");
+    expect(shell).toContain("section-");
+    expect(read("app/chat/page.tsx")).toContain('section="chat"');
+    expect(read("app/palavras/page.tsx")).toContain('section="palavras"');
+    expect(read("app/palavras/treino/page.tsx")).toContain('section="palavras"');
+    expect(read("app/calendario/page.tsx")).toContain('section="calendario"');
+    expect(read("app/progresso/page.tsx")).toContain('section="progresso"');
+    expect(read("app/perfil/page.tsx")).toContain('section="neutral"');
+    expect(read("app/resumo/page.tsx")).toContain('section="chat"');
+  });
+
+  it("removes hardcoded brand greens from component JSX", () => {
+    expect(read("components/HomeDashboard.tsx")).not.toContain('color="#2f9d4a"');
+    expect(read("components/ChatConversation.tsx")).not.toContain('color="#2f9d4a"');
+    expect(read("app/progresso/page.tsx")).not.toContain('color="#2f9d4a"');
+  });
 });

@@ -151,7 +151,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
         </Link>
         <div style={{ height: 34, width: 1, background: "var(--line)" }} />
         <div className="selector-item level-summary">
-          <TrendingUp color="#2f9d4a" />
+          <TrendingUp />
           <span>Nível {profile?.level ?? "Intermediário (B1)"}</span>
         </div>
       </div>
@@ -195,7 +195,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
             <Edit3 />
           </label>
           <button className="outline-button" disabled={pendingAction === "suggest"} onClick={suggestTopic} type="button">
-            {pendingAction === "suggest" ? <Loader2 className="spin" /> : <Sparkles color="#2f9d4a" />}
+            {pendingAction === "suggest" ? <Loader2 className="spin" /> : <Sparkles />}
             Sugerir um tema para mim
           </button>
         </div>

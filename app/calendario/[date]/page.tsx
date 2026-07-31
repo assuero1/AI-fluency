@@ -23,7 +23,7 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
   const dailySeconds = completedConversations.reduce((sum, conversation) => sum + conversation.durationSeconds, 0);
 
   return (
-    <AppShell activeNav="calendario">
+    <AppShell activeNav="calendario" section="calendario">
       <Link className="back-link" href={`/calendario?month=${month}`}>
         <ArrowLeft /> Calendário
       </Link>

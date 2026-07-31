@@ -23,7 +23,7 @@ export default async function WordDetailPage({ params }: WordDetailPageProps) {
   const { word } = data;
 
   return (
-    <AppShell activeNav="palavras">
+    <AppShell activeNav="palavras" section="palavras">
       <Link className="back-link" href="/palavras">
         <ArrowLeft /> Todas as palavras
       </Link>

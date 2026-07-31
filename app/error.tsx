@@ -10,7 +10,7 @@ export default function ErrorPage({ error, reset }: { error: Error & { digest?: 
   }, [error]);
 
   return (
-    <AppShell noNav>
+    <AppShell noNav section="neutral">
       <div className="app-error" role="alert">
         <h1 className="title">Não foi possível carregar agora</h1>
         <p className="subtitle">Verifique sua conexão e tente novamente.</p>

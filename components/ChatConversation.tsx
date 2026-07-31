@@ -454,7 +454,7 @@ export function ChatConversation({
           onClose={() => setIsTopicDialogOpen(false)}
           titleId="change-topic-title"
         >
-            <Shuffle color="#2f9d4a" size={30} />
+            <Shuffle size={30} />
             <h2 id="change-topic-title" className="section-title">Mudar o tema da conversa?</h2>
             <p className="row-meta" id="change-topic-description">O histórico será preservado. A IA passa a conduzir a conversa pelo novo tema a partir da próxima mensagem.</p>
             <label className="field-label" htmlFor="next-topic">Novo tema</label>
@@ -626,7 +626,7 @@ export function ChatConversation({
             value={text}
           />
           <button className="send-button" disabled={isSending || !text.trim()} type="submit" aria-label="Enviar mensagem">
-            {isSending ? <Loader2 className="spin" /> : <Send color="#2f9d4a" />}
+            {isSending ? <Loader2 className="spin" /> : <Send />}
           </button>
         </form> : null}
         {!readOnly ? (

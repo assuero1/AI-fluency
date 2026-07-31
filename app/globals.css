@@ -1989,3 +1989,20 @@ textarea:focus-visible,
     white-space: nowrap;
   }
 }
+
+/* === Recolors de seção: blocos que usavam verde/azul fixos seguem a seção === */
+.flashcard-entry { background: linear-gradient(135deg, var(--section-deep), var(--section)); box-shadow: 0 6px 0 var(--section-deep); }
+.flashcard-entry .eyebrow { color: var(--section-soft); }
+.flashcard-brand { background: var(--section); }
+.flashcard-intro { background: linear-gradient(135deg, var(--section-soft), #fff); }
+.flashcard-range { accent-color: var(--section); }
+.active-recall-card { border: 2px solid var(--section-soft); box-shadow: 0 6px 0 var(--section-soft); }
+.flashcard-face.front { border: 2px solid var(--section-soft); }
+.flashcard-face.back { background: linear-gradient(145deg, var(--section-deep), var(--section)); }
+.flashcard-input-row input:focus { outline-color: var(--section-soft); border-color: var(--section); }
+.vocabulary-option.selected { border-color: var(--section); background: var(--section-soft); }
+.vocabulary-option input { accent-color: var(--section); }
+.recall-rating-grid button.suggested { border-color: var(--section); background: var(--section-soft); color: var(--section-text); box-shadow: inset 0 0 0 1px var(--section); }
+.selection-explanation { background: var(--section-soft); }
+.progress-level-card, .progress-focus-card { background: var(--section-soft); }
+.word-review-states div { background: var(--section-soft); }

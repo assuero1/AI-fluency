@@ -5,7 +5,7 @@ import { AppShell } from "@/components/AppShell";
 
 export default function OfflinePage() {
   return (
-    <AppShell noNav>
+    <AppShell noNav section="neutral">
       <div className="app-error">
         <WifiOff size={34} color="#2f9d4a" />
         <h1 className="title">Você está sem conexão</h1>
