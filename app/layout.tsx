@@ -1,6 +1,13 @@
 import type { Metadata, Viewport } from "next";
+import { Nunito } from "next/font/google";
 import "./globals.css";
 import { PwaRegistration } from "@/components/PwaRegistration";
+
+const nunito = Nunito({
+  subsets: ["latin"],
+  variable: "--font-nunito",
+  display: "swap"
+});
 
 export const metadata: Metadata = {
   title: "AI Fluency",
@@ -22,13 +29,13 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
-  themeColor: "#217a38"
+  themeColor: "#58cc02"
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="pt-BR">
-      <body>
+      <body className={nunito.variable}>
         {children}
         <PwaRegistration />
       </body>
