@@ -56,4 +56,11 @@ describe("chunky playful redesign contracts", () => {
     expect(read("components/ChatConversation.tsx")).not.toContain('color="#2f9d4a"');
     expect(read("app/progresso/page.tsx")).not.toContain('color="#2f9d4a"');
   });
+
+  it("defines the new animation keyframes", () => {
+    const css = read("app/globals.css");
+    for (const name of ["dot-bounce", "shimmer", "wave-eq", "pulse-halo", "pop-in", "bounce-in", "flame-pulse"]) {
+      expect(css).toContain(`@keyframes ${name}`);
+    }
+  });
 });
