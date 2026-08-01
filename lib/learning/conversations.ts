@@ -444,7 +444,7 @@ export async function runConversationQuickAction(conversationId: string, action:
         content: `[Interface action; do not treat this as a learner utterance.] ${getConversationQuickActionPrompt(action)}`
       }
     ],
-    { temperature: 0.45, maxTokens: 520, timeoutMs: 25_000 }
+    { temperature: 0.45, maxTokens: 520, timeoutMs: 25_000, disableThinking: true }
   );
   const quickActionReply = safeTutorReply(ai.content, context.profile);
   const now = new Date().toISOString();
@@ -537,7 +537,7 @@ async function createAnalyzedAssistantTurn(
         content: message.fields.text
       }))
     ],
-    { temperature: 0.4, maxTokens: 560, timeoutMs: 25_000 }
+    { temperature: 0.4, maxTokens: 1200, timeoutMs: 25_000, responseFormat: "json", disableThinking: true }
   );
 
   const analysis = parseLearningAnalysis(ai.content);
@@ -598,7 +598,7 @@ async function createAssistantMessage(
           ]
         : [])
     ],
-    { temperature: 0.5, maxTokens: 220, timeoutMs: 25_000 }
+    { temperature: 0.5, maxTokens: 220, timeoutMs: 25_000, disableThinking: true }
   );
   const assistantReply = safeTutorReply(ai.content, profile);
 
@@ -781,6 +781,11 @@ function tutorOnlyFallback(rawContent: string): LearningAnalysis {
   const trimmed = rawContent.trim();
   const isJsonLike = trimmed.startsWith("{") || trimmed.startsWith("[") || trimmed.startsWith("```");
   const isTechnicalError = /the string did not match the expected pattern|invalidstateerror|failed to fetch|networkerror/i.test(trimmed);
+  if (isJsonLike && !isTechnicalError && trimmed) {
+    console.warn("[chat] Resposta da IA não era JSON válido; usando resposta fallback.", {
+      preview: trimmed.slice(0, 200)
+    });
+  }
   return {
     assistant_reply: !isJsonLike && !isTechnicalError && trimmed
       ? trimmed

@@ -38,7 +38,10 @@ type ChatCompletionResponse = {
   };
 };
 
-export async function createChatCompletion(messages: AiMessage[], options?: { temperature?: number; maxTokens?: number; timeoutMs?: number }) {
+export async function createChatCompletion(
+  messages: AiMessage[],
+  options?: { temperature?: number; maxTokens?: number; timeoutMs?: number; responseFormat?: "json"; disableThinking?: boolean }
+) {
   const config = getAiConfig();
 
   if (!config.baseUrl) throw new AiConfigError("AI_BASE_URL is not configured.");
@@ -49,7 +52,9 @@ export async function createChatCompletion(messages: AiMessage[], options?: { te
     model: config.chatModel,
     messages,
     temperature: options?.temperature ?? config.temperature,
-    max_tokens: options?.maxTokens ?? config.maxTokens
+    max_tokens: options?.maxTokens ?? config.maxTokens,
+    ...(options?.responseFormat === "json" ? { response_format: { type: "json_object" as const } } : {}),
+    ...(options?.disableThinking ? { thinking: { type: "disabled" as const } } : {})
   };
 
   const body = await requestChatCompletion(config.baseUrl, config.apiKey, payload, requestSignal(options?.timeoutMs));
@@ -95,6 +100,8 @@ async function requestChatCompletion(
     messages: AiMessage[];
     temperature: number;
     max_tokens: number;
+    response_format?: { type: "json_object" };
+    thinking?: { type: "disabled" };
   },
   signal?: AbortSignal
 ) {
