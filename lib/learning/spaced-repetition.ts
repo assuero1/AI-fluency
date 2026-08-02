@@ -1,6 +1,8 @@
 import type { RecallRating } from "./flashcard-contracts";
 
-export const REVIEW_VERSION = "srs-v1";
+export const REVIEW_VERSION = "srs-v2";
+export const LEARNING_STEPS_DAYS = [1, 3] as const;
+export const LEECH_LAPSE_THRESHOLD = 4;
 
 export type ReviewState = "new" | "learning" | "review" | "difficult" | "suspended";
 export type ReviewCardType = "target_to_native" | "native_to_target" | "cloze" | "listening";
@@ -11,11 +13,13 @@ export type ReviewFields = {
   review_ease?: number;
   review_streak?: number;
   lapse_count?: number;
+  learning_step?: number;
   last_reviewed_at?: string;
   last_rating?: RecallRating;
   average_response_time_ms?: number;
   review_state?: ReviewState;
   review_version?: string;
+  leech_flagged_at?: string | null;
 };
 
 export type ReviewAttempt = {
@@ -30,19 +34,30 @@ export type AdaptiveReview = {
   reviewEase: number;
   reviewStreak: number;
   lapseCount: number;
+  learningStep: number;
   lastReviewedAt: string;
   lastRating: RecallRating;
   averageResponseTimeMs: number;
   reviewState: ReviewState;
   reviewVersion: typeof REVIEW_VERSION;
   reviewDueAt: string;
+  leechFlaggedAt: string | null;
+};
+
+type ScheduleState = {
+  familiarityScore: number;
+  intervalDays: number;
+  ease: number;
+  streak: number;
+  lapseCount: number;
+  learningStep: number;
+  graduated: boolean;
 };
 
 const DAY_MS = 86_400_000;
 const MIN_EASE = 1.3;
 const MAX_EASE = 2.8;
 const MAX_INTERVAL_DAYS = 365;
-const ratingWeight: Record<RecallRating, number> = { forgot: 0, hard: 1, good: 2, easy: 3 };
 const responseTargetMs: Record<ReviewCardType, number> = {
   target_to_native: 3_000,
   native_to_target: 4_000,
@@ -50,87 +65,193 @@ const responseTargetMs: Record<ReviewCardType, number> = {
   listening: 7_000
 };
 
-export function aggregateReviewAttempts(attempts: ReviewAttempt[]): ReviewAttempt {
+// Applies each attempt in order (fold). In-session recovery is credited, matching
+// the incremental persistence model where each attempt is applied as it happens.
+export function calculateAdaptiveReview(current: ReviewFields, attempts: ReviewAttempt[], now = new Date(), timeZone = "UTC", fuzzSeed = ""): AdaptiveReview {
   if (!attempts.length) throw new Error("At least one review attempt is required.");
-  return attempts.reduce((worst, attempt) => ratingWeight[attempt.rating] < ratingWeight[worst.rating] ? attempt : worst);
-}
-
-export function calculateAdaptiveReview(current: ReviewFields, attempts: ReviewAttempt[], now = new Date(), timeZone = "UTC"): AdaptiveReview {
-  const aggregate = aggregateReviewAttempts(attempts);
-  const rating = aggregate.rating;
-  const priorInterval = clampInt(current.review_interval_days, 1, MAX_INTERVAL_DAYS, 1);
-  const priorEase = clampNumber(current.review_ease, MIN_EASE, MAX_EASE, 2.3);
-  const priorStreak = clampInt(current.review_streak, 0, 100_000, 0);
-  const priorLapses = clampInt(current.lapse_count, 0, 100_000, 0);
-  const priorAverage = clampInt(current.average_response_time_ms, 0, 300_000, 0);
-  const sessionAverage = average(attempts.map((attempt) => clampInt(attempt.responseTimeMs, 0, 300_000, 0)).filter(Boolean));
-  const averageResponseTimeMs = priorAverage && sessionAverage ? Math.round((priorAverage + sessionAverage) / 2) : priorAverage || sessionAverage;
-  const responseFactor = responseAdjustment(attempts);
-
-  let reviewIntervalDays = priorInterval;
-  let reviewEase = priorEase;
-  let reviewStreak = priorStreak;
-  let lapseCount = priorLapses;
-  let familiarityScore = clampNumber(current.familiarity_score, 0, 10, 0);
-
-  if (rating === "forgot") {
-    reviewIntervalDays = 1;
-    reviewEase = clampNumber(priorEase - 0.25, MIN_EASE, MAX_EASE, MIN_EASE);
-    reviewStreak = 0;
-    lapseCount += 1;
-    familiarityScore = clampNumber(familiarityScore - 2, 0, 10, 0);
-  } else if (rating === "hard") {
-    reviewIntervalDays = clampInt(Math.round(priorInterval * 1.2 * responseFactor), 1, 4, 1);
-    reviewEase = clampNumber(priorEase - 0.08, MIN_EASE, MAX_EASE, MIN_EASE);
-    reviewStreak = Math.max(0, priorStreak - 1);
-    familiarityScore = clampNumber(familiarityScore - 0.5, 0, 10, 0);
-  } else {
-    reviewStreak = priorStreak + 1;
-    const initialIntervals = rating === "easy" ? [7, 15, 30, 60] : [3, 7, 15, 30];
-    const initialInterval = initialIntervals[Math.min(reviewStreak - 1, initialIntervals.length - 1)];
-    const multiplier = rating === "easy" ? (priorEase + 0.35) * 1.25 : priorEase;
-    reviewIntervalDays = clampInt(Math.round(Math.max(initialInterval, priorInterval * multiplier * responseFactor)), 1, MAX_INTERVAL_DAYS, initialInterval);
-    reviewEase = clampNumber(priorEase + (rating === "easy" ? 0.1 : 0), MIN_EASE, MAX_EASE, priorEase);
-    familiarityScore = clampNumber(familiarityScore + (rating === "easy" ? 1.2 : 1), 0, 10, 10);
+  const graduated = isGraduated(current);
+  let state: ScheduleState = {
+    familiarityScore: clampNumber(current.familiarity_score, 0, 10, 0),
+    intervalDays: clampInt(current.review_interval_days, 1, MAX_INTERVAL_DAYS, 1),
+    ease: clampNumber(current.review_ease, MIN_EASE, MAX_EASE, 2.3),
+    streak: clampInt(current.review_streak, 0, 100_000, 0),
+    lapseCount: clampInt(current.lapse_count, 0, 100_000, 0),
+    // Graduated words persist learning_step = LEARNING_STEPS_DAYS.length + 1.
+    learningStep: graduated ? LEARNING_STEPS_DAYS.length + 1 : clampInt(current.learning_step, 0, LEARNING_STEPS_DAYS.length, 0),
+    graduated
+  };
+  let dueDays = state.intervalDays;
+  let rating: RecallRating = attempts[attempts.length - 1].rating;
+  let averageResponseTimeMs = clampInt(current.average_response_time_ms, 0, 300_000, 0);
+  for (const attempt of attempts) {
+    const result = applyReviewAttempt(state, attempt, fuzzSeed);
+    state = result.state;
+    dueDays = result.dueDays;
+    rating = attempt.rating;
+    const responseTimeMs = clampInt(attempt.responseTimeMs, 0, 300_000, 0);
+    if (responseTimeMs) averageResponseTimeMs = averageResponseTimeMs ? Math.round((averageResponseTimeMs + responseTimeMs) / 2) : responseTimeMs;
   }
-
-  const reviewState = deriveReviewState({ current, rating, reviewStreak, lapseCount, averageResponseTimeMs, attempts });
+  const leechFlaggedAt = state.lapseCount >= LEECH_LAPSE_THRESHOLD
+    ? current.leech_flagged_at || now.toISOString()
+    : current.leech_flagged_at || null;
+  const reviewState = deriveReviewState({
+    suspended: current.review_state === "suspended",
+    graduated: state.graduated,
+    rating,
+    lastRating: current.last_rating,
+    streak: state.streak,
+    lapseCount: state.lapseCount,
+    averageResponseTimeMs
+  });
   return {
-    familiarityScore: round(familiarityScore, 1),
-    reviewIntervalDays,
-    reviewEase: round(reviewEase, 2),
-    reviewStreak,
-    lapseCount,
+    familiarityScore: round(state.familiarityScore, 1),
+    reviewIntervalDays: state.intervalDays,
+    reviewEase: round(state.ease, 2),
+    reviewStreak: state.streak,
+    lapseCount: state.lapseCount,
+    learningStep: state.learningStep,
     lastReviewedAt: now.toISOString(),
     lastRating: rating,
     averageResponseTimeMs,
     reviewState,
     reviewVersion: REVIEW_VERSION,
-    reviewDueAt: dueAtInTimeZone(now, reviewIntervalDays, timeZone)
+    reviewDueAt: dueAtInTimeZone(now, dueDays, timeZone),
+    leechFlaggedAt
   };
 }
 
-function deriveReviewState(input: { current: ReviewFields; rating: RecallRating; reviewStreak: number; lapseCount: number; averageResponseTimeMs: number; attempts: ReviewAttempt[] }): ReviewState {
-  if (input.current.review_state === "suspended") return "suspended";
-  const slowRepeatedly = input.averageResponseTimeMs >= 8_000 && input.reviewStreak >= 2;
-  const repeatedFailure = input.rating === "forgot" && input.current.last_rating === "forgot";
-  const repeatedHard = input.rating === "hard" && input.current.last_rating === "hard";
-  const frequentLapses = input.lapseCount >= 3 && input.reviewStreak <= 1;
-  if (repeatedFailure || repeatedHard || frequentLapses || slowRepeatedly) return "difficult";
-  if (input.rating === "forgot" || input.rating === "hard") return "learning";
-  return input.reviewStreak >= 2 ? "review" : "learning";
+// Maps a computed review to a `words` table update (shared by incremental and batch paths).
+export function reviewToWordFields(review: AdaptiveReview) {
+  return {
+    familiarity_score: review.familiarityScore,
+    review_due_at: review.reviewDueAt,
+    review_interval_days: review.reviewIntervalDays,
+    review_ease: review.reviewEase,
+    review_streak: review.reviewStreak,
+    lapse_count: review.lapseCount,
+    learning_step: review.learningStep,
+    last_reviewed_at: review.lastReviewedAt,
+    last_rating: review.lastRating,
+    average_response_time_ms: review.averageResponseTimeMs,
+    review_state: review.reviewState,
+    review_version: review.reviewVersion,
+    ...(review.leechFlaggedAt ? { leech_flagged_at: review.leechFlaggedAt } : {})
+  };
 }
 
-function responseAdjustment(attempts: ReviewAttempt[]) {
-  const factors = attempts.map((attempt) => {
-    const responseTimeMs = clampInt(attempt.responseTimeMs, 0, 300_000, 0);
-    if (!responseTimeMs) return 1;
-    const target = responseTargetMs[attempt.cardType ?? "target_to_native"];
-    if (responseTimeMs <= target * 0.7) return 1.08;
-    if (responseTimeMs >= target * 1.6) return 0.9;
-    return 1;
-  });
-  return average(factors) || 1;
+function isGraduated(current: ReviewFields) {
+  if (typeof current.learning_step === "number") return current.learning_step > LEARNING_STEPS_DAYS.length;
+  // Legacy words (srs-v1) have no learning_step: infer from the persisted state.
+  if (current.review_state === "review") return true;
+  if (current.review_state === "difficult") return clampInt(current.review_interval_days, 1, MAX_INTERVAL_DAYS, 1) > LEARNING_STEPS_DAYS[LEARNING_STEPS_DAYS.length - 1];
+  return false;
+}
+
+function applyReviewAttempt(state: ScheduleState, attempt: ReviewAttempt, fuzzSeed: string): { state: ScheduleState; dueDays: number } {
+  const rating = attempt.rating;
+  const factor = responseAdjustment(attempt);
+  const next = { ...state };
+  let dueDays: number;
+
+  if (!state.graduated) {
+    const isRelearning = state.lapseCount > 0;
+    if (rating === "forgot") {
+      next.learningStep = 0;
+      next.ease = clampNumber(state.ease - 0.25, MIN_EASE, MAX_EASE, MIN_EASE);
+      next.streak = 0;
+      next.familiarityScore = clampNumber(state.familiarityScore - 2, 0, 10, 0);
+      if (isRelearning) next.lapseCount = state.lapseCount + 1;
+      dueDays = LEARNING_STEPS_DAYS[0];
+    } else if (rating === "hard") {
+      // Repeat the current step's due without advancing.
+      next.ease = clampNumber(state.ease - 0.08, MIN_EASE, MAX_EASE, MIN_EASE);
+      next.streak = Math.max(0, state.streak - 1);
+      next.familiarityScore = clampNumber(state.familiarityScore - 0.5, 0, 10, 0);
+      dueDays = learningStepDueDays(state.learningStep);
+    } else {
+      next.streak = state.streak + 1;
+      const nextStep = state.learningStep + (rating === "easy" ? 2 : 1);
+      next.ease = clampNumber(state.ease + (rating === "easy" ? 0.1 : 0), MIN_EASE, MAX_EASE, state.ease);
+      next.familiarityScore = clampNumber(state.familiarityScore + (rating === "easy" ? 1.2 : 1), 0, 10, 10);
+      if (nextStep > LEARNING_STEPS_DAYS.length) {
+        next.graduated = true;
+        next.learningStep = LEARNING_STEPS_DAYS.length + 1;
+        const graduatedInterval = isRelearning
+          ? clampInt(Math.round(state.intervalDays * (rating === "easy" ? 0.75 : 0.5)), 4, MAX_INTERVAL_DAYS, 4)
+          : rating === "easy" ? 15 : 7;
+        next.intervalDays = fuzzInterval(graduatedInterval, fuzzSeed);
+        dueDays = next.intervalDays;
+      } else {
+        next.learningStep = nextStep;
+        dueDays = learningStepDueDays(nextStep);
+      }
+    }
+  } else if (rating === "forgot") {
+    // Lapse: relearning from step zero; intervalDays keeps the pre-lapse value for regraduation.
+    next.graduated = false;
+    next.learningStep = 0;
+    next.lapseCount = state.lapseCount + 1;
+    next.ease = clampNumber(state.ease - 0.25, MIN_EASE, MAX_EASE, MIN_EASE);
+    next.streak = 0;
+    next.familiarityScore = clampNumber(state.familiarityScore - 2, 0, 10, 0);
+    dueDays = LEARNING_STEPS_DAYS[0];
+  } else if (rating === "hard") {
+    next.intervalDays = clampInt(Math.round(state.intervalDays * 1.2 * factor), 1, 4, 1);
+    next.ease = clampNumber(state.ease - 0.08, MIN_EASE, MAX_EASE, MIN_EASE);
+    next.streak = Math.max(0, state.streak - 1);
+    next.familiarityScore = clampNumber(state.familiarityScore - 0.5, 0, 10, 0);
+    dueDays = next.intervalDays;
+  } else {
+    next.streak = state.streak + 1;
+    const initialIntervals = rating === "easy" ? [7, 15, 30, 60] : [3, 7, 15, 30];
+    const initialInterval = initialIntervals[Math.min(next.streak - 1, initialIntervals.length - 1)];
+    const multiplier = rating === "easy" ? (state.ease + 0.35) * 1.25 : state.ease;
+    const interval = clampInt(Math.round(Math.max(initialInterval, state.intervalDays * multiplier * factor)), 1, MAX_INTERVAL_DAYS, initialInterval);
+    next.intervalDays = fuzzInterval(interval, fuzzSeed);
+    next.ease = clampNumber(state.ease + (rating === "easy" ? 0.1 : 0), MIN_EASE, MAX_EASE, state.ease);
+    next.familiarityScore = clampNumber(state.familiarityScore + (rating === "easy" ? 1.2 : 1), 0, 10, 10);
+    dueDays = next.intervalDays;
+  }
+  return { state: next, dueDays };
+}
+
+// Due days for the current learning step (step 0 also maps to the first step).
+function learningStepDueDays(step: number) {
+  return LEARNING_STEPS_DAYS[clampInt(step - 1, 0, LEARNING_STEPS_DAYS.length - 1, 0)];
+}
+
+function deriveReviewState(input: { suspended: boolean; graduated: boolean; rating: RecallRating; lastRating?: RecallRating; streak: number; lapseCount: number; averageResponseTimeMs: number }): ReviewState {
+  if (input.suspended) return "suspended";
+  const slowRepeatedly = input.averageResponseTimeMs >= 8_000 && input.streak >= 2;
+  const repeatedFailure = input.rating === "forgot" && input.lastRating === "forgot";
+  const repeatedHard = input.rating === "hard" && input.lastRating === "hard";
+  const frequentLapses = input.lapseCount >= 3 && input.streak <= 1;
+  if (repeatedFailure || repeatedHard || frequentLapses || slowRepeatedly) return "difficult";
+  return input.graduated ? "review" : "learning";
+}
+
+function responseAdjustment(attempt: ReviewAttempt) {
+  const responseTimeMs = clampInt(attempt.responseTimeMs, 0, 300_000, 0);
+  if (!responseTimeMs) return 1;
+  const target = responseTargetMs[attempt.cardType ?? "target_to_native"];
+  if (responseTimeMs <= target * 0.7) return 1.08;
+  if (responseTimeMs >= target * 1.6) return 0.9;
+  return 1;
+}
+
+// Deterministic ±10% fuzz so cards reviewed together stop sharing due dates.
+function fuzzInterval(intervalDays: number, seed: string) {
+  if (!seed || intervalDays < 7) return intervalDays;
+  const range = Math.max(1, Math.round(intervalDays * 0.1));
+  const hash = hashSeed(`${seed}:${intervalDays}`);
+  const offset = (hash % (2 * range + 1)) - range;
+  return clampInt(intervalDays + offset, 1, MAX_INTERVAL_DAYS, intervalDays);
+}
+
+function hashSeed(seed: string) {
+  let hash = 2166136261;
+  for (const char of seed) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); }
+  return hash >>> 0;
 }
 
 function dueAtInTimeZone(now: Date, days: number, requestedTimeZone: string) {
@@ -169,10 +290,6 @@ function clampInt(value: unknown, minimum: number, maximum: number, fallback: nu
 function clampNumber(value: unknown, minimum: number, maximum: number, fallback: number) {
   const number = Number(value);
   return Number.isFinite(number) ? Math.min(maximum, Math.max(minimum, number)) : fallback;
-}
-
-function average(values: number[]) {
-  return values.length ? values.reduce((total, value) => total + value, 0) / values.length : 0;
 }
 
 function round(value: number, decimals: number) {

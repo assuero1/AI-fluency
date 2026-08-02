@@ -1,44 +1,116 @@
 import { describe, expect, it } from "vitest";
-import { aggregateReviewAttempts, calculateAdaptiveReview, REVIEW_VERSION } from "../../lib/learning/spaced-repetition";
+import { calculateAdaptiveReview, REVIEW_VERSION } from "../../lib/learning/spaced-repetition";
 
 const now = new Date("2026-07-10T12:00:00.000Z");
 
-describe("adaptive spaced repetition", () => {
-  it("starts a first successful review in learning with a three-day interval", () => {
+describe("adaptive spaced repetition v2", () => {
+  it("starts a brand-new word in learning with a one-day step", () => {
     const review = calculateAdaptiveReview({}, [{ rating: "good", responseTimeMs: 3_000, cardType: "target_to_native" }], now);
-    expect(review).toMatchObject({ reviewIntervalDays: 3, reviewEase: 2.3, reviewStreak: 1, lapseCount: 0, reviewState: "learning", reviewVersion: REVIEW_VERSION, lastRating: "good" });
+    expect(review).toMatchObject({
+      reviewIntervalDays: 1, learningStep: 1, reviewStreak: 1, reviewEase: 2.3,
+      lapseCount: 0, familiarityScore: 1, reviewState: "learning",
+      lastRating: "good", reviewVersion: REVIEW_VERSION
+    });
+    expect(review.reviewDueAt).toBe("2026-07-11T09:00:00.000Z");
   });
 
-  it("uses the initial success ladder and then retains a mastered interval", () => {
-    const second = calculateAdaptiveReview({ review_streak: 1, review_interval_days: 3, review_ease: 2.3 }, [{ rating: "good", responseTimeMs: 3_000 }], now);
-    const mastered = calculateAdaptiveReview({ review_streak: 4, review_interval_days: 60, review_ease: 2.5, review_state: "review" }, [{ rating: "easy", responseTimeMs: 1_000 }], now);
-    expect(second).toMatchObject({ reviewIntervalDays: 7, reviewStreak: 2, reviewState: "review" });
-    expect(mastered.reviewIntervalDays).toBeGreaterThan(60);
-    expect(mastered.reviewEase).toBe(2.6);
+  it("advances through the learning steps and graduates to a seven-day interval", () => {
+    const step1 = calculateAdaptiveReview({}, [{ rating: "good", responseTimeMs: 3_000 }], now);
+    expect(step1).toMatchObject({ learningStep: 1, reviewStreak: 1, reviewState: "learning" });
+    expect(step1.reviewDueAt).toBe("2026-07-11T09:00:00.000Z");
+    const step2 = calculateAdaptiveReview({ learning_step: 1, review_streak: 1, review_ease: 2.3 }, [{ rating: "good", responseTimeMs: 3_000 }], now);
+    expect(step2).toMatchObject({ learningStep: 2, reviewStreak: 2, reviewState: "learning" });
+    expect(step2.reviewDueAt).toBe("2026-07-13T09:00:00.000Z");
+    const graduated = calculateAdaptiveReview({ learning_step: 2, review_streak: 2, review_ease: 2.3 }, [{ rating: "good", responseTimeMs: 3_000 }], now);
+    expect(graduated).toMatchObject({ reviewIntervalDays: 7, learningStep: 3, reviewStreak: 3, reviewState: "review" });
+    expect(graduated.reviewDueAt).toBe("2026-07-17T09:00:00.000Z");
   });
 
-  it("resets after a lapse and classifies consecutive failures as difficult", () => {
-    const review = calculateAdaptiveReview({ review_interval_days: 30, review_ease: 2.6, review_streak: 5, lapse_count: 1, last_rating: "forgot", familiarity_score: 8 }, [{ rating: "forgot", responseTimeMs: 2_000 }], now);
-    expect(review).toMatchObject({ reviewIntervalDays: 1, reviewEase: 2.35, reviewStreak: 0, lapseCount: 2, reviewState: "difficult", familiarityScore: 6 });
+  it("fast-tracks learning on easy and graduates with a fifteen-day interval", () => {
+    const fastTracked = calculateAdaptiveReview({}, [{ rating: "easy", responseTimeMs: 1_000 }], now);
+    expect(fastTracked).toMatchObject({ learningStep: 2, reviewEase: 2.4, reviewStreak: 1, reviewState: "learning" });
+    expect(fastTracked.reviewDueAt).toBe("2026-07-13T09:00:00.000Z");
+    const graduated = calculateAdaptiveReview({ learning_step: 1, review_streak: 1, review_ease: 2.3 }, [{ rating: "easy", responseTimeMs: 1_000 }], now);
+    expect(graduated).toMatchObject({ reviewIntervalDays: 15, learningStep: 3, reviewEase: 2.4, reviewState: "review" });
   });
 
-  it("keeps hard reviews between one and four days", () => {
-    const review = calculateAdaptiveReview({ review_interval_days: 30, review_ease: 1.3, review_streak: 3 }, [{ rating: "hard", responseTimeMs: 3_000 }], now);
-    expect(review).toMatchObject({ reviewIntervalDays: 4, reviewEase: 1.3, reviewStreak: 2 });
+  it("keeps the graduated growth formula for mastered words", () => {
+    const mastered = calculateAdaptiveReview(
+      { review_streak: 4, review_interval_days: 60, review_ease: 2.5, review_state: "review" },
+      [{ rating: "easy", responseTimeMs: 1_000 }], now
+    );
+    expect(mastered).toMatchObject({ reviewIntervalDays: 231, reviewEase: 2.6, reviewStreak: 5, reviewState: "review" });
   });
 
-  it("aggregates multiple cards for one word by their worst result", () => {
-    const aggregate = aggregateReviewAttempts([{ rating: "easy", responseTimeMs: 1_000 }, { rating: "forgot", responseTimeMs: 2_000 }, { rating: "good", responseTimeMs: 2_000 }]);
-    const review = calculateAdaptiveReview({ review_interval_days: 15, review_streak: 3 }, [{ rating: "easy" }, { rating: "forgot" }], now);
-    expect(aggregate.rating).toBe("forgot");
-    expect(review).toMatchObject({ reviewIntervalDays: 1, reviewStreak: 0, lastRating: "forgot" });
+  it("sends a graduated lapse into relearning, keeping the pre-lapse interval", () => {
+    const review = calculateAdaptiveReview(
+      { review_interval_days: 30, review_ease: 2.6, review_streak: 5, lapse_count: 1, last_rating: "forgot", familiarity_score: 8, review_state: "review" },
+      [{ rating: "forgot", responseTimeMs: 2_000 }], now
+    );
+    expect(review).toMatchObject({
+      reviewIntervalDays: 30, learningStep: 0, reviewStreak: 0, lapseCount: 2,
+      reviewEase: 2.35, familiarityScore: 6, reviewState: "difficult"
+    });
+    expect(review.reviewDueAt).toBe("2026-07-11T09:00:00.000Z");
   });
 
-  it("applies only a moderate response-time adjustment without changing correctness", () => {
-    const fast = calculateAdaptiveReview({ review_interval_days: 20, review_streak: 4 }, [{ rating: "good", responseTimeMs: 1_000, cardType: "target_to_native" }], now);
-    const slow = calculateAdaptiveReview({ review_interval_days: 20, review_streak: 4 }, [{ rating: "good", responseTimeMs: 20_000, cardType: "cloze" }], now);
-    expect(fast.reviewIntervalDays).toBeGreaterThan(slow.reviewIntervalDays);
-    expect(slow.lastRating).toBe("good");
+  it("regraduates from relearning with half the pre-lapse interval", () => {
+    const review = calculateAdaptiveReview(
+      { review_interval_days: 30, review_ease: 2.35, review_streak: 0, lapse_count: 2, learning_step: 0, last_rating: "forgot", review_state: "difficult" },
+      [{ rating: "good", responseTimeMs: 3_000 }, { rating: "good", responseTimeMs: 3_000 }, { rating: "good", responseTimeMs: 3_000 }], now
+    );
+    expect(review).toMatchObject({ reviewIntervalDays: 15, learningStep: 3, reviewStreak: 3, reviewState: "review" });
+  });
+
+  it("applies multiple attempts sequentially, crediting in-session recovery", () => {
+    const recovered = calculateAdaptiveReview(
+      { review_interval_days: 30, review_streak: 5, lapse_count: 0, review_state: "review" },
+      [{ rating: "forgot" }, { rating: "good" }, { rating: "good" }], now
+    );
+    expect(recovered).toMatchObject({ reviewIntervalDays: 30, learningStep: 2, lapseCount: 1, reviewStreak: 2, reviewState: "learning" });
+    expect(recovered.reviewDueAt).toBe("2026-07-13T09:00:00.000Z");
+  });
+
+  it("keeps graduated hard reviews between one and four days", () => {
+    const review = calculateAdaptiveReview(
+      { review_interval_days: 30, review_ease: 1.3, review_streak: 3, review_state: "review" },
+      [{ rating: "hard", responseTimeMs: 3_000 }], now
+    );
+    expect(review).toMatchObject({ reviewIntervalDays: 4, reviewEase: 1.3, reviewStreak: 2, reviewState: "review" });
+  });
+
+  it("repeats the current learning step on hard without graduating", () => {
+    const review = calculateAdaptiveReview(
+      { learning_step: 1, review_streak: 1, review_ease: 2.3 },
+      [{ rating: "hard", responseTimeMs: 3_000 }], now
+    );
+    expect(review).toMatchObject({ learningStep: 1, reviewStreak: 0, reviewEase: 2.22, reviewState: "learning" });
+    expect(review.reviewDueAt).toBe("2026-07-11T09:00:00.000Z");
+  });
+
+  it("flags a leech once at the lapse threshold and preserves the timestamp", () => {
+    const flagged = calculateAdaptiveReview(
+      { review_interval_days: 15, review_ease: 2.3, review_streak: 1, lapse_count: 3, review_state: "review" },
+      [{ rating: "forgot" }], now
+    );
+    expect(flagged).toMatchObject({ lapseCount: 4, reviewState: "difficult", leechFlaggedAt: "2026-07-10T12:00:00.000Z" });
+    const again = calculateAdaptiveReview(
+      { review_interval_days: 15, lapse_count: 4, learning_step: 0, last_rating: "forgot", leech_flagged_at: "2026-07-01T09:00:00.000Z", review_state: "difficult" },
+      [{ rating: "forgot" }], now
+    );
+    expect(again.leechFlaggedAt).toBe("2026-07-01T09:00:00.000Z");
+  });
+
+  it("applies a deterministic interval fuzz only with a seed on long graduated intervals", () => {
+    const current = { review_interval_days: 60, review_streak: 4, review_ease: 2.5, review_state: "review" as const };
+    const attempt = [{ rating: "good" as const, responseTimeMs: 3_000 }];
+    const withoutSeed = calculateAdaptiveReview(current, attempt, now);
+    const seededA = calculateAdaptiveReview(current, attempt, now, "UTC", "word-a");
+    const seededB = calculateAdaptiveReview(current, attempt, now, "UTC", "word-a");
+    expect(withoutSeed.reviewIntervalDays).toBe(150);
+    expect(seededA.reviewIntervalDays).toBe(seededB.reviewIntervalDays);
+    expect(seededA.reviewIntervalDays).toBeGreaterThanOrEqual(135);
+    expect(seededA.reviewIntervalDays).toBeLessThanOrEqual(165);
   });
 
   it("keeps due dates on the learner calendar across a timezone offset", () => {
@@ -48,12 +120,19 @@ describe("adaptive spaced repetition", () => {
   });
 
   it("normalizes incomplete legacy data and caps the largest interval", () => {
-    const review = calculateAdaptiveReview({ review_interval_days: 9_999, review_ease: 99, review_streak: -2, lapse_count: -1, review_state: "new" }, [{ rating: "easy" }], now, "not/a-timezone");
+    const review = calculateAdaptiveReview(
+      { review_interval_days: 9_999, review_ease: 99, review_streak: -2, lapse_count: -1, review_state: "review" },
+      [{ rating: "easy" }], now, "not/a-timezone"
+    );
     expect(review).toMatchObject({ reviewIntervalDays: 365, reviewEase: 2.8, reviewStreak: 1, lapseCount: 0, reviewVersion: REVIEW_VERSION });
   });
 
   it("preserves a suspended word while recording the review fields", () => {
     const review = calculateAdaptiveReview({ review_state: "suspended" }, [{ rating: "good" }], now);
     expect(review.reviewState).toBe("suspended");
+  });
+
+  it("requires at least one attempt", () => {
+    expect(() => calculateAdaptiveReview({}, [], now)).toThrow("At least one review attempt is required.");
   });
 });
