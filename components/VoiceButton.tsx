@@ -2,6 +2,7 @@
 
 import { Loader2, Pause, Play, RotateCcw, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
 
 type VoiceButtonProps = {
   text: string;
@@ -57,6 +58,7 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
   }, []);
 
   const startDeviceFallback = useCallback(() => {
+    reportDeviceFallback(text, languageCode);
     releaseAudio();
     if (!playDeviceSpeech(text, languageCode, playbackRate, () => setStatus("ended"))) {
       setStatus("error");
@@ -71,6 +73,12 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     if (activeVoice?.owner !== ownerRef.current) activeVoice?.stop();
     activeVoice = { owner: ownerRef.current, stop: stopForAnotherVoice };
     audio.playbackRate = playbackRate;
+    // iOS: se o microfone acabou de ser liberado, aguarda a AVAudioSession
+    // restaurar a rota do alto-falante antes de tocar.
+    const routeRestoreWait = msUntilAudioRouteRestored();
+    if (routeRestoreWait > 0) {
+      await new Promise((resolve) => setTimeout(resolve, routeRestoreWait));
+    }
     try {
       await audio.play();
       setStatus("playing");
@@ -176,6 +184,23 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
       <span aria-live="polite">{voiceStatusText(status, label)}</span>
     </button>
   );
+}
+
+function reportDeviceFallback(text: string, languageCode: string | undefined) {
+  const body = JSON.stringify({
+    event_name: "voice_device_fallback",
+    payload: { language: languageCode ?? "", textLength: text.length }
+  });
+  if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
+    navigator.sendBeacon("/api/events", new Blob([body], { type: "application/json" }));
+    return;
+  }
+  void fetch("/api/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    keepalive: true
+  }).catch(() => undefined);
 }
 
 function playDeviceSpeech(text: string, languageCode: string | undefined, rate: number, onEnd: () => void) {
