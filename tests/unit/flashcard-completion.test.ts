@@ -130,6 +130,20 @@ describe("flashcard completion persistence", () => {
     expect(wordUpdates).toHaveLength(1);
     expect(wordUpdates[0][1]).toBe("word-b");
   });
+
+  it("counts slow words from all attempts, even already-applied ones", async () => {
+    const slowAttempt = appliedAttempt("attempt-2", "card-b", "word-b", "client-002");
+    slowAttempt.fields.response_time_ms = 9_000;
+    attemptRecords = [
+      appliedAttempt("attempt-1", "card-a", "word-a", "client-001"),
+      slowAttempt
+    ];
+    const { completeFlashcardPractice } = await import("../../lib/learning/flashcards");
+    const result = await completeFlashcardPractice("session-a", "completion-123", []);
+
+    expect(result.slowWords).toBe(1);
+    expect(updateRecord.mock.calls.filter(([table]) => table === "words")).toHaveLength(0);
+  });
 });
 
 function attempt(cardId: string, presentationNumber: number, userAnswer: string, rating: "forgot" | "hard" | "good" | "easy", forgot = false) {

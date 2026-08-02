@@ -545,7 +545,7 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
   const firstAttemptAccuracy = uniqueCardCount ? Math.round((firstAttemptCorrect / uniqueCardCount) * 100) : 0;
   const averageResponseTimeMs = presentationCount ? Math.round(validatedAnswers.reduce((sum, answer) => sum + answer.responseTimeMs, 0) / presentationCount) : 0;
   const difficultWords = [...results.keys()].filter((wordId) => words.find((word) => word.id === wordId)?.fields.review_state === "difficult").length;
-  const slowWords = [...reviewAttemptsByWord.values()].filter((attempts) => attempts.some((attempt) => (attempt.responseTimeMs ?? 0) >= 8_000)).length;
+  const slowWords = new Set(validatedAnswers.filter((answer) => answer.responseTimeMs >= 8_000).flatMap((answer) => answer.wordIds)).size;
   const result = { score, correctCards, wrongCards: uniqueCardCount - correctCards, totalCards: uniqueCardCount, reviewedWords: results.size, uniqueCardCount, presentationCount, firstAttemptCorrect, recoveredCards, firstAttemptAccuracy, eventualRecallAccuracy: score, productionAccuracy: accuracyFor(["native_to_target", "cloze"]), comprehensionAccuracy: accuracyFor(["target_to_native"]), listeningAccuracy: accuracyFor(["listening"]), averageResponseTimeMs, durationSeconds, difficultWords, slowWords };
   await client.createEvent(user.id, "flashcard_practice_completed", {
     session_id: session.id, correct_cards: correctCards, total_cards: uniqueCardCount, presentation_count: presentationCount, score,
