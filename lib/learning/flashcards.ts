@@ -493,6 +493,9 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
   const validatedAnswers = persistedAttempts.length
     ? persistedAttempts.map((answer) => ({ ...answer, wordIds: [cards.find((card) => card.id === answer.cardId)!.targetWordId, ...cards.find((card) => card.id === answer.cardId)!.supportingWordIds] }))
     : validateFlashcardAnswers(cards, answers.slice(0, 91));
+  const pendingReviewAnswers = persistedAttempts.length
+    ? validatedAnswers.filter((answer) => !("reviewApplied" in answer && answer.reviewApplied))
+    : validatedAnswers;
   const rebuilt = rebuildFlashcardQueue(cards, validatedAnswers);
   if (rebuilt.currentItem) throw new LearningStateError("Ainda existem cards pendentes nesta sessão.", 409);
   const results = new Map<string, { correct: number; wrong: number }>();
@@ -505,6 +508,12 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
       if (isRatingCorrect(answer.rating)) current.correct += 1;
       else current.wrong += 1;
       results.set(id, current);
+    }
+  }
+  for (const answer of pendingReviewAnswers) {
+    const card = cards.find((item) => item.id === answer.cardId);
+    if (card?.type === "listening" && "audioFailed" in answer && answer.audioFailed) continue;
+    for (const id of answer.wordIds) {
       reviewAttemptsByWord.set(id, [...(reviewAttemptsByWord.get(id) ?? []), {
         rating: answer.rating,
         responseTimeMs: answer.responseTimeMs,
@@ -513,23 +522,11 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
     }
   }
   const now = new Date();
-  for (const wordId of results.keys()) {
+  for (const wordId of reviewAttemptsByWord.keys()) {
     const word = words.find((item) => item.id === wordId && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
     if (!word) continue;
-    const review = calculateAdaptiveReview(word.fields, reviewAttemptsByWord.get(wordId) ?? [], now, user.fields.timezone ?? "UTC");
-    await client.updateRecord<WordFields>("words", word.id, {
-      familiarity_score: review.familiarityScore,
-      review_due_at: review.reviewDueAt,
-      review_interval_days: review.reviewIntervalDays,
-      review_ease: review.reviewEase,
-      review_streak: review.reviewStreak,
-      lapse_count: review.lapseCount,
-      last_reviewed_at: review.lastReviewedAt,
-      last_rating: review.lastRating,
-      average_response_time_ms: review.averageResponseTimeMs,
-      review_state: review.reviewState,
-      review_version: review.reviewVersion
-    });
+    const review = calculateAdaptiveReview(word.fields, reviewAttemptsByWord.get(wordId) ?? [], now, user.fields.timezone ?? "UTC", word.id);
+    await client.updateRecord<WordFields>("words", word.id, reviewToWordFields(review));
   }
   const attemptsByCard = new Map<string, typeof validatedAnswers>();
   for (const answer of validatedAnswers) attemptsByCard.set(answer.cardId, [...(attemptsByCard.get(answer.cardId) ?? []), answer]);

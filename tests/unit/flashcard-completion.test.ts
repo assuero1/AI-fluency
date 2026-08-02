@@ -8,6 +8,7 @@ const cards = [
 ];
 let session: { id: string; fields: Record<string, unknown> };
 let words: Array<{ id: string; fields: Record<string, unknown> }>;
+let attemptRecords: Array<{ id: string; fields: Record<string, unknown>; createdTime?: string }> = [];
 const updateRecord = vi.fn();
 const createEvent = vi.fn();
 const listRecords = vi.fn();
@@ -37,7 +38,12 @@ describe("flashcard completion persistence", () => {
       { id: "word-b", fields: { user_id: user.id, language_profile_id: profile.id, familiarity_score: 8 } }
     ];
     vi.clearAllMocks();
-    listRecords.mockImplementation(async (table: string) => table === "practiceSessions" ? [session] : words);
+    attemptRecords = [];
+    listRecords.mockImplementation(async (table: string) => {
+      if (table === "practiceSessions") return [session];
+      if (table === "flashcardAttempts") return attemptRecords;
+      return words;
+    });
     updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
       if (table === "practiceSessions" && id === session.id) session.fields = { ...session.fields, ...fields };
       return { id, fields };
@@ -99,8 +105,48 @@ describe("flashcard completion persistence", () => {
     const { completeFlashcardPractice } = await import("../../lib/learning/flashcards");
     await expect(completeFlashcardPractice("session-a", "completion-123", [])).rejects.toMatchObject({ status: 404 });
   });
+
+  it("skips the SRS write for attempts already applied incrementally", async () => {
+    attemptRecords = [
+      appliedAttempt("attempt-1", "card-a", "word-a", "client-001"),
+      appliedAttempt("attempt-2", "card-b", "word-b", "client-002")
+    ];
+    const { completeFlashcardPractice } = await import("../../lib/learning/flashcards");
+    const result = await completeFlashcardPractice("session-a", "completion-123", []);
+
+    expect(updateRecord.mock.calls.filter(([table]) => table === "words")).toHaveLength(0);
+    expect(result).toMatchObject({ score: 100, reviewedWords: 2, presentationCount: 2 });
+  });
+
+  it("applies only the attempts missing the incremental update", async () => {
+    attemptRecords = [
+      appliedAttempt("attempt-1", "card-a", "word-a", "client-001"),
+      appliedAttempt("attempt-2", "card-b", "word-b", "client-002", false)
+    ];
+    const { completeFlashcardPractice } = await import("../../lib/learning/flashcards");
+    await completeFlashcardPractice("session-a", "completion-123", []);
+
+    const wordUpdates = updateRecord.mock.calls.filter(([table]) => table === "words");
+    expect(wordUpdates).toHaveLength(1);
+    expect(wordUpdates[0][1]).toBe("word-b");
+  });
 });
 
 function attempt(cardId: string, presentationNumber: number, userAnswer: string, rating: "forgot" | "hard" | "good" | "easy", forgot = false) {
   return { cardId, presentationNumber, userAnswer, rating, forgot, usedSpeech: false, responseTimeMs: 1500 };
+}
+
+function appliedAttempt(id: string, cardId: string, wordId: string, clientAttemptId: string, reviewApplied = true) {
+  return {
+    id,
+    createdTime: "2026-07-10T12:00:00.000Z",
+    fields: {
+      practice_session_id: "session-a", flashcard_id: cardId, word_id: wordId,
+      presentation_number: 1, client_attempt_id: clientAttemptId,
+      user_answer: "resposta", normalized_answer: "resposta", match_result: "exact",
+      suggested_rating: "good", final_rating: "good", was_correct: true,
+      response_time_ms: 1500, used_speech: false, audio_replay_count: 0,
+      review_applied: reviewApplied, created_at: "2026-07-10T12:00:00.000Z"
+    }
+  };
 }
