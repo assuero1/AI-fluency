@@ -9,7 +9,7 @@ import { getActiveLanguageProfile, getOrCreatePersonalUser } from "./profile";
 import { matchesLearningScope } from "./scope";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
 import { isRatingCorrect, rebuildFlashcardQueue, suggestRecallRating } from "./flashcard-queue";
-import { calculateAdaptiveReview, type ReviewAttempt } from "./spaced-repetition";
+import { calculateAdaptiveReview, reviewToWordFields, type ReviewAttempt } from "./spaced-repetition";
 import {
   flashcardCriteria,
   type Flashcard,
@@ -383,10 +383,11 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
   const user = await getOrCreatePersonalUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
-  const [sessions, cardRecords, attemptRecords] = await Promise.all([
+  const [sessions, cardRecords, attemptRecords, words] = await Promise.all([
     client.listRecords<PracticeSessionFields>("practiceSessions", 300),
     client.listRecords<FlashcardFields>("flashcards", 500),
-    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000)
+    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000),
+    client.listRecords<WordFields>("words", 500)
   ]);
   const session = sessions.find((item) => item.id === sessionId && item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards" && item.fields.status === "active");
   if (!session) throw new LearningStateError("Sessão ativa de treino não encontrada.", 404);
@@ -438,6 +439,21 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
   await client.createEvent(user.id, "flashcard_attempt_evaluated", { session_id: sessionId, flashcard_id: card.id, presentation_number: presentationNumber, rating, match_result: matchResult, used_speech: input.usedSpeech === true, audio_replay_count: Math.max(0, Math.min(30, Math.round(Number(input.audioReplayCount) || 0))), audio_failed: input.audioFailed === true, evaluation_latency_ms: Date.now() - operationStartedAt });
   if (input.audioFailed === true) await client.createEvent(user.id, "flashcard_audio_fallback_activated", { session_id: sessionId, flashcard_id: card.id });
   await client.updateRecord<PracticeSessionFields>("practiceSessions", sessionId, { presentation_count: priorAttempts.length + 1, updated_at: now });
+  const attemptWordIds = [card.targetWordId, ...card.supportingWordIds];
+  const reviewableWords = words.filter((item) => attemptWordIds.includes(item.id) && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
+  if (reviewableWords.length) {
+    try {
+      let resultingState = "";
+      for (const word of reviewableWords) {
+        const review = calculateAdaptiveReview(word.fields, [{ rating, responseTimeMs, cardType: card.type }], new Date(now), user.fields.timezone ?? "UTC", word.id);
+        await client.updateRecord<WordFields>("words", word.id, reviewToWordFields(review));
+        if (word.id === card.targetWordId) resultingState = review.reviewState;
+      }
+      await client.updateRecord<FlashcardAttemptFields>("flashcardAttempts", record.id, { review_applied: true, resulting_review_state: resultingState });
+    } catch (error) {
+      await client.createEvent(user.id, "flashcard_incremental_review_failed", { session_id: sessionId, flashcard_id: card.id, message: error instanceof Error ? error.message : "unknown" });
+    }
+  }
   return { id: record.id, ...attemptRecordToAnswer(record) };
 }
 
@@ -711,6 +727,7 @@ function attemptRecordToAnswer(record: TeableRecord<FlashcardAttemptFields>) {
     audioReplayCount: Number(record.fields.audio_replay_count || 0),
     usedSlowAudio: Boolean(record.fields.used_slow_audio),
     answeredAfterAudioReplay: Boolean(record.fields.answered_after_audio_replay),
+    reviewApplied: Boolean(record.fields.review_applied),
     audioFailed: Boolean(record.fields.audio_failed)
   };
 }
