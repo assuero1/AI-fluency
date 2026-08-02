@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   joinSpeechSegments,
+  markMicReleased,
+  msUntilAudioRouteRestored,
   punctuateSpeechSentence,
   speechLanguageName,
   speechLocale,
@@ -45,5 +47,20 @@ describe("native speech recognition locale", () => {
 
   it("keeps the capital when the previous segment ended a sentence", () => {
     expect(joinSpeechSegments(["I went home.", "Then I slept"], "en")).toBe("I went home. Then I slept.");
+  });
+
+  it("reports the remaining wait after the mic is released", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(1_000_000);
+      markMicReleased();
+      expect(msUntilAudioRouteRestored()).toBe(350);
+      vi.setSystemTime(1_000_100);
+      expect(msUntilAudioRouteRestored()).toBe(250);
+      vi.setSystemTime(1_000_400);
+      expect(msUntilAudioRouteRestored()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

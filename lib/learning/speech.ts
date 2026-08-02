@@ -78,3 +78,15 @@ function looksLikeQuestion(value: string, languageCode: string | undefined) {
   };
   return (starters[languageCode?.toLowerCase() ?? ""] ?? starters.en).test(normalized);
 }
+
+const AUDIO_ROUTE_RESTORE_MS = 350;
+
+let micReleasedAt = 0;
+
+export function markMicReleased() {
+  micReleasedAt = Date.now();
+}
+
+export function msUntilAudioRouteRestored(now = Date.now()) {
+  return Math.max(0, AUDIO_ROUTE_RESTORE_MS - (now - micReleasedAt));
+}

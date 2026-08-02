@@ -14,7 +14,7 @@ import { ScreenHeader } from "./ScreenHeader";
 import { VoiceButton } from "./VoiceButton";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields } from "@/lib/learning/conversations";
 import type { SelectionExplanation } from "@/lib/learning/selection-explanation";
-import { joinSpeechSegments, speechLanguageName, speechLocale, speechRecognitionErrorMessage } from "@/lib/learning/speech";
+import { joinSpeechSegments, markMicReleased, speechLanguageName, speechLocale, speechRecognitionErrorMessage } from "@/lib/learning/speech";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 import type { TeableRecord } from "@/lib/teable/client";
 import type { ConversationQuickAction } from "@/lib/learning/quick-actions";
@@ -125,6 +125,7 @@ export function ChatConversation({
         recognition.abort();
       }
       recognitionRef.current = null;
+      markMicReleased();
     };
   }, []);
 
@@ -312,6 +313,19 @@ export function ChatConversation({
     finally { setIsExplaining(false); }
   }
 
+  function finishRecognitionSession() {
+    const recognition = recognitionRef.current;
+    if (!recognition) return;
+    // No iOS, nullificar os handlers e abortar libera a AVAudioSession de gravação,
+    // restaurando a rota/volume do alto-falante para o próximo TTS.
+    recognition.onresult = null;
+    recognition.onerror = null;
+    recognition.onend = null;
+    recognition.abort();
+    recognitionRef.current = null;
+    markMicReleased();
+  }
+
   function toggleNativeSpeechRecognition() {
     if (isSending) return;
 
@@ -376,7 +390,7 @@ export function ChatConversation({
         suppressSpeechCommitRef.current = false;
         speechFinalSegmentsRef.current = [];
         speechInterimRef.current = "";
-        recognitionRef.current = null;
+        finishRecognitionSession();
         setIsListening(false);
         return;
       }
@@ -390,8 +404,8 @@ export function ChatConversation({
 
       if (!listeningDesiredRef.current) {
         if (completedTranscript) void polishSpeechTranscript(recognitionStartTextRef.current, completedTranscript);
+        finishRecognitionSession();
         setIsListening(false);
-        recognitionRef.current = null;
         return;
       }
 
