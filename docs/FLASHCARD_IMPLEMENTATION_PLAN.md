@@ -96,19 +96,24 @@ type Flashcard = {
 };
 ```
 
-## Distribuição inicial
+## Distribuição
 
-- 25% idioma-alvo → português;
-- 40% português → idioma-alvo;
-- 35% frase com lacuna;
-- exercícios auditivos ficam desativados até o PR 5.
+Desde a revisão de 2026-08-01, a revisão inteligente é um treino de repetição espaçada
+sempre no sentido idioma estudado → português:
 
-A distribuição será ajustada quando houver poucos cards:
+- 100% dos cards são `target_to_native`: o prompt é a palavra no idioma aprendido e a
+  resposta esperada é a tradução em português;
+- palavras sem tradução cadastrada aceitam a própria palavra como resposta esperada;
+- os tipos `native_to_target`, `cloze` e `listening` permanecem no contrato apenas para
+  compatibilidade com sessões antigas (conclusão, retomada e métricas históricas);
+- os retreinos passam a ser apenas "Somente erradas" e "Somente difíceis".
 
-- 2 palavras: uma compreensão e uma produção;
-- 3 palavras: uma de cada modalidade;
-- sem tradução: não criar card português → idioma-alvo;
-- sem frase válida: usar card de palavra.
+A seleção das palavras prioriza o agendamento SRS: palavras com `review_due_at` vencido
+(ou nunca agendadas) entram primeiro, ordenadas pelo critério escolhido; se não houver
+vencidas suficientes, o baralho é completado com as palavras mais próximas do vencimento.
+
+Distribuição original (histórico, substituída): 25% idioma-alvo → português, 40%
+português → idioma-alvo e 35% frase com lacuna, com ajustes para baralhos pequenos.
 
 ## Tentativa obrigatória
 

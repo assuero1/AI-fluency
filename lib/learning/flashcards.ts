@@ -136,21 +136,24 @@ export function normalizeFlashcardCount(value: unknown): number {
   return Math.max(2, Math.min(30, Math.round(Number(value) || 10)));
 }
 
-export function selectFlashcardWords<T extends TeableRecord<WordFields>>(words: T[], criterion: FlashcardCriterion, count: number): T[] {
-  return [...words].sort(criterion === "least_used"
-    ? (a, b) => Number(a.fields.total_uses ?? 0) - Number(b.fields.total_uses ?? 0) || Number(a.fields.familiarity_score ?? 0) - Number(b.fields.familiarity_score ?? 0)
-    : (a, b) => dateValue(a.fields.last_used_at || a.fields.first_used_at) - dateValue(b.fields.last_used_at || b.fields.first_used_at))
-    .slice(0, count);
+export function selectFlashcardWords<T extends TeableRecord<WordFields>>(words: T[], criterion: FlashcardCriterion, count: number, now = new Date()): T[] {
+  const criterionSort = criterion === "least_used"
+    ? (a: T, b: T) => Number(a.fields.total_uses ?? 0) - Number(b.fields.total_uses ?? 0) || Number(a.fields.familiarity_score ?? 0) - Number(b.fields.familiarity_score ?? 0)
+    : (a: T, b: T) => dateValue(a.fields.last_used_at || a.fields.first_used_at) - dateValue(b.fields.last_used_at || b.fields.first_used_at);
+  const due: T[] = [];
+  const upcoming: T[] = [];
+  for (const item of [...words].sort(criterionSort)) {
+    // Words never scheduled (missing review_due_at) count as due, like new cards in an SRS deck.
+    (dateValue(item.fields.review_due_at) <= now.getTime() ? due : upcoming).push(item);
+  }
+  upcoming.sort((a, b) => dateValue(a.fields.review_due_at) - dateValue(b.fields.review_due_at));
+  return [...due, ...upcoming].slice(0, count);
 }
 
-export function getActiveRecallDistribution(wordCount: number, audioEnabled = false) {
+// A revisão inteligente é sempre idioma estudado → português (target_to_native).
+export function getActiveRecallDistribution(wordCount: number) {
   const count = Math.max(0, Math.floor(wordCount));
-  if (count === 2) return { targetToNative: 1, nativeToTarget: 1, cloze: 0, listening: 0 };
-  if (count === 3) return { targetToNative: 1, nativeToTarget: 1, cloze: 1, listening: 0 };
-  const targetToNative = Math.round(count * 0.25);
-  const listening = audioEnabled ? Math.round(count * 0.15) : 0;
-  const cloze = Math.max(0, Math.round(count * 0.5) - listening);
-  return { targetToNative, nativeToTarget: count - targetToNative - cloze - listening, cloze, listening };
+  return { targetToNative: count, nativeToTarget: 0, cloze: 0, listening: 0 };
 }
 
 export function validateFlashcardAnswers(cards: Flashcard[], answers: Array<{ cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown }>) {
@@ -234,7 +237,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
     incorrect_count: 0,
     score: 0,
     language_code: profile.fields.language_code,
-    configuration_json: JSON.stringify({ distribution: getActiveRecallDistribution(selected.length, profile.fields.audio_enabled === true) }),
+    configuration_json: JSON.stringify({ distribution: getActiveRecallDistribution(selected.length) }),
     parent_session_id: typeof input.parentSessionId === "string" ? input.parentSessionId : "",
     created_at: now,
     updated_at: now
@@ -244,7 +247,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
   let cards: Flashcard[];
   try {
     await client.createEvent(user.id, "flashcard_generation_started", { session_id: session.id, word_count: selected.length });
-    deck = await buildDeck(selected, profile.fields.language_name || profile.fields.language_code, profile.fields.level || "intermediário", deckSeed, profile.fields.audio_enabled === true);
+    deck = await buildDeck(selected, profile.fields.language_name || profile.fields.language_code, profile.fields.level || "intermediário", deckSeed);
     cards = [];
     for (const [index, provisional] of deck.cards.entries()) {
       const record = await client.createRecord<FlashcardFields>("flashcards", flashcardToRecord(provisional, session.id, index, now));
@@ -253,7 +256,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
     await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, {
       status: "active",
       unique_card_count: cards.length,
-      configuration_json: JSON.stringify({ distribution: getActiveRecallDistribution(selected.length, profile.fields.audio_enabled === true), deckSeed, adapted: deck.adapted }),
+      configuration_json: JSON.stringify({ distribution: getActiveRecallDistribution(selected.length), deckSeed, adapted: deck.adapted }),
       updated_at: new Date().toISOString()
     });
     await client.createEvent(user.id, "flashcard_generation_completed", { session_id: session.id, card_count: cards.length, duration_ms: Date.now() - operationStartedAt, fallback_used: deck.adapted });
@@ -263,12 +266,12 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
     throw error;
   }
   await client.createEvent(user.id, "flashcard_practice_started", { session_id: session.id, criterion, word_count: selected.length, card_count: cards.length });
-  if (deck.adapted) await client.createEvent(user.id, "flashcard_generation_adapted", { session_id: session.id, requested_context_cards: getActiveRecallDistribution(selected.length, profile.fields.audio_enabled === true).cloze, generated_context_cards: cards.filter((card) => card.type === "cloze").length });
   return { sessionId: session.id, cards, languageCode: profile.fields.language_code, languageName: profile.fields.language_name, selectedWordCount: selected.length, adapted: deck.adapted };
 }
 
 export async function createFlashcardRetraining(sourceSessionId: string, mode: unknown) {
-  const retrainMode = mode === "wrong" || mode === "difficult" || mode === "production" || mode === "listening" ? mode : null;
+  // Cards são sempre target_to_native; retreinos por tipo de card (produção/escuta) não existem mais.
+  const retrainMode = mode === "wrong" || mode === "difficult" ? mode : null;
   if (!sourceSessionId.trim() || !retrainMode) throw new LearningStateError("Retreino inválido.", 422);
   const client = getTeableClient();
   const user = await getOrCreatePersonalUser();
@@ -293,9 +296,7 @@ export async function createFlashcardRetraining(sourceSessionId: string, mode: u
     const attempts = attemptsByCard.get(card.id) ?? [];
     const final = attempts.at(-1);
     if (retrainMode === "wrong") return Boolean(final && !isRatingCorrect(final.rating));
-    if (retrainMode === "difficult") return difficultWords.has(card.targetWordId) || attempts.some((attempt) => attempt.rating === "forgot" || attempt.rating === "hard");
-    if (retrainMode === "production") return card.type === "native_to_target" || card.type === "cloze";
-    return card.type === "listening";
+    return difficultWords.has(card.targetWordId) || attempts.some((attempt) => attempt.rating === "forgot" || attempt.rating === "hard");
   });
   const wordIds = [...new Set(selectedCards.flatMap((card) => [card.targetWordId, ...card.supportingWordIds]))];
   if (!wordIds.length) throw new LearningStateError("Não há palavras elegíveis para este retreino.", 409);
@@ -551,8 +552,8 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
   return result;
 }
 
-export async function buildDeck(words: TeableRecord<WordFields>[], language: string, level: string, seed: string, audioEnabled: boolean) {
-  const distribution = getActiveRecallDistribution(words.length, audioEnabled);
+export async function buildDeck(words: TeableRecord<WordFields>[], language: string, level: string, seed: string) {
+  const distribution = getActiveRecallDistribution(words.length);
   const desiredTypes = [
     ...Array(distribution.targetToNative).fill("target_to_native" as const),
     ...Array(distribution.nativeToTarget).fill("native_to_target" as const),

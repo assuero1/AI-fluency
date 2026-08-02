@@ -57,12 +57,34 @@ describe("current flashcard behavior", () => {
     expect(selected.map((item) => item.id)).toEqual(["old", "never-reused", "recent"]);
   });
 
-  it("uses the active-recall distribution and small-deck rules", () => {
-    expect(getActiveRecallDistribution(2)).toEqual({ targetToNative: 1, nativeToTarget: 1, cloze: 0, listening: 0 });
-    expect(getActiveRecallDistribution(3)).toEqual({ targetToNative: 1, nativeToTarget: 1, cloze: 1, listening: 0 });
-    expect(getActiveRecallDistribution(10)).toEqual({ targetToNative: 3, nativeToTarget: 2, cloze: 5, listening: 0 });
-    expect(getActiveRecallDistribution(10, true)).toEqual({ targetToNative: 3, nativeToTarget: 2, cloze: 3, listening: 2 });
-    for (const count of [2, 5, 10, 30]) expect(Object.values(getActiveRecallDistribution(count, true)).reduce((sum, value) => sum + value, 0)).toBe(count);
+  it("builds every card target_to_native (learned language → Portuguese)", () => {
+    expect(getActiveRecallDistribution(2)).toEqual({ targetToNative: 2, nativeToTarget: 0, cloze: 0, listening: 0 });
+    expect(getActiveRecallDistribution(3)).toEqual({ targetToNative: 3, nativeToTarget: 0, cloze: 0, listening: 0 });
+    expect(getActiveRecallDistribution(10)).toEqual({ targetToNative: 10, nativeToTarget: 0, cloze: 0, listening: 0 });
+    for (const count of [2, 5, 10, 30]) expect(Object.values(getActiveRecallDistribution(count)).reduce((sum, value) => sum + value, 0)).toBe(count);
+  });
+
+  it("prioritizes due reviews and fills the deck with the closest upcoming ones", () => {
+    const now = new Date("2026-07-10T12:00:00.000Z");
+    const selected = selectFlashcardWords([
+      word("due", { total_uses: 9, familiarity_score: 9, review_due_at: "2026-07-09T09:00:00.000Z" }),
+      word("never-scheduled", { total_uses: 5, familiarity_score: 5 }),
+      word("upcoming-near", { total_uses: 1, familiarity_score: 1, review_due_at: "2026-07-12T09:00:00.000Z" }),
+      word("upcoming-far", { total_uses: 2, familiarity_score: 1, review_due_at: "2026-08-01T09:00:00.000Z" })
+    ], "least_used", 3, now);
+
+    expect(selected.map((item) => item.id)).toEqual(["never-scheduled", "due", "upcoming-near"]);
+  });
+
+  it("keeps the criterion ordering inside the due group", () => {
+    const now = new Date("2026-07-10T12:00:00.000Z");
+    const selected = selectFlashcardWords([
+      word("due-frequent", { total_uses: 4, familiarity_score: 1, review_due_at: "2026-07-01T09:00:00.000Z" }),
+      word("due-rare", { total_uses: 1, familiarity_score: 8, review_due_at: "2026-07-08T09:00:00.000Z" }),
+      word("not-due", { total_uses: 0, familiarity_score: 0, review_due_at: "2026-07-11T09:00:00.000Z" })
+    ], "least_used", 3, now);
+
+    expect(selected.map((item) => item.id)).toEqual(["due-rare", "due-frequent", "not-due"]);
   });
 
   it("reproduces the same shuffled deck from the persisted seed", () => {
