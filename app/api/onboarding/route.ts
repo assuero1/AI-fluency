@@ -13,7 +13,7 @@ export async function GET() {
   try {
     const user = await getOrCreatePersonalUser();
     const activeProfile = await getActiveLanguageProfile(user);
-    const readiness = getOnboardingRedirectTarget();
+    const readiness = await getOnboardingRedirectTarget();
 
     return jsonOk({
       ok: true,
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
     const body = (await request.json()) as OnboardingPayload & { mode?: "onboarding" | "language" };
     const user = await getOrCreatePersonalUser({ name: body.name, timezone: body.timezone });
     const profile = await createOrActivateLanguageProfile(user, body);
-    const readiness = getOnboardingRedirectTarget();
+    const readiness = await getOnboardingRedirectTarget();
     after(() => warmKokoroLanguage(profile.fields.language_code));
 
     return jsonOk(

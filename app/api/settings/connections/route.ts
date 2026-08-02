@@ -8,6 +8,6 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   return jsonOk({
     ok: true,
-    connections: getConnectionStatus()
+    connections: await getConnectionStatus()
   });
 }

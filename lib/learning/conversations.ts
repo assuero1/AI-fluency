@@ -155,7 +155,7 @@ export async function startConversation(input: {
   reason?: string;
 }) {
   const { client, user, profile } = await assertPracticeReady();
-  const ai = getAiConfig();
+  const ai = await getAiConfig();
   const now = new Date().toISOString();
 
   let topicId = input.topicId ?? "";

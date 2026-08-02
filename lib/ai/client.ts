@@ -42,7 +42,7 @@ export async function createChatCompletion(
   messages: AiMessage[],
   options?: { temperature?: number; maxTokens?: number; timeoutMs?: number; responseFormat?: "json"; disableThinking?: boolean }
 ) {
-  const config = getAiConfig();
+  const config = await getAiConfig();
 
   if (!config.baseUrl) throw new AiConfigError("AI_BASE_URL is not configured.");
   if (!config.apiKey) throw new AiConfigError("AI_API_KEY is not configured.");
@@ -136,7 +136,7 @@ function extractCompletionContent(result: ChatCompletionResponse) {
 }
 
 export async function testAiConnection() {
-  const config = getAiConfig();
+  const config = await getAiConfig();
 
   if (!config.baseUrl) throw new AiConfigError("AI_BASE_URL is not configured.");
   if (!config.apiKey) throw new AiConfigError("AI_API_KEY is not configured.");

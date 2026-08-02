@@ -119,7 +119,7 @@ export async function getHomeData() {
         : null
     },
     practice,
-    readiness: getConnectionStatus()
+    readiness: await getConnectionStatus()
   };
 }
 

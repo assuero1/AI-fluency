@@ -83,7 +83,7 @@ export async function getProfileSettings() {
       languageName: profile.fields.language_name,
       level: profile.fields.level
     })),
-    connections: getConnectionStatus()
+    connections: await getConnectionStatus()
   };
 }
 

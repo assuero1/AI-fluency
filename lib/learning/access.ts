@@ -22,14 +22,13 @@ type ReadyLearningAccess = {
   profile: TeableRecord<LanguageProfileFields>;
 };
 
-function hasMappedTeableSchema() {
-  const status = getConnectionStatus();
+function hasMappedTeableSchema(status: Awaited<ReturnType<typeof getConnectionStatus>>) {
   return status.teable.configured && status.teable.mappedTableCount === status.teable.totalTableCount;
 }
 
 export async function getLearningGate() {
-  const status = getConnectionStatus();
-  const teableReady = hasMappedTeableSchema();
+  const status = await getConnectionStatus();
+  const teableReady = hasMappedTeableSchema(status);
 
   if (!teableReady) {
     return { gate: "connections" as const, status, user: null, profile: null };

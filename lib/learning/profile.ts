@@ -153,8 +153,8 @@ export async function createOrActivateLanguageProfile(user: TeableRecord<UserFie
   return existingProfile;
 }
 
-export function getOnboardingRedirectTarget() {
-  const status = getConnectionStatus();
+export async function getOnboardingRedirectTarget() {
+  const status = await getConnectionStatus();
   const teableReady = status.teable.configured && status.teable.mappedTableCount === status.teable.totalTableCount;
   const aiReady = status.ai.configured;
 

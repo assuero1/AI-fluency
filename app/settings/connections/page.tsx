@@ -53,8 +53,8 @@ function ConnectionCard({
   );
 }
 
-export default function ConnectionsPage() {
-  const status = getConnectionStatus();
+export default async function ConnectionsPage() {
+  const status = await getConnectionStatus();
 
   return (
     <AppShell activeNav="perfil" section="neutral">
