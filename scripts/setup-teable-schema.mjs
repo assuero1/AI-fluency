@@ -51,7 +51,7 @@ const FIELD_TYPE_MAP = {
 const SELECT_CHOICES = {
   level: ["Iniciante", "Intermediário (B1)", "Avançado"],
   correction_style: ["Corrigir sempre", "Corrigir no final", "Só quando eu pedir"],
-  provider: ["openai", "anthropic", "google", "openrouter", "custom", "kokoro"],
+  provider: ["openai", "anthropic", "google", "openrouter", "custom", "kokoro", "deepseek"],
   output_format: ["mp3", "wav", "opus"],
   last_test_status: ["not_tested", "success", "error"],
   mode: ["free_conversation", "suggested_topic", "custom_topic", "review_words", "calendar_focus"],
