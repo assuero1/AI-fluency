@@ -89,6 +89,7 @@ export function ChatConversation({
   const [speechSupport, setSpeechSupport] = useState<"checking" | "supported" | "unsupported">("checking");
   const [error, setError] = useState<string | null>(null);
   const [failedMessage, setFailedMessage] = useState<string | null>(null);
+  const [isPolishingSpeech, setIsPolishingSpeech] = useState(false);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const recognitionStartTextRef = useRef("");
   const speechFinalSegmentsRef = useRef<string[]>([]);
@@ -96,6 +97,7 @@ export function ChatConversation({
   const suppressSpeechCommitRef = useRef(false);
   const listeningDesiredRef = useRef(false);
   const recognitionRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speechPolishRef = useRef<{ base: string; raw: string } | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const retryRequestRef = useRef<{ text: string; id: string } | null>(null);
   const latestAssistantMessageId = findLatestAssistantMessageId(messages);
@@ -137,6 +139,8 @@ export function ChatConversation({
     if (readOnly) return;
     const cleanText = (nextText ?? text).trim();
     if (!cleanText) return;
+    speechPolishRef.current = null;
+    setIsPolishingSpeech(false);
 
     if (isListening) {
       suppressSpeechCommitRef.current = true;
@@ -385,6 +389,7 @@ export function ChatConversation({
       if (completedTranscript) setText(completedText);
 
       if (!listeningDesiredRef.current) {
+        if (completedTranscript) void polishSpeechTranscript(recognitionStartTextRef.current, completedTranscript);
         setIsListening(false);
         recognitionRef.current = null;
         return;
@@ -412,6 +417,33 @@ export function ChatConversation({
       recognitionRef.current = null;
       setIsListening(false);
       setError(normalizeChatError(startError, "Não foi possível iniciar o ditado. Tente novamente."));
+    }
+  }
+
+  async function polishSpeechTranscript(baseText: string, rawTranscript: string) {
+    speechPolishRef.current = { base: baseText, raw: rawTranscript };
+    setIsPolishingSpeech(true);
+    try {
+      const response = await fetch("/api/speech/cleanup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: rawTranscript, language: speechLanguage })
+      });
+      const data = await response.json() as { ok?: boolean; text?: string; cleaned?: boolean };
+      const pending = speechPolishRef.current;
+      if (!pending || pending.raw !== rawTranscript) return;
+      if (!response.ok || !data.ok || !data.cleaned || !data.text) return;
+      const polishedText = data.text;
+      setText((current) => {
+        // Só substitui se o usuário não editou o campo depois do ditado.
+        if (current.trim() !== mergeSpeechText(pending.base, pending.raw).trim()) return current;
+        return mergeSpeechText(pending.base, polishedText);
+      });
+    } catch {
+      // Cleanup é best-effort; o texto bruto já está no input.
+    } finally {
+      speechPolishRef.current = null;
+      setIsPolishingSpeech(false);
     }
   }
 
@@ -636,7 +668,9 @@ export function ChatConversation({
               ? "Reconhecimento de voz indisponível neste navegador. A digitação continua disponível."
               : isListening
                 ? `Ouvindo em ${speechLanguageName(speechLanguage)}. Pressione o microfone novamente para parar.`
-                : `Reconhecimento de voz: ${speechLanguageName(speechLanguage)}.`}
+                : isPolishingSpeech
+                  ? "Ajustando o texto ditado..."
+                  : `Reconhecimento de voz: ${speechLanguageName(speechLanguage)}.`}
           </p>
         ) : null}
       </div>
