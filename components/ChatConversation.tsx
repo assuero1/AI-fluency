@@ -442,8 +442,10 @@ export function ChatConversation({
     } catch {
       // Cleanup é best-effort; o texto bruto já está no input.
     } finally {
-      speechPolishRef.current = null;
-      setIsPolishingSpeech(false);
+      if (speechPolishRef.current?.raw === rawTranscript) {
+        speechPolishRef.current = null;
+        setIsPolishingSpeech(false);
+      }
     }
   }
 
