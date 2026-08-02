@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  calculateLegacyWordReview,
   getActiveRecallDistribution,
   isFlashcardActiveRecallEnabled,
   normalizeFlashcardCount,
@@ -128,13 +127,6 @@ describe("current flashcard behavior", () => {
     ], words);
     expect([...phrases.keys()]).toEqual(["word-a"]);
     expect(phrases.get("word-a")?.supportingWordIds).toEqual(["word-b"]);
-  });
-
-  it("characterizes familiarity and due-date updates", () => {
-    const now = new Date("2026-07-10T12:00:00.000Z");
-    expect(calculateLegacyWordReview(4, { correct: 1, wrong: 0 }, now)).toEqual({ familiarityScore: 5, reviewDueAt: "2026-07-17T12:00:00.000Z" });
-    expect(calculateLegacyWordReview(9.8, { correct: 2, wrong: 0 }, now)).toEqual({ familiarityScore: 10, reviewDueAt: "2026-07-24T12:00:00.000Z" });
-    expect(calculateLegacyWordReview(0.5, { correct: 0, wrong: 1 }, now)).toEqual({ familiarityScore: 0, reviewDueAt: "2026-07-11T12:00:00.000Z" });
   });
 });
 

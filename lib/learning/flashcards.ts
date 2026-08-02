@@ -185,16 +185,6 @@ export function validateFlashcardAnswers(cards: Flashcard[], answers: Array<{ ca
   return validated;
 }
 
-export function calculateLegacyWordReview(currentFamiliarity: number, result: { correct: number; wrong: number }, now: Date) {
-  const delta = result.correct - result.wrong * 1.5;
-  const familiarity = Math.max(0, Math.min(10, Number(currentFamiliarity || 0) + delta));
-  const reviewDays = result.wrong > 0 ? 1 : familiarity >= 8 ? 14 : familiarity >= 5 ? 7 : 3;
-  return {
-    familiarityScore: Math.round(familiarity * 10) / 10,
-    reviewDueAt: new Date(now.getTime() + reviewDays * 86400000).toISOString()
-  };
-}
-
 export async function createFlashcardPractice(input: { criterion?: unknown; count?: unknown; wordIds?: unknown; parentSessionId?: unknown; retrainMode?: unknown }) {
   const operationStartedAt = Date.now();
   if (!isFlashcardActiveRecallEnabled()) throw new LearningStateError("O treino de recuperação ativa ainda não está habilitado para este ambiente.", 503);
