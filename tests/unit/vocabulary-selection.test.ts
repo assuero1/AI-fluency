@@ -350,6 +350,52 @@ describe("vocabulary candidate selection", () => {
     });
   });
 
+  describe("SRS decoupling", () => {
+    function pushReviewWord(id: string, fields: Record<string, unknown>) {
+      words.push({
+        id,
+        fields: {
+          user_id: "user-1",
+          language_profile_id: "profile-1",
+          lemma: "cafe",
+          display_text: "cafe",
+          canonical_key: JSON.stringify(["user-1", "profile-1", "cafe"]),
+          forms_json: "[]",
+          translation: "café",
+          part_of_speech: "noun",
+          total_uses: 5,
+          familiarity_score: 6,
+          ...fields
+        }
+      });
+      messages = [buildMessage(`m-${id}`, "user", "cafe culture")];
+    }
+
+    it("no longer rewrites review_due_at when an existing word is saved again", async () => {
+      pushReviewWord("word-future", { review_state: "review", review_due_at: "2099-01-01T09:00:00.000Z", review_interval_days: 30, review_streak: 5, review_ease: 2.5 });
+      const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+      await saveSelectedVocabulary("conversation-srs-1", ["user:cafe"]);
+
+      const wordUpdates = updateRecord.mock.calls.filter(([table, id]) => table === "words" && id === "word-future");
+      expect(wordUpdates).toHaveLength(1);
+      expect(wordUpdates[0][2]).not.toHaveProperty("review_due_at");
+      expect(words[0].fields.review_due_at).toBe("2099-01-01T09:00:00.000Z");
+    });
+
+    it("credits an implicit review when a due graduated word is used correctly", async () => {
+      pushReviewWord("word-due", { review_state: "review", review_due_at: "2020-01-01T09:00:00.000Z", review_interval_days: 30, review_streak: 5, review_ease: 2.5 });
+      const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+      await saveSelectedVocabulary("conversation-srs-2", ["user:cafe"]);
+
+      const payload = updateRecord.mock.calls.find(([table, id]) => table === "words" && id === "word-due")?.[2] as Record<string, unknown>;
+      expect(payload).toMatchObject({ review_version: "srs-v2", review_state: "review", review_streak: 6 });
+      expect(payload.implicit_review_at).toBeTruthy();
+      expect(payload.review_interval_days as number).toBeGreaterThanOrEqual(67);
+      expect(payload.review_interval_days as number).toBeLessThanOrEqual(83);
+      expect(new Date(payload.review_due_at as string).getTime()).toBeGreaterThan(Date.now());
+    });
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });

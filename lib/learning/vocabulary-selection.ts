@@ -6,6 +6,8 @@ import { LearningStateError } from "./access";
 import { CorrectionFields, getConversation, MessageFields, WordFields, WordUsageSummaryFields } from "./conversations";
 import { matchesLearningScope } from "./scope";
 import { addSavedWordsToDailyFeedback } from "./feedback";
+import { calculateAdaptiveReview, reviewToWordFields } from "./spaced-repetition";
+import type { UserFields } from "./profile";
 
 export type VocabularyCandidate = {
   id: string;
@@ -422,11 +424,13 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
   if (!selected.length) throw new LearningStateError("Selecione ao menos uma palavra.", 400);
 
   const client = getTeableClient();
-  const [existingWords, usageSummaries, linguisticData] = await Promise.all([
+  const [existingWords, usageSummaries, users, linguisticData] = await Promise.all([
     client.listAllRecords<WordFields>("words"),
     client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries"),
+    client.listAllRecords<UserFields>("users"),
     analyzeConversationVocabulary(conversationId, selected, language)
   ]);
+  const timeZone = users.find((record) => record.id === context.conversation.fields.user_id)?.fields.timezone ?? "UTC";
   const now = new Date().toISOString();
   const reviewDue = new Date(Date.now() + 7 * 86400000).toISOString();
   const scope = { userId: context.conversation.fields.user_id, profileId: context.conversation.fields.language_profile_id };
@@ -489,13 +493,17 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
     const otherUses = usageSummaries.filter((summary) => summary.fields.word_id === resolvedWord.id && summary.fields.usage_key !== usageKey)
       .reduce((sum, summary) => sum + Number(summary.fields.correct_use_count ?? 0), 0);
     const mergedForms = uniqueVocabularyForms([...parseVocabularyForms(resolvedWord.fields.forms_json), ...forms]);
+    const dueTime = resolvedWord.fields.review_due_at ? new Date(resolvedWord.fields.review_due_at).getTime() : 0;
+    const implicitReview = correctUseCount > 0 && resolvedWord.fields.review_state === "review" && dueTime > 0 && dueTime <= Date.now()
+      ? calculateAdaptiveReview(resolvedWord.fields, [{ rating: "good" }], new Date(now), timeZone, resolvedWord.id)
+      : null;
     word = await client.updateRecord<WordFields>("words", resolvedWord.id, {
       forms_json: JSON.stringify(mergedForms),
       total_uses: otherUses + correctUseCount,
       last_used_at: correctUseCount > 0 ? now : resolvedWord.fields.last_used_at,
-      review_due_at: reviewDue,
       ...(!resolvedWord.fields.translation && family.translation ? { translation: family.translation } : {}),
-      ...(!resolvedWord.fields.part_of_speech && family.partOfSpeech ? { part_of_speech: family.partOfSpeech } : {})
+      ...(!resolvedWord.fields.part_of_speech && family.partOfSpeech ? { part_of_speech: family.partOfSpeech } : {}),
+      ...(implicitReview ? { ...reviewToWordFields(implicitReview), implicit_review_at: now } : {})
     });
     const summaryFields: WordUsageSummaryFields = {
       Name: forms[0] ?? family.lemma,
