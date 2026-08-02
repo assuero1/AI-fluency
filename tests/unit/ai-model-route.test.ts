@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TeableRequestError } from "@/lib/teable/client";
+import { TeableConfigError, TeableRequestError } from "@/lib/teable/client";
 
 const mocks = vi.hoisted(() => ({
   saveModelOverride: vi.fn(),
@@ -56,6 +56,19 @@ describe("PUT /api/settings/ai/model", () => {
     expect(response.status).toBe(503);
     const body = await response.json();
     expect(body.error).toBe("Não foi possível salvar o modelo. Tente novamente.");
+  });
+
+  it("returns 503 in pt-BR when Teable is not configured", async () => {
+    mocks.saveModelOverride.mockRejectedValue(new TeableConfigError("TEABLE_API_KEY is not configured."));
+    const response = await PUT(putRequest({ chatModel: "deepseek-reasoner" }));
+    expect(response.status).toBe(503);
+    const body = await response.json();
+    expect(body.error).toBe("Não foi possível salvar o modelo. Tente novamente.");
+  });
+
+  it("rethrows unexpected errors", async () => {
+    mocks.saveModelOverride.mockRejectedValue(new Error("boom"));
+    await expect(PUT(putRequest({ chatModel: "deepseek-reasoner" }))).rejects.toThrow("boom");
   });
 
   it("saves and returns the updated status", async () => {

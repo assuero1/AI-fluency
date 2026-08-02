@@ -24,6 +24,7 @@ describe("getActiveModelOverride", () => {
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
   });
 
   it("returns env source when there are no records", async () => {
@@ -59,6 +60,41 @@ describe("getActiveModelOverride", () => {
     await getActiveModelOverride();
     expect(mocks.listRecords).toHaveBeenCalledTimes(2);
   });
+
+  it("ignores an active row whose provider differs from the env provider", async () => {
+    vi.stubEnv("AI_PROVIDER", "openai");
+    mocks.listRecords.mockResolvedValue([
+      {
+        id: "rec1",
+        createdTime: "2026-08-01T00:00:00Z",
+        fields: { is_active: true, provider: "deepseek", chat_model: "deepseek-chat" }
+      }
+    ]);
+    const result = await getActiveModelOverride();
+    expect(result).toEqual({ chatModel: null, source: "env" });
+  });
+
+  it("applies an active row whose provider matches the env provider", async () => {
+    vi.stubEnv("AI_PROVIDER", "deepseek");
+    mocks.listRecords.mockResolvedValue([
+      {
+        id: "rec1",
+        createdTime: "2026-08-01T00:00:00Z",
+        fields: { is_active: true, provider: "deepseek", chat_model: "deepseek-chat" }
+      }
+    ]);
+    const result = await getActiveModelOverride();
+    expect(result).toEqual({ chatModel: "deepseek-chat", source: "teable" });
+  });
+
+  it("applies an active row without a provider field (backward compat)", async () => {
+    vi.stubEnv("AI_PROVIDER", "deepseek");
+    mocks.listRecords.mockResolvedValue([
+      { id: "rec1", createdTime: "2026-08-01T00:00:00Z", fields: { is_active: true, chat_model: "some-model" } }
+    ]);
+    const result = await getActiveModelOverride();
+    expect(result).toEqual({ chatModel: "some-model", source: "teable" });
+  });
 });
 
 describe("saveModelOverride", () => {
@@ -69,12 +105,20 @@ describe("saveModelOverride", () => {
     mocks.createRecord.mockReset();
   });
 
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("updates the existing active row", async () => {
+    vi.stubEnv("AI_PROVIDER", "deepseek");
     mocks.listRecords.mockResolvedValue([
       { id: "rec1", createdTime: "2026-08-01T00:00:00Z", fields: { is_active: true, chat_model: "old" } }
     ]);
     await saveModelOverride("deepseek-reasoner");
-    expect(mocks.updateRecord).toHaveBeenCalledWith("aiProviderSettings", "rec1", { chat_model: "deepseek-reasoner" });
+    expect(mocks.updateRecord).toHaveBeenCalledWith("aiProviderSettings", "rec1", {
+      chat_model: "deepseek-reasoner",
+      provider: "deepseek"
+    });
     expect(mocks.createRecord).not.toHaveBeenCalled();
   });
 
@@ -87,7 +131,6 @@ describe("saveModelOverride", () => {
       chat_model: "deepseek-chat",
       is_active: true
     });
-    vi.unstubAllEnvs();
   });
 
   it("invalidates the cache after saving", async () => {

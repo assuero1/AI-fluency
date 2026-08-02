@@ -34,7 +34,11 @@ export async function getActiveModelOverride(): Promise<ModelOverride> {
     const client = getTeableClient();
     const records = await client.listRecords<AiProviderSettingsFields>("aiProviderSettings", 100);
     const active = pickActiveRow(records);
-    const chatModel = active?.fields.chat_model?.trim();
+    const rowProvider = active?.fields.provider?.trim();
+    const envProvider = getEnv("AI_PROVIDER") ?? "openai";
+    // Linhas sem provider (legadas) continuam valendo; provider divergente do env é ignorado.
+    const providerMatches = !rowProvider || rowProvider === envProvider;
+    const chatModel = providerMatches ? active?.fields.chat_model?.trim() : undefined;
     if (chatModel) value = { chatModel, source: "teable" };
   } catch {
     // Teable indisponível ou tabela não mapeada: fallback silencioso para env.
@@ -50,7 +54,10 @@ export async function saveModelOverride(chatModel: string) {
   const active = pickActiveRow(records);
 
   if (active) {
-    await client.updateRecord<AiProviderSettingsFields>("aiProviderSettings", active.id, { chat_model: chatModel });
+    await client.updateRecord<AiProviderSettingsFields>("aiProviderSettings", active.id, {
+      chat_model: chatModel,
+      provider: getEnv("AI_PROVIDER") ?? "openai"
+    });
   } else {
     await client.createRecord<AiProviderSettingsFields>("aiProviderSettings", {
       provider: getEnv("AI_PROVIDER") ?? "openai",
