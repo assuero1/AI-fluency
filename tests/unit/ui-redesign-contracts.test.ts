@@ -89,7 +89,8 @@ describe("chunky playful redesign contracts", () => {
     expect(read("app/loading.tsx")).toContain("<LoadingDots");
     const css = read("app/globals.css");
     expect(css).toContain("animation: shimmer");
-    expect(css).toContain("animation: bounce-in");
+    expect(css).toMatch(/animation:\s*bounce-in/);
+    expect(css).toContain("mark-float 1.6s ease-in-out .6s infinite");
   });
 
   it("animates the audio wave while playing and the mic halo while listening", () => {
