@@ -91,6 +91,44 @@ describe("flashcard attempt persistence and resume", () => {
     expect(updateRecord.mock.calls.filter(([table]) => table === "flashcardAttempts")).toHaveLength(0);
   });
 
+  it("skips the incremental SRS update for listening attempts with audio failure", async () => {
+    const listeningCard = { ...cardRecord, fields: { ...cardRecord.fields, card_type: "listening" } };
+    listRecords.mockImplementation(async (table: string) => {
+      if (table === "practiceSessions") return [session];
+      if (table === "flashcards") return [listeningCard];
+      if (table === "flashcardAttempts") return attempts;
+      if (table === "words") return [{ id: "word-a", fields: { user_id: user.id, language_profile_id: profile.id, familiarity_score: 4 } }];
+      return [];
+    });
+    const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "attempt-client-004", cardId: cardRecord.id, presentationNumber: 1, userAnswer: "hola", rating: "good", forgot: false, responseTimeMs: 2400, audioFailed: true });
+
+    expect(updateRecord.mock.calls.filter(([table]) => table === "words")).toHaveLength(0);
+    expect(updateRecord.mock.calls.filter(([table]) => table === "flashcardAttempts")).toHaveLength(0);
+  });
+
+  it("does not fail the attempt when failure telemetry also fails", async () => {
+    listRecords.mockImplementation(async (table: string) => {
+      if (table === "practiceSessions") return [session];
+      if (table === "flashcards") return [cardRecord];
+      if (table === "flashcardAttempts") return attempts;
+      if (table === "words") return [{ id: "word-a", fields: { user_id: user.id, language_profile_id: profile.id, familiarity_score: 4 } }];
+      return [];
+    });
+    updateRecord.mockImplementation(async (table: string) => {
+      if (table === "words") throw new Error("teable down");
+      return session;
+    });
+    createEvent.mockImplementation(async (_userId: string, name: string) => {
+      if (name === "flashcard_incremental_review_failed") throw new Error("events down");
+      return { id: "event-a", fields: {} };
+    });
+    const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    const result = await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "attempt-client-005", cardId: cardRecord.id, presentationNumber: 1, userAnswer: "hola", rating: "hard", forgot: false, responseTimeMs: 2400 });
+
+    expect(result.id).toBe("attempt-1");
+  });
+
   it("reconstructs the next presentation from persisted history", async () => {
     const { getActiveFlashcardPractice, persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
     await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "attempt-client-001", cardId: cardRecord.id, presentationNumber: 1, userAnswer: "hola", rating: "hard", forgot: false, responseTimeMs: 2000 });

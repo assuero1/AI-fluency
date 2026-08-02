@@ -127,7 +127,7 @@ try {
   assert(flashcardComplete.ok && flashcardCompleteBody.presentationCount === 2 && flashcardCompleteBody.uniqueCardCount === 2, "flashcard completion derives metrics from persisted attempts");
   const reviewedWords = await fetch(`${server.baseUrl}/api/words`);
   const reviewedWordsBody = await reviewedWords.json();
-  assert(reviewedWords.ok && reviewedWordsBody.words?.every((word) => word.reviewIntervalDays === 3 && word.reviewStreak === 1 && word.reviewVersion === "srs-v1" && word.lastRating === "good"), "flashcard completion persists versioned adaptive review fields");
+  assert(reviewedWords.ok && reviewedWordsBody.words?.every((word) => word.reviewIntervalDays === 1 && word.reviewStreak === 1 && word.reviewVersion === "srs-v2" && word.lastRating === "good"), "flashcard completion persists versioned adaptive review fields");
 
   const invalidAudio = await fetch(`${server.baseUrl}/api/voice/${"a".repeat(64)}`);
   assert(invalidAudio.status === 404, "unknown cached audio is rejected");

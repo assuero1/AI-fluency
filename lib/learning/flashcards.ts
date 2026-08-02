@@ -431,7 +431,7 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
   await client.updateRecord<PracticeSessionFields>("practiceSessions", sessionId, { presentation_count: priorAttempts.length + 1, updated_at: now });
   const attemptWordIds = [card.targetWordId, ...card.supportingWordIds];
   const reviewableWords = words.filter((item) => attemptWordIds.includes(item.id) && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
-  if (reviewableWords.length) {
+  if (reviewableWords.length && !(card.type === "listening" && input.audioFailed === true)) {
     try {
       let resultingState = "";
       for (const word of reviewableWords) {
@@ -441,7 +441,11 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
       }
       await client.updateRecord<FlashcardAttemptFields>("flashcardAttempts", record.id, { review_applied: true, resulting_review_state: resultingState });
     } catch (error) {
-      await client.createEvent(user.id, "flashcard_incremental_review_failed", { session_id: sessionId, flashcard_id: card.id, message: error instanceof Error ? error.message : "unknown" });
+      try {
+        await client.createEvent(user.id, "flashcard_incremental_review_failed", { session_id: sessionId, flashcard_id: card.id, message: error instanceof Error ? error.message : "unknown" });
+      } catch {
+        // A gravação incremental nunca deve falhar a tentativa, nem quando a telemetria também falha.
+      }
     }
   }
   return { id: record.id, ...attemptRecordToAnswer(record) };
