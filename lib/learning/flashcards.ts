@@ -83,6 +83,8 @@ export type FlashcardAttemptFields = {
   used_slow_audio?: boolean;
   answered_after_audio_replay?: boolean;
   audio_failed?: boolean;
+  review_applied?: boolean;
+  resulting_review_state?: string;
   created_at: string;
 };
 

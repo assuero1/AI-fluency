@@ -35,6 +35,7 @@
     "vocabulary:unique-field": "node scripts/ensure-vocabulary-unique-field.mjs",
     "vocabulary:family-fields": "node scripts/ensure-vocabulary-family-fields.mjs",
     "vocabulary:usage-migrate": "node scripts/migrate-word-usage-summaries.mjs",
+    "review:srs-v2-fields": "node scripts/ensure-srs-v2-fields.mjs",
     "scope:reset-test-data": "node scripts/reset-personal-test-data.mjs",
     "security:bundle": "node scripts/verify-client-secrets.mjs"
   },

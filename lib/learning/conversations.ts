@@ -73,6 +73,9 @@ export type WordFields = {
   average_response_time_ms?: number;
   review_state?: "new" | "learning" | "review" | "difficult" | "suspended";
   review_version?: string;
+  learning_step?: number;
+  implicit_review_at?: string;
+  leech_flagged_at?: string;
 };
 
 export type WordOccurrenceFields = {
