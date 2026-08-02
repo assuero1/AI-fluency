@@ -12,28 +12,32 @@ export async function cleanupSpeechTranscript(rawText: string, languageCode: str
   const raw = rawText.trim();
   if (!raw) return "";
 
-  const ai = await createChatCompletion([
-    {
-      role: "system",
-      content: [
-        "Você corrige pontuação e capitalização de texto produzido por reconhecimento de voz.",
-        "Regras obrigatórias:",
-        "- NÃO adicione, remova, substitua ou reordene palavras.",
-        "- Pausas na fala NÃO são vírgulas: remova vírgulas sem função gramatical.",
-        "- Corrija letras maiúsculas indevidas no meio de frases e preserve/restore maiúsculas de nomes próprios.",
-        "- Divida o texto em frases terminadas com . ! ou ? quando o sentido indicar.",
-        "- Retorne SOMENTE o texto corrigido, sem comentários nem aspas."
-      ].join("\n")
-    },
-    {
-      role: "user",
-      content: `Idioma do texto: ${cleanupLanguageNames[languageCode?.toLowerCase() ?? ""] ?? "inglês"}\nTexto ditado:\n${raw}`
-    }
-  ], { temperature: 0, maxTokens: Math.max(120, raw.length * 2), timeoutMs: 3000, disableThinking: true });
+  try {
+    const ai = await createChatCompletion([
+      {
+        role: "system",
+        content: [
+          "Você corrige pontuação e capitalização de texto produzido por reconhecimento de voz.",
+          "Regras obrigatórias:",
+          "- NÃO adicione, remova, substitua ou reordene palavras.",
+          "- Pausas na fala NÃO são vírgulas: remova vírgulas sem função gramatical.",
+          "- Corrija letras maiúsculas indevidas no meio de frases e preserve/restore maiúsculas de nomes próprios.",
+          "- Divida o texto em frases terminadas com . ! ou ? quando o sentido indicar.",
+          "- Retorne SOMENTE o texto corrigido, sem comentários nem aspas."
+        ].join("\n")
+      },
+      {
+        role: "user",
+        content: `Idioma do texto: ${cleanupLanguageNames[languageCode?.toLowerCase() ?? ""] ?? "inglês"}\nTexto ditado:\n${raw}`
+      }
+    ], { temperature: 0, maxTokens: Math.max(120, raw.length * 2), timeoutMs: 3000, disableThinking: true });
 
-  const cleaned = ai.content.trim();
-  if (!cleaned || divergesFromRaw(raw, cleaned)) return raw;
-  return cleaned;
+    const cleaned = ai.content.trim();
+    if (!cleaned || divergesFromRaw(raw, cleaned)) return raw;
+    return cleaned;
+  } catch {
+    return raw;
+  }
 }
 
 export function divergesFromRaw(raw: string, cleaned: string) {

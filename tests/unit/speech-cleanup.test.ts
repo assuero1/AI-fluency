@@ -33,6 +33,12 @@ describe("cleanupSpeechTranscript", () => {
     await expect(cleanupSpeechTranscript("   ", "en")).resolves.toBe("");
     expect(createChatCompletion).not.toHaveBeenCalled();
   });
+
+  it("returns the raw text when the AI call fails", async () => {
+    createChatCompletion.mockRejectedValue(new Error("timeout"));
+    const raw = "I went to the market, Then I met Ana.";
+    await expect(cleanupSpeechTranscript(raw, "en")).resolves.toBe(raw);
+  });
 });
 
 describe("divergesFromRaw", () => {
