@@ -33,9 +33,17 @@ describe("native speech recognition locale", () => {
     expect(punctuateSpeechSentence("come è stato il viaggio", "it")).toBe("come è stato il viaggio?");
   });
 
-  it("turns recognition pauses into readable punctuation", () => {
+  it("joins recognition pauses without inserting commas", () => {
     expect(joinSpeechSegments(["I went to the market", "then I met Ana"], "en")).toBe(
-      "I went to the market, then I met Ana."
+      "I went to the market then I met Ana."
     );
+  });
+
+  it("lowercases spurious capitals after a pause inside a sentence", () => {
+    expect(joinSpeechSegments(["how was your", "Trip"], "en")).toBe("how was your trip?");
+  });
+
+  it("keeps the capital when the previous segment ended a sentence", () => {
+    expect(joinSpeechSegments(["I went home.", "Then I slept"], "en")).toBe("I went home. Then I slept.");
   });
 });

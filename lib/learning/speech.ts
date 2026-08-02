@@ -37,12 +37,21 @@ export function joinSpeechSegments(segments: string[], languageCode: string | un
 
   const joined = cleanSegments
     .map((segment, index) => {
-      if (/[.!?…]$/.test(segment)) return segment;
-      return index < cleanSegments.length - 1 ? `${segment},` : segment;
+      if (index === 0) return segment;
+      const previous = cleanSegments[index - 1];
+      if (/[.!?…]$/.test(previous)) return segment;
+      return lowercaseFirstLetter(segment);
     })
     .join(" ");
 
   return punctuateSpeechSentence(joined, languageCode);
+}
+
+function lowercaseFirstLetter(value: string) {
+  const first = value[0];
+  if (!first) return value;
+  const lowered = first.toLocaleLowerCase();
+  return first === lowered ? value : `${lowered}${value.slice(1)}`;
 }
 
 export function punctuateSpeechSentence(value: string, languageCode: string | undefined) {
