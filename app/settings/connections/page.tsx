@@ -1,5 +1,7 @@
 import { ChevronLeft, KeyRound, Mic, Server } from "lucide-react";
 import Link from "next/link";
+import { ReactNode } from "react";
+import { AiModelSelect } from "@/components/AiModelSelect";
 import { AppShell } from "@/components/AppShell";
 import { ConnectionTestButton } from "@/components/ConnectionTestButton";
 import { IconBubble } from "@/components/IconBubble";
@@ -18,7 +20,8 @@ function ConnectionCard({
   tone,
   connected,
   lines,
-  testEndpoint
+  testEndpoint,
+  children
 }: {
   title: string;
   meta: string;
@@ -27,6 +30,7 @@ function ConnectionCard({
   connected: boolean;
   lines: Array<{ label: string; value: string }>;
   testEndpoint: string;
+  children?: ReactNode;
 }) {
   return (
     <div className="soft-card" style={{ background: "#fff", border: "1px solid var(--line)" }}>
@@ -47,6 +51,7 @@ function ConnectionCard({
             <span className="muted">{line.value}</span>
           </div>
         ))}
+        {children}
         <ConnectionTestButton endpoint={testEndpoint} label={title} />
       </div>
     </div>
@@ -81,7 +86,13 @@ export default async function ConnectionsPage() {
             { label: "Modelo", value: status.ai.chatModel ?? "não configurado" }
           ]}
           testEndpoint="/api/settings/test-ai"
-        />
+        >
+          <AiModelSelect
+            aiConfigured={status.ai.configured}
+            currentModel={status.ai.chatModel}
+            modelSource={status.ai.modelSource}
+          />
+        </ConnectionCard>
         <ConnectionCard
           title="Teable"
           meta="Base URL, API key e base ID"
