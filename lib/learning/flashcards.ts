@@ -206,7 +206,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
   if (!profile) throw new LearningStateError("Configure um idioma antes de iniciar o treino.", 409);
   const [allWords, sessions] = await Promise.all([
     client.listRecords<WordFields>("words", 500),
-    client.listRecords<PracticeSessionFields>("practiceSessions", 300)
+    client.listAllRecords<PracticeSessionFields>("practiceSessions")
   ]);
   const active = sessions.find((session) => session.fields.user_id === user.id && session.fields.language_profile_id === profile.id && session.fields.type === "flashcards" && (session.fields.status === "active" || session.fields.status === "preparing"));
   if (active) throw new LearningStateError("Você já possui um treino ativo. Continue a sessão antes de iniciar outra.", 409);
@@ -378,7 +378,7 @@ export async function getDailyQueueSummary() {
   if (!profile) return null;
   const [allWords, sessions] = await Promise.all([
     client.listRecords<WordFields>("words", 500),
-    client.listRecords<PracticeSessionFields>("practiceSessions", 300)
+    client.listAllRecords<PracticeSessionFields>("practiceSessions")
   ]);
   const scoped = allWords.filter((word) => matchesLearningScope(word.fields, { userId: user.id, profileId: profile.id }));
   return summarizeDailyQueue(scoped, sessions, { userId: user.id, profileId: profile.id }, {

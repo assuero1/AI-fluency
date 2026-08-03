@@ -110,7 +110,7 @@ export async function getWordsData(filter: WordFilter = "all", query = "") {
   const [scope, records, sessions] = await Promise.all([
     getWordScope(),
     getWordRecords(),
-    getTeableClient().listRecords<DailyQueueSessionFields>("practiceSessions", 300)
+    getTeableClient().listAllRecords<DailyQueueSessionFields>("practiceSessions")
   ]);
   const scoped = records.words.filter(
     (word) => matchesScope(word, scope) && Boolean(word.fields.display_text?.trim() || word.fields.lemma?.trim())
