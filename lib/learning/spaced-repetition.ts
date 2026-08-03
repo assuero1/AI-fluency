@@ -139,6 +139,16 @@ export function reviewToWordFields(review: AdaptiveReview) {
   };
 }
 
+// Per-rating preview of the next due distance in days (for the rating buttons' micro-feedback).
+export function previewReviewIntervals(current: ReviewFields, now = new Date(), timeZone = "UTC", fuzzSeed = ""): Record<RecallRating, number> {
+  const preview = {} as Record<RecallRating, number>;
+  for (const rating of ["forgot", "hard", "good", "easy"] as const) {
+    const review = calculateAdaptiveReview(current, [{ rating }], now, timeZone, fuzzSeed);
+    preview[rating] = Math.max(1, Math.round((Date.parse(review.reviewDueAt) - now.getTime()) / DAY_MS));
+  }
+  return preview;
+}
+
 function isGraduated(current: ReviewFields) {
   if (typeof current.learning_step === "number") return current.learning_step > LEARNING_STEPS_DAYS.length;
   // Legacy words (srs-v1) have no learning_step: infer from the persisted state.

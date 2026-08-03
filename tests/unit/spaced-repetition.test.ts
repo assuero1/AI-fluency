@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calculateAdaptiveReview, REVIEW_VERSION } from "../../lib/learning/spaced-repetition";
+import { calculateAdaptiveReview, previewReviewIntervals, REVIEW_VERSION } from "../../lib/learning/spaced-repetition";
 
 const now = new Date("2026-07-10T12:00:00.000Z");
 
@@ -134,5 +134,32 @@ describe("adaptive spaced repetition v2", () => {
 
   it("requires at least one attempt", () => {
     expect(() => calculateAdaptiveReview({}, [], now)).toThrow("At least one review attempt is required.");
+  });
+});
+
+describe("previewReviewIntervals", () => {
+  const NOW = new Date("2026-08-02T12:00:00.000Z");
+
+  it("previews a new word's learning steps without fuzz", () => {
+    // good avança 1 passo (1d); easy avança 2 passos (3d) — graduação exige passar do último passo.
+    const preview = previewReviewIntervals({ review_state: "new" }, NOW, "UTC", "w1");
+    expect(preview).toEqual({ forgot: 1, hard: 1, good: 1, easy: 3 });
+  });
+
+  it("previews a graduated word with the fuzzed interval bounded", () => {
+    const preview = previewReviewIntervals(
+      { review_state: "review", review_interval_days: 3, review_streak: 1, review_ease: 2.3, learning_step: 3 },
+      NOW, "UTC", "w2"
+    );
+    expect(preview.forgot).toBe(1);
+    expect(preview.hard).toBeGreaterThanOrEqual(1);
+    expect(preview.good).toBeGreaterThanOrEqual(6);
+    expect(preview.good).toBeLessThanOrEqual(8);
+    expect(preview.easy).toBeGreaterThan(preview.good);
+  });
+
+  it("is deterministic for the same fuzz seed", () => {
+    const current = { review_state: "review" as const, review_interval_days: 30, review_streak: 4, review_ease: 2.5, learning_step: 3 };
+    expect(previewReviewIntervals(current, NOW, "America/Sao_Paulo", "w3")).toEqual(previewReviewIntervals(current, NOW, "America/Sao_Paulo", "w3"));
   });
 });
