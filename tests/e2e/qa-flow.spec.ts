@@ -110,6 +110,45 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
   expect(completionBodies[0].answers?.[2]).toMatchObject({ presentationNumber: 2, rating: "good" });
 });
 
+test("daily review queue intro starts a daily session", async ({ page }) => {
+  const createBodies: Array<Record<string, unknown>> = [];
+  await page.route("**/api/practice/flashcards", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          activeSession: null,
+          dailyQueue: { dueCount: 3, newCount: 2, sessionCardCount: 5, remainingCount: 0, newAvailable: 8, introducedToday: 0, quota: 10, estimatedMinutes: 1, difficultCount: 0 }
+        })
+      });
+      return;
+    }
+    createBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        sessionId: "session-daily",
+        languageCode: "es",
+        languageName: "Espanhol",
+        cards: [
+          { id: "card-daily", sessionId: "session-daily", type: "target_to_native", targetWordId: "word-a", supportingWordIds: [], prompt: "hola", expectedAnswer: "olá", acceptedAnswers: [], translation: "olá", difficulty: 1 }
+        ]
+      })
+    });
+  });
+
+  await page.goto("/palavras/treino");
+  await expect(page.getByText(/3 revisões \+ 2 novas/)).toBeVisible();
+  await page.getByRole("button", { name: "Começar revisão de hoje" }).click();
+  await expect(page.getByText("hola", { exact: true })).toBeVisible();
+  expect(createBodies).toHaveLength(1);
+  expect(createBodies[0]).toEqual({ queueKind: "daily" });
+});
+
 test("flashcard speech fills an editable attempt and never submits automatically", async ({ page }) => {
   await page.addInitScript(() => {
     class MockRecognition {

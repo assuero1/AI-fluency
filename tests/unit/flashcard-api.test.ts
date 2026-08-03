@@ -4,8 +4,9 @@ const createFlashcardPractice = vi.fn();
 const completeFlashcardPractice = vi.fn();
 const getActiveFlashcardPractice = vi.fn();
 const persistFlashcardAttempt = vi.fn();
+const getDailyQueueSummary = vi.fn();
 
-vi.mock("../../lib/learning/flashcards", () => ({ createFlashcardPractice, completeFlashcardPractice, getActiveFlashcardPractice, persistFlashcardAttempt }));
+vi.mock("../../lib/learning/flashcards", () => ({ createFlashcardPractice, completeFlashcardPractice, getActiveFlashcardPractice, persistFlashcardAttempt, getDailyQueueSummary }));
 
 describe("flashcard API contracts", () => {
   beforeEach(() => vi.clearAllMocks());
