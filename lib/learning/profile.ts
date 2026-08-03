@@ -2,6 +2,7 @@ import { cache } from "react";
 import { getConnectionStatus } from "@/lib/settings/status";
 import { getEnv } from "@/lib/env";
 import { getTeableClient, safeUpdateRecord, TeableRecord } from "@/lib/teable/client";
+import { normalizeNewCardsQuota } from "./daily-queue";
 
 export type UserFields = {
   Name?: string;
@@ -9,6 +10,7 @@ export type UserFields = {
   avatar_url?: string;
   active_language_id?: string;
   timezone?: string;
+  daily_new_cards_quota?: number;
   created_at?: string;
 };
 
@@ -59,6 +61,10 @@ export async function getOrCreatePersonalUser(payload?: Pick<OnboardingPayload, 
     timezone: payload?.timezone ?? "America/Sao_Paulo",
     created_at: new Date().toISOString()
   });
+}
+
+export function getDailyNewCardsQuota(user: TeableRecord<UserFields>) {
+  return normalizeNewCardsQuota(user.fields.daily_new_cards_quota);
 }
 
 // Cached per server request (React cache) so repeated callers within one

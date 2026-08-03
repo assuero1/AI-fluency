@@ -5,7 +5,7 @@ import type { TeableTableKey } from "@/lib/teable/schema";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields, WordOccurrenceFields, WordUsageSummaryFields } from "./conversations";
 import type { DailyFeedbackFields, TopicFields } from "./home";
 import type { FlashcardAttemptFields, FlashcardFields } from "./flashcards";
-import { getActiveLanguageProfile, getOrCreatePersonalUser, LanguageProfileFields, UserFields } from "./profile";
+import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUser, LanguageProfileFields, UserFields } from "./profile";
 import { matchesLearningScope } from "./scope";
 import { PERSONAL_DATA_EXPORT_SCHEMA_VERSION } from "./export";
 
@@ -30,6 +30,7 @@ type ProfileInput = {
   name?: string;
   timezone?: string;
   activeLanguageId?: string;
+  dailyNewCardsQuota?: number;
 };
 
 export type LearningHistoryEventFields = {
@@ -60,7 +61,8 @@ export async function getProfileSettings() {
       id: user.id,
       name: user.fields.Name ?? user.fields.name ?? "Camila",
       timezone: user.fields.timezone ?? "America/Sao_Paulo",
-      activeLanguageId: activeProfile?.id ?? ""
+      activeLanguageId: activeProfile?.id ?? "",
+      dailyNewCardsQuota: getDailyNewCardsQuota(user)
     },
     activeProfile: activeProfile
       ? {
@@ -103,6 +105,10 @@ export async function updatePersonalProfile(input: ProfileInput) {
     const profile = profiles.find((item) => item.id === input.activeLanguageId && item.fields.user_id === user.id);
     if (!profile) throw new AccountValidationError("O idioma selecionado não pertence a este perfil.");
     fields.active_language_id = profile.id;
+  }
+  if (typeof input.dailyNewCardsQuota === "number") {
+    if (!Number.isFinite(input.dailyNewCardsQuota)) throw new AccountValidationError("Quota diária inválida.");
+    fields.daily_new_cards_quota = Math.min(50, Math.max(0, Math.round(input.dailyNewCardsQuota)));
   }
   if (!Object.keys(fields).length) throw new AccountValidationError("Nenhuma alteração de perfil foi informada.");
 

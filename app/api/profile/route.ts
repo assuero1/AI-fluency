@@ -16,7 +16,8 @@ export async function PATCH(request: Request) {
     const record = await updatePersonalProfile({
       name: typeof body.name === "string" ? body.name : undefined,
       timezone: typeof body.timezone === "string" ? body.timezone : undefined,
-      activeLanguageId: typeof body.activeLanguageId === "string" ? body.activeLanguageId : undefined
+      activeLanguageId: typeof body.activeLanguageId === "string" ? body.activeLanguageId : undefined,
+      dailyNewCardsQuota: typeof body.dailyNewCardsQuota === "number" ? body.dailyNewCardsQuota : undefined
     });
     return jsonOk({ ok: true, record });
   } catch (error) {
