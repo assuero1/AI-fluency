@@ -65,7 +65,7 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
         languageCode: "es",
         languageName: "Espanhol",
         cards: [
-          { id: "card-a", sessionId: "session-e2e", type: "target_to_native", targetWordId: "word-a", supportingWordIds: [], prompt: "hola", expectedAnswer: "olá", acceptedAnswers: [], translation: "olá", difficulty: 1 },
+          { id: "card-a", sessionId: "session-e2e", type: "target_to_native", targetWordId: "word-a", supportingWordIds: [], prompt: "hola", expectedAnswer: "olá", acceptedAnswers: [], translation: "olá", difficulty: 1, intervalPreviewDays: { forgot: 1, hard: 2, good: 7, easy: 15 } },
           { id: "card-b", sessionId: "session-e2e", type: "native_to_target", targetWordId: "word-b", supportingWordIds: [], prompt: "bom dia", expectedAnswer: "buen día", acceptedAnswers: [], translation: "bom dia", difficulty: 2 }
         ]
       })
@@ -77,7 +77,7 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
   });
   await page.route("**/api/practice/flashcards/complete", async (route) => {
     completionBodies.push(route.request().postDataJSON() as { clientCompletionId?: string; answers?: unknown[] });
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, score: 100, correctCards: 2, wrongCards: 0, totalCards: 2, reviewedWords: 2, uniqueCardCount: 2, presentationCount: 3, firstAttemptCorrect: 1, recoveredCards: 1 }) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, score: 100, correctCards: 2, wrongCards: 0, totalCards: 2, reviewedWords: 2, uniqueCardCount: 2, presentationCount: 3, firstAttemptCorrect: 1, recoveredCards: 1, productionAccuracy: 50, listeningAccuracy: null }) });
   });
 
   await page.goto("/palavras/treino");
@@ -90,7 +90,9 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
   await answer.fill("olá");
   await page.keyboard.press("Enter");
   await expect(page.getByText("Resposta exata")).toBeVisible();
-  await page.getByRole("button", { name: "Lembrei", exact: true }).click();
+  await expect(page.getByText("→ 7 dias")).toBeVisible();
+  await expect(page.getByText("→ 1 dia")).toBeVisible();
+  await page.getByRole("button", { name: /^Lembrei/ }).click();
   await expect(page.getByText("bom dia", { exact: true })).toBeVisible();
   await expect(page.getByText("buen día", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Não lembro" }).click();
@@ -102,6 +104,8 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
   await page.getByRole("button", { name: "Lembrei", exact: true }).click();
 
   await expect(page.getByRole("heading", { name: "100% de acerto" })).toBeVisible();
+  await expect(page.getByText("Produção")).toBeVisible();
+  await expect(page.getByText("50%")).toBeVisible();
   expect(completionBodies).toHaveLength(1);
   expect(completionBodies[0].clientCompletionId).toMatch(/^[0-9a-f-]{36}$/);
   expect(completionBodies[0].answers).toHaveLength(3);

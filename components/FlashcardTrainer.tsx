@@ -210,7 +210,7 @@ export function FlashcardTrainer() {
       <p className="subtitle">Cada tentativa ajustou o domínio e a próxima revisão das palavras.</p>
       <div className="flashcard-result-grid"><div><strong>{result.uniqueCardCount}</strong><span>cards únicos</span></div><div><strong>{result.presentationCount}</strong><span>apresentações</span></div><div><strong>{result.recoveredCards}</strong><span>recuperados</span></div></div>
       <section className="flashcard-result-details" aria-label="Detalhes do resultado">
-        <div><span>Primeira tentativa</span><strong>{formatAccuracy(result.firstAttemptAccuracy)}</strong></div><div><span>Recuperação final</span><strong>{formatAccuracy(result.eventualRecallAccuracy)}</strong></div><div><span>Compreensão</span><strong>{formatAccuracy(result.comprehensionAccuracy)}</strong></div><div><span>Tempo médio</span><strong>{formatResponseTime(result.averageResponseTimeMs)}</strong></div><div><span>Duração</span><strong>{formatDuration(result.durationSeconds)}</strong></div><div><span>Palavras difíceis</span><strong>{typeof result.difficultWords === "number" ? result.difficultWords : "—"}</strong></div>
+        <div><span>Primeira tentativa</span><strong>{formatAccuracy(result.firstAttemptAccuracy)}</strong></div><div><span>Recuperação final</span><strong>{formatAccuracy(result.eventualRecallAccuracy)}</strong></div><div><span>Compreensão</span><strong>{formatAccuracy(result.comprehensionAccuracy)}</strong></div><div><span>Produção</span><strong>{formatAccuracy(result.productionAccuracy)}</strong></div><div><span>Escuta</span><strong>{formatAccuracy(result.listeningAccuracy)}</strong></div><div><span>Tempo médio</span><strong>{formatResponseTime(result.averageResponseTimeMs)}</strong></div><div><span>Duração</span><strong>{formatDuration(result.durationSeconds)}</strong></div><div><span>Palavras difíceis</span><strong>{typeof result.difficultWords === "number" ? result.difficultWords : "—"}</strong></div>
       </section>
       <div className="progress-line"><span style={{ width: `${result.score}%` }} /></div>
       <section className="flashcard-retrain" aria-label="Retreinos">
@@ -255,10 +255,10 @@ export function FlashcardTrainer() {
         <p className={`answer-match ${revealed.match}`}>{matchLabel(revealed.match)}</p>
         <p>Como foi lembrar? Você pode alterar a sugestão.</p>
         <div className="recall-rating-grid">
-          <button className={revealed.suggestedRating === "forgot" ? "suggested" : ""} disabled={busy} onClick={() => grade("forgot")} type="button"><X /> Não lembrei</button>
-          <button className={revealed.suggestedRating === "hard" ? "suggested" : ""} disabled={busy} onClick={() => grade("hard")} type="button">Difícil</button>
-          <button className={revealed.suggestedRating === "good" ? "suggested" : ""} disabled={busy} onClick={() => grade("good")} type="button"><Check /> Lembrei</button>
-          <button className={revealed.suggestedRating === "easy" ? "suggested" : ""} disabled={busy} onClick={() => grade("easy")} type="button"><Sparkles /> Fácil</button>
+          <button className={revealed.suggestedRating === "forgot" ? "suggested" : ""} disabled={busy} onClick={() => grade("forgot")} type="button"><X /> Não lembrei{card.intervalPreviewDays?.forgot ? <span className="interval-hint">→ {formatIntervalDays(card.intervalPreviewDays.forgot)}</span> : null}</button>
+          <button className={revealed.suggestedRating === "hard" ? "suggested" : ""} disabled={busy} onClick={() => grade("hard")} type="button">Difícil{card.intervalPreviewDays?.hard ? <span className="interval-hint">→ {formatIntervalDays(card.intervalPreviewDays.hard)}</span> : null}</button>
+          <button className={revealed.suggestedRating === "good" ? "suggested" : ""} disabled={busy} onClick={() => grade("good")} type="button"><Check /> Lembrei{card.intervalPreviewDays?.good ? <span className="interval-hint">→ {formatIntervalDays(card.intervalPreviewDays.good)}</span> : null}</button>
+          <button className={revealed.suggestedRating === "easy" ? "suggested" : ""} disabled={busy} onClick={() => grade("easy")} type="button"><Sparkles /> Fácil{card.intervalPreviewDays?.easy ? <span className="interval-hint">→ {formatIntervalDays(card.intervalPreviewDays.easy)}</span> : null}</button>
         </div>
       </section>}
       {busy ? <p className="speech-status"><Loader2 className="spin" /> Salvando resultado...</p> : null}{error ? <p className="inline-error" role="alert">{error}</p> : null}
@@ -313,5 +313,6 @@ function matchLabel(match: AnswerMatch) {
 }
 
 function formatAccuracy(value: number | null | undefined) { return typeof value === "number" ? `${value}%` : "—"; }
+function formatIntervalDays(days: number) { return `${days} ${days === 1 ? "dia" : "dias"}`; }
 function formatResponseTime(value: number | undefined) { return value ? `${(value / 1000).toFixed(1)}s` : "—"; }
 function formatDuration(value: number | undefined) { return value ? `${Math.max(1, Math.round(value / 60))} min` : "—"; }
