@@ -71,3 +71,15 @@ export type FlashcardPracticeResult = {
   difficultWords: number;
   slowWords: number;
 };
+
+export type DailyQueueSummary = {
+  dueCount: number;
+  newCount: number;
+  sessionCardCount: number;
+  remainingCount: number;
+  newAvailable: number;
+  introducedToday: number;
+  quota: number;
+  estimatedMinutes: number;
+  difficultCount: number;
+};

@@ -248,7 +248,7 @@ function fuzzInterval(intervalDays: number, seed: string) {
   return clampInt(intervalDays + offset, 1, MAX_INTERVAL_DAYS, intervalDays);
 }
 
-function hashSeed(seed: string) {
+export function hashSeed(seed: string) {
   let hash = 2166136261;
   for (const char of seed) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); }
   return hash >>> 0;
@@ -261,7 +261,7 @@ function dueAtInTimeZone(now: Date, days: number, requestedTimeZone: string) {
   return zonedDateTimeToUtc({ year: target.getUTCFullYear(), month: target.getUTCMonth() + 1, day: target.getUTCDate(), hour: 9, minute: 0, second: 0 }, timeZone).toISOString();
 }
 
-function zonedDateTimeToUtc(target: { year: number; month: number; day: number; hour: number; minute: number; second: number }, timeZone: string) {
+export function zonedDateTimeToUtc(target: { year: number; month: number; day: number; hour: number; minute: number; second: number }, timeZone: string) {
   let value = Date.UTC(target.year, target.month - 1, target.day, target.hour, target.minute, target.second);
   const targetValue = Date.UTC(target.year, target.month - 1, target.day, target.hour, target.minute, target.second);
   for (let index = 0; index < 3; index += 1) {
@@ -272,7 +272,7 @@ function zonedDateTimeToUtc(target: { year: number; month: number; day: number; 
   return new Date(value);
 }
 
-function zonedParts(date: Date, timeZone: string) {
+export function zonedParts(date: Date, timeZone: string) {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(date);
   const get = (type: Intl.DateTimeFormatPartTypes) => Number(parts.find((part) => part.type === type)?.value ?? 0);
   return { year: get("year"), month: get("month"), day: get("day"), hour: get("hour"), minute: get("minute"), second: get("second") };
