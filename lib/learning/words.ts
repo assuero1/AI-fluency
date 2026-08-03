@@ -1,9 +1,10 @@
 import { startConversation } from "./conversations";
 import type { WordFields, WordUsageSummaryFields } from "./conversations";
-import { getActiveLanguageProfile, getOrCreatePersonalUser } from "./profile";
+import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUser } from "./profile";
 import { createTopic } from "./topics";
 import { matchesLearningScope } from "./scope";
 import { getTeableClient, TeableRecord } from "@/lib/teable/client";
+import { summarizeDailyQueue, type DailyQueueSessionFields } from "./daily-queue";
 
 export const wordFilters = ["all", "recent", "review", "corrected"] as const;
 export type WordFilter = (typeof wordFilters)[number];
@@ -84,6 +85,8 @@ type WordScope = {
   profileId?: string;
   languageCode: string;
   weeklyWordGoal: number;
+  timeZone: string;
+  dailyNewCardsQuota: number;
 };
 
 export function normalizeWordFilter(value: string | undefined): WordFilter {
@@ -104,7 +107,11 @@ export function matchesWordSearch(
 }
 
 export async function getWordsData(filter: WordFilter = "all", query = "") {
-  const [scope, records] = await Promise.all([getWordScope(), getWordRecords()]);
+  const [scope, records, sessions] = await Promise.all([
+    getWordScope(),
+    getWordRecords(),
+    getTeableClient().listRecords<DailyQueueSessionFields>("practiceSessions", 300)
+  ]);
   const scoped = records.words.filter(
     (word) => matchesScope(word, scope) && Boolean(word.fields.display_text?.trim() || word.fields.lemma?.trim())
   );
@@ -126,6 +133,9 @@ export async function getWordsData(filter: WordFilter = "all", query = "") {
     languageCode: scope.languageCode,
     query: query.trim().slice(0, 80),
     words: visibleWords,
+    dailyQueue: scope.profileId
+      ? summarizeDailyQueue(scoped, sessions, { userId: scope.userId, profileId: scope.profileId }, { quota: scope.dailyNewCardsQuota, timeZone: scope.timeZone })
+      : null,
     summary: {
       totalWords: mapped.length,
       totalUses: mapped.reduce((sum, word) => sum + word.totalUses, 0),
@@ -224,7 +234,9 @@ async function getWordScope(): Promise<WordScope> {
     userId: user.id,
     profileId: profile?.id,
     languageCode: profile?.fields.language_code ?? "en",
-    weeklyWordGoal: Number(profile?.fields.weekly_word_goal ?? 500)
+    weeklyWordGoal: Number(profile?.fields.weekly_word_goal ?? 500),
+    timeZone: user.fields.timezone ?? "UTC",
+    dailyNewCardsQuota: getDailyNewCardsQuota(user)
   };
 }
 

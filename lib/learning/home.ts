@@ -1,9 +1,10 @@
 import { getConnectionStatus } from "@/lib/settings/status";
 import { getTeableClient, TeableRecord } from "@/lib/teable/client";
-import { getActiveLanguageProfile, getOrCreatePersonalUser, LanguageProfileFields, UserFields } from "./profile";
+import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUser, LanguageProfileFields, UserFields } from "./profile";
 import { matchesLearningScope } from "./scope";
 import type { ConversationFields } from "./conversations";
 import { getPracticeActivity } from "./practice-activity";
+import { summarizeDailyQueue, type DailyQueueSessionFields } from "./daily-queue";
 
 export type TopicFields = {
   Name?: string;
@@ -45,6 +46,10 @@ export type WordFields = {
   last_used_at: string;
   first_used_at: string;
   review_due_at: string;
+  last_reviewed_at?: string;
+  review_state?: string;
+  leech_flagged_at?: string;
+  lapse_count?: number;
 };
 
 export type HomeSuggestion = {
@@ -62,11 +67,12 @@ export async function getHomeData() {
   const user = await getOrCreatePersonalUser();
   const profile = await getActiveLanguageProfile(user);
 
-  const [topics, feedbacks, words, conversations] = await Promise.all([
+  const [topics, feedbacks, words, conversations, sessions] = await Promise.all([
     client.listAllRecords<TopicFields>("topics"),
     client.listAllRecords<DailyFeedbackFields>("dailyFeedbacks"),
     client.listAllRecords<WordFields>("words"),
-    client.listAllRecords<ConversationFields>("conversations")
+    client.listAllRecords<ConversationFields>("conversations"),
+    client.listAllRecords<DailyQueueSessionFields>("practiceSessions")
   ]);
 
   const profileTopics = filterByProfile(topics, user, profile);
@@ -81,6 +87,10 @@ export async function getHomeData() {
       .map((conversation) => conversation.fields.ended_at || conversation.fields.started_at),
     { timeZone: user.fields.timezone ?? "UTC" }
   );
+
+  const dailyQueue = profile
+    ? summarizeDailyQueue(profileWords, sessions, { userId: user.id, profileId: profile.id }, { quota: getDailyNewCardsQuota(user), timeZone: user.fields.timezone ?? "UTC" })
+    : null;
 
   return {
     user: {
@@ -99,7 +109,7 @@ export async function getHomeData() {
           weeklyWordGoal: profile.fields.weekly_word_goal
         }
       : null,
-    suggestions: buildSuggestions(profileTopics, profile?.fields.calendar_memory_enabled ? recentFeedback : null, profileWords),
+    suggestions: buildSuggestions(profileTopics, profile?.fields.calendar_memory_enabled ? recentFeedback : null, profileWords, dailyQueue),
     feedback: {
       hasFeedback: Boolean(recentFeedback),
       correctionScore: Number(recentFeedback?.fields.correction_score ?? 0),
@@ -135,7 +145,8 @@ function filterByProfile<T extends { user_id?: string; language_profile_id?: str
 export function buildSuggestions(
   topics: TeableRecord<TopicFields>[],
   feedback: TeableRecord<DailyFeedbackFields> | null,
-  words: TeableRecord<WordFields>[]
+  words: TeableRecord<WordFields>[],
+  dailyQueue?: { dueCount: number; newCount: number } | null
 ) {
   const saved = [...topics].sort((a, b) => dateValue(b.fields.created_at) - dateValue(a.fields.created_at)).map<HomeSuggestion>((topic, index) => ({
     id: topic.id,
@@ -165,7 +176,9 @@ export function buildSuggestions(
   const wordSuggestion: HomeSuggestion[] = dueWords.length
     ? [{
         title: `Revisar: ${dueWords.join(", ")}`,
-        meta: "Palavras com revisão pendente no seu vocabulário.",
+        meta: dailyQueue && dailyQueue.dueCount + dailyQueue.newCount > 0
+          ? `Hoje: ${dailyQueue.dueCount} revisões + ${dailyQueue.newCount} novas na sua fila.`
+          : "Palavras com revisão pendente no seu vocabulário.",
         badge: "Palavras fracas",
         tone: "warning",
         source: "weak_words",

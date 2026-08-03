@@ -30,4 +30,27 @@ describe("Home suggestions", () => {
 
     expect(suggestions[0]).toMatchObject({ title: "Entrevista", badge: "Erro recorrente", source: "recurring_error" });
   });
+
+  it("reflects the daily queue in the weak-words hook", () => {
+    const suggestions = buildSuggestions([], null, [
+      {
+        id: "w1",
+        fields: {
+          user_id: "user-1",
+          language_profile_id: "profile-1",
+          lemma: "casa",
+          display_text: "casa",
+          translation: "house",
+          part_of_speech: "noun",
+          familiarity_score: 0,
+          total_uses: 1,
+          last_used_at: "2026-08-01T10:00:00.000Z",
+          first_used_at: "2026-07-01T10:00:00.000Z",
+          review_due_at: "2026-08-01T09:00:00.000Z"
+        }
+      }
+    ], { dueCount: 3, newCount: 2 });
+
+    expect(suggestions[0]).toMatchObject({ source: "weak_words", meta: "Hoje: 3 revisões + 2 novas na sua fila." });
+  });
 });
