@@ -153,6 +153,37 @@ test("daily review queue intro starts a daily session", async ({ page }) => {
   expect(createBodies[0]).toEqual({ queueKind: "daily" });
 });
 
+test("listening card plays audio prompt and shows interval hints", async ({ page }) => {
+  await page.route("**/api/practice/flashcards", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, activeSession: null }) });
+      return;
+    }
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        sessionId: "session-listen",
+        languageCode: "es",
+        languageName: "Espanhol",
+        cards: [
+          { id: "card-listen", sessionId: "session-listen", type: "listening", targetWordId: "word-l", supportingWordIds: [], prompt: "", expectedAnswer: "hola", acceptedAnswers: [], translation: "olá", audioText: "hola", difficulty: 3, intervalPreviewDays: { forgot: 1, hard: 3, good: 7, easy: 16 } }
+        ]
+      })
+    });
+  });
+
+  await page.goto("/palavras/treino");
+  await page.getByRole("button", { name: "Sessão custom" }).click();
+  await page.getByRole("button", { name: /Montar treino/ }).click();
+  await expect(page.getByLabel("Card de escuta")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Ouvir áudio" })).toBeVisible();
+  await page.getByRole("textbox", { name: "Resposta esperada em português" }).fill("olá");
+  await page.getByRole("button", { name: "Responder" }).click();
+  await expect(page.getByText("→ 7 dias")).toBeVisible();
+});
+
 test("flashcard speech fills an editable attempt and never submits automatically", async ({ page }) => {
   await page.addInitScript(() => {
     class MockRecognition {
