@@ -142,14 +142,14 @@ describe("previewReviewIntervals", () => {
 
   it("previews a new word's learning steps without fuzz", () => {
     // good avança 1 passo (1d); easy avança 2 passos (3d) — graduação exige passar do último passo.
-    const preview = previewReviewIntervals({ review_state: "new" }, NOW, "UTC", "w1");
+    const preview = previewReviewIntervals({ review_state: "new" }, NOW, "UTC", "w1", "target_to_native");
     expect(preview).toEqual({ forgot: 1, hard: 1, good: 1, easy: 3 });
   });
 
   it("previews a graduated word with the fuzzed interval bounded", () => {
     const preview = previewReviewIntervals(
       { review_state: "review", review_interval_days: 3, review_streak: 1, review_ease: 2.3, learning_step: 3 },
-      NOW, "UTC", "w2"
+      NOW, "UTC", "w2", "cloze"
     );
     expect(preview.forgot).toBe(1);
     expect(preview.hard).toBeGreaterThanOrEqual(1);
@@ -158,8 +158,17 @@ describe("previewReviewIntervals", () => {
     expect(preview.easy).toBeGreaterThan(preview.good);
   });
 
+  it("matches the grade path's schedule for the same card type", () => {
+    const current = { review_state: "review" as const, review_interval_days: 10, review_streak: 2, review_ease: 2.4, learning_step: 3 };
+    const preview = previewReviewIntervals(current, NOW, "UTC", "w4", "listening");
+    for (const rating of ["forgot", "hard", "good", "easy"] as const) {
+      const grade = calculateAdaptiveReview(current, [{ rating, cardType: "listening" }], NOW, "UTC", "w4");
+      expect(preview[rating]).toBe(Math.max(1, Math.round((Date.parse(grade.reviewDueAt) - NOW.getTime()) / 86_400_000)));
+    }
+  });
+
   it("is deterministic for the same fuzz seed", () => {
     const current = { review_state: "review" as const, review_interval_days: 30, review_streak: 4, review_ease: 2.5, learning_step: 3 };
-    expect(previewReviewIntervals(current, NOW, "America/Sao_Paulo", "w3")).toEqual(previewReviewIntervals(current, NOW, "America/Sao_Paulo", "w3"));
+    expect(previewReviewIntervals(current, NOW, "America/Sao_Paulo", "w3", "native_to_target")).toEqual(previewReviewIntervals(current, NOW, "America/Sao_Paulo", "w3", "native_to_target"));
   });
 });

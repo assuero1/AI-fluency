@@ -302,7 +302,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
     const previewNow = new Date();
     cards = cards.map((card) => {
       const cardWord = selected.find((item) => item.id === card.targetWordId);
-      return cardWord ? { ...card, intervalPreviewDays: previewReviewIntervals(cardWord.fields, previewNow, timeZone, cardWord.id) } : card;
+      return cardWord ? { ...card, intervalPreviewDays: previewReviewIntervals(cardWord.fields, previewNow, timeZone, cardWord.id, card.type) } : card;
     });
     await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, {
       status: "active",
@@ -378,7 +378,7 @@ export async function getActiveFlashcardPractice() {
   const wordsById = new Map(wordRecords.map((word) => [word.id, word]));
   const cardsWithPreview = cards.map((card) => {
     const word = wordsById.get(card.targetWordId);
-    return word ? { ...card, intervalPreviewDays: previewReviewIntervals(word.fields, previewNow, user.fields.timezone ?? "UTC", word.id) } : card;
+    return word ? { ...card, intervalPreviewDays: previewReviewIntervals(word.fields, previewNow, user.fields.timezone ?? "UTC", word.id, card.type) } : card;
   });
   const rebuilt = rebuildFlashcardQueue(cardsWithPreview, attempts);
   await client.createEvent(user.id, "flashcard_practice_resumed", { session_id: session.id, persisted_attempt_count: attempts.length });

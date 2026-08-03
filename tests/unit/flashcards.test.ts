@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   buildDeck,
   getCardTypeFlags,
@@ -13,6 +13,10 @@ import {
 } from "../../lib/learning/flashcards";
 import type { WordFields } from "../../lib/learning/conversations";
 import type { TeableRecord } from "../../lib/teable/client";
+
+// Force the AI phrase generation to fail so mixed-type buildDeck tests stay hermetic
+// regardless of whether the environment has a working AI endpoint.
+vi.mock("../../lib/ai/client", () => ({ createChatCompletion: vi.fn(async () => { throw new Error("AI unavailable"); }) }));
 
 function word(id: string, fields: Partial<WordFields>): TeableRecord<WordFields> {
   return { id, fields: fields as WordFields };
