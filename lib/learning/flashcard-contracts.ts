@@ -1,6 +1,9 @@
 export const flashcardCriteria = ["least_used", "oldest"] as const;
 export type FlashcardCriterion = (typeof flashcardCriteria)[number];
 
+export const flashcardQueueKinds = ["daily", "custom", "difficult"] as const;
+export type FlashcardQueueKind = (typeof flashcardQueueKinds)[number];
+
 export type FlashcardType = "target_to_native" | "native_to_target" | "cloze" | "listening";
 export type AnswerMatch = "exact" | "acceptable" | "minor_error" | "incorrect" | "unknown";
 export type RecallRating = "forgot" | "hard" | "good" | "easy";

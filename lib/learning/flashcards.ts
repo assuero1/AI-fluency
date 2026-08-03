@@ -5,16 +5,19 @@ import { getTeableClient, TeableRecord } from "@/lib/teable/client";
 import { getEnv } from "@/lib/env";
 import { LearningStateError } from "./access";
 import { WordFields } from "./conversations";
-import { getActiveLanguageProfile, getOrCreatePersonalUser } from "./profile";
+import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUser } from "./profile";
 import { matchesLearningScope } from "./scope";
+import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, summarizeDailyQueue } from "./daily-queue";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
 import { isRatingCorrect, rebuildFlashcardQueue, suggestRecallRating } from "./flashcard-queue";
 import { calculateAdaptiveReview, reviewToWordFields, type ReviewAttempt } from "./spaced-repetition";
 import {
   flashcardCriteria,
+  flashcardQueueKinds,
   type Flashcard,
   type FlashcardAnswer,
   type FlashcardCriterion,
+  type FlashcardQueueKind,
   type RecallRating
 } from "./flashcard-contracts";
 
@@ -111,10 +114,13 @@ type StoredFlashcardResult = {
 
 type PracticeFocus = {
   criterion?: FlashcardCriterion;
+  queueKind?: FlashcardQueueKind;
   wordIds: string[];
   cardCount?: number;
   deckSeed?: string;
   cards?: Flashcard[];
+  newCardsIntroduced?: number;
+  dailyQuota?: number;
   completed?: boolean;
   completionId?: string;
   result?: StoredFlashcardResult;
@@ -128,6 +134,10 @@ type PersistedAttempt = ReturnType<typeof attemptRecordToAnswer> & { id: string 
 
 export function normalizeFlashcardCriterion(value: unknown): FlashcardCriterion {
   return flashcardCriteria.includes(value as FlashcardCriterion) ? value as FlashcardCriterion : "least_used";
+}
+
+export function normalizeFlashcardQueueKind(value: unknown): FlashcardQueueKind | null {
+  return flashcardQueueKinds.includes(value as FlashcardQueueKind) ? value as FlashcardQueueKind : null;
 }
 
 export function isFlashcardActiveRecallEnabled() {
@@ -185,7 +195,7 @@ export function validateFlashcardAnswers(cards: Flashcard[], answers: Array<{ ca
   return validated;
 }
 
-export async function createFlashcardPractice(input: { criterion?: unknown; count?: unknown; wordIds?: unknown; parentSessionId?: unknown; retrainMode?: unknown }) {
+export async function createFlashcardPractice(input: { criterion?: unknown; count?: unknown; wordIds?: unknown; parentSessionId?: unknown; retrainMode?: unknown; queueKind?: unknown }) {
   const operationStartedAt = Date.now();
   if (!isFlashcardActiveRecallEnabled()) throw new LearningStateError("O treino de recuperação ativa ainda não está habilitado para este ambiente.", 503);
   const criterion = normalizeFlashcardCriterion(input.criterion);
@@ -205,7 +215,33 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
   if (requestedWordIds && requestedWordIds.size > 30) throw new LearningStateError("O treino aceita no máximo 30 palavras.", 422);
   if (requestedWordIds && [...requestedWordIds].some((id) => !scoped.some((word) => word.id === id))) throw new LearningStateError("Uma ou mais palavras não pertencem ao perfil ativo.", 404);
   if (typeof input.parentSessionId === "string" && input.parentSessionId && !sessions.some((item) => item.id === input.parentSessionId && item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards" && item.fields.status === "completed")) throw new LearningStateError("Sessão de origem do retreino não encontrada.", 404);
-  const selected = requestedWordIds?.size ? scoped.filter((word) => requestedWordIds.has(word.id)) : selectFlashcardWords(scoped, criterion, requestedCount);
+  const queueKind: FlashcardQueueKind = normalizeFlashcardQueueKind(input.queueKind)
+    ?? (requestedWordIds?.size || input.criterion !== undefined || input.count !== undefined ? "custom" : "daily");
+  const timeZone = user.fields.timezone ?? "UTC";
+  let selected: typeof scoped;
+  let newCardsIntroduced = 0;
+  let dailyQuota: number | undefined;
+  if (requestedWordIds?.size) {
+    selected = scoped.filter((word) => requestedWordIds.has(word.id));
+  } else if (queueKind === "daily") {
+    dailyQuota = getDailyNewCardsQuota(user);
+    const introducedToday = countNewCardsIntroducedToday(sessions, { userId: user.id, profileId: profile.id }, { timeZone });
+    const queue = computeDailyQueue(scoped, {
+      quota: dailyQuota,
+      introducedToday,
+      timeZone,
+      seed: `${user.id}:${new Date().toISOString().slice(0, 10)}`
+    });
+    if (!queue.sessionWordIds.length) throw new LearningStateError("Fila de hoje vazia. Volte amanhã para novas palavras ou monte uma sessão custom.", 409);
+    const wordsById = new Map(scoped.map((word) => [word.id, word]));
+    selected = queue.sessionWordIds.map((id) => wordsById.get(id)!);
+    newCardsIntroduced = selected.filter((word) => queue.newWordIds.includes(word.id)).length;
+  } else if (queueKind === "difficult") {
+    selected = selectDifficultWords(scoped);
+    if (!selected.length) throw new LearningStateError("Nenhuma palavra difícil no momento. Continue a fila diária para encontrar novos desafios.", 409);
+  } else {
+    selected = selectFlashcardWords(scoped, criterion, requestedCount);
+  }
   if (selected.length < 1) throw new LearningStateError("Salve pelo menos uma palavra antes de iniciar este treino.", 409);
 
   const now = new Date().toISOString();
@@ -215,7 +251,13 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
     language_profile_id: profile.id,
     conversation_id: "",
     type: "flashcards",
-    focus: JSON.stringify({ criterion, wordIds: selected.map((word) => word.id), retrainMode: typeof input.retrainMode === "string" ? input.retrainMode : undefined }),
+    focus: JSON.stringify({
+      criterion,
+      queueKind,
+      wordIds: selected.map((word) => word.id),
+      ...(queueKind === "daily" ? { newCardsIntroduced, dailyQuota } : {}),
+      retrainMode: typeof input.retrainMode === "string" ? input.retrainMode : undefined
+    }),
     status: "preparing",
     started_at: now,
     ended_at: "",
@@ -327,6 +369,22 @@ export async function getActiveFlashcardPractice() {
     adapted: parseJson(session.fields.configuration_json).adapted === true,
     startedAt: session.fields.started_at || session.fields.created_at
   };
+}
+
+export async function getDailyQueueSummary() {
+  const client = getTeableClient();
+  const user = await getOrCreatePersonalUser();
+  const profile = await getActiveLanguageProfile(user);
+  if (!profile) return null;
+  const [allWords, sessions] = await Promise.all([
+    client.listRecords<WordFields>("words", 500),
+    client.listRecords<PracticeSessionFields>("practiceSessions", 300)
+  ]);
+  const scoped = allWords.filter((word) => matchesLearningScope(word.fields, { userId: user.id, profileId: profile.id }));
+  return summarizeDailyQueue(scoped, sessions, { userId: user.id, profileId: profile.id }, {
+    quota: getDailyNewCardsQuota(user),
+    timeZone: user.fields.timezone ?? "UTC"
+  });
 }
 
 export async function abandonFlashcardPractice(sessionId: string) {

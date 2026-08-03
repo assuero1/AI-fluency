@@ -4,6 +4,7 @@ import {
   isFlashcardActiveRecallEnabled,
   normalizeFlashcardCount,
   normalizeFlashcardCriterion,
+  normalizeFlashcardQueueKind,
   seededShuffle,
   selectFlashcardWords,
   validateFlashcardAnswers,
@@ -127,6 +128,16 @@ describe("current flashcard behavior", () => {
     ], words);
     expect([...phrases.keys()]).toEqual(["word-a"]);
     expect(phrases.get("word-a")?.supportingWordIds).toEqual(["word-b"]);
+  });
+});
+
+describe("flashcard queue kinds", () => {
+  it("normalizes explicit queue kinds and rejects unknown values", () => {
+    expect(normalizeFlashcardQueueKind("daily")).toBe("daily");
+    expect(normalizeFlashcardQueueKind("custom")).toBe("custom");
+    expect(normalizeFlashcardQueueKind("difficult")).toBe("difficult");
+    expect(normalizeFlashcardQueueKind("weird")).toBeNull();
+    expect(normalizeFlashcardQueueKind(undefined)).toBeNull();
   });
 });
 
