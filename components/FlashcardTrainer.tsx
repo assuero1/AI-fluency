@@ -5,7 +5,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { compareAnswerForCard } from "@/lib/learning/flashcard-answer";
 import { advanceFlashcardQueue, createFlashcardQueue, selectNextQueueItem, suggestRecallRating } from "@/lib/learning/flashcard-queue";
-import type { AnswerMatch, Flashcard, FlashcardAnswer, FlashcardCriterion, FlashcardPracticeResult, QueueItem, RecallRating } from "@/lib/learning/flashcard-contracts";
+import type { AnswerMatch, DailyQueueSummary, Flashcard, FlashcardAnswer, FlashcardCriterion, FlashcardPracticeResult, FlashcardQueueKind, QueueItem, RecallRating } from "@/lib/learning/flashcard-contracts";
 import { Pill } from "./Pill";
 import { VoiceButton } from "./VoiceButton";
 
@@ -49,6 +49,9 @@ export function FlashcardTrainer() {
   const [exitConfirmationOpen, setExitConfirmationOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [dailyQueue, setDailyQueue] = useState<DailyQueueSummary | null>(null);
+  const [customOpen, setCustomOpen] = useState(false);
+  const [quotaSaving, setQuotaSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<Recognition | null>(null);
 
@@ -58,27 +61,48 @@ export function FlashcardTrainer() {
     return () => recognitionRef.current?.abort();
   }, []);
 
+  async function loadOverview() {
+    try {
+      const response = await fetch("/api/practice/flashcards", { cache: "no-store" });
+      const data = await response.json() as { ok?: boolean; activeSession?: typeof resumable; dailyQueue?: DailyQueueSummary | null };
+      if (response.ok && data.ok) {
+        if (data.activeSession) setResumable(data.activeSession);
+        setDailyQueue(data.dailyQueue ?? null);
+      }
+    } catch { /* overview é best-effort; a sessão custom continua disponível */ }
+  }
+
   useEffect(() => {
-    void fetch("/api/practice/flashcards", { cache: "no-store" }).then(async (response) => {
-      const data = await response.json() as { ok?: boolean; activeSession?: typeof resumable };
-      if (response.ok && data.ok && data.activeSession) setResumable(data.activeSession);
-    }).catch(() => undefined);
+    void loadOverview();
   }, []);
 
   useEffect(() => {
     if (cards.length && !revealed) inputRef.current?.focus();
   }, [cards.length, currentItem, revealed]);
 
-  async function start() {
+  async function start(queueKind: FlashcardQueueKind) {
     setBusy(true); setError("");
     try {
-      const response = await fetch("/api/practice/flashcards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ criterion, count }) });
+      const body = queueKind === "custom" ? { queueKind, criterion, count } : { queueKind };
+      const response = await fetch("/api/practice/flashcards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = await response.json() as { ok?: boolean; error?: string; sessionId?: string; cards?: Flashcard[]; languageCode?: string; languageName?: string; adapted?: boolean };
       if (!response.ok || !data.ok || !data.sessionId || !data.cards?.length) throw new Error(data.error ?? "Não foi possível montar o treino.");
       const initialQueue = createFlashcardQueue(data.cards);
       setSessionId(data.sessionId); setCompletionId(crypto.randomUUID()); setCards(data.cards); setQueue(initialQueue); setCurrentItem(selectNextQueueItem(initialQueue, 0)); setLanguageCode(data.languageCode ?? "es"); setLanguageName(data.languageName ?? "idioma estudado"); setAdapted(data.adapted === true); setResumable(null); setAnswers([]); setResult(null); resetAttempt();
     } catch (startError) { setError(startError instanceof Error ? startError.message : "Não foi possível montar o treino."); }
     finally { setBusy(false); }
+  }
+
+  async function changeQuota(delta: number) {
+    if (!dailyQueue || quotaSaving) return;
+    const next = Math.max(0, Math.min(50, dailyQueue.quota + delta));
+    if (next === dailyQueue.quota) return;
+    setQuotaSaving(true);
+    try {
+      const response = await fetch("/api/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dailyNewCardsQuota: next }) });
+      if (response.ok) await loadOverview();
+    } catch { /* mantém a quota anterior na tela */ }
+    finally { setQuotaSaving(false); }
   }
 
   function submitAttempt(event?: FormEvent, forgot = false) {
@@ -146,7 +170,7 @@ export function FlashcardTrainer() {
   async function restartSession() {
     if (!resumable) return;
     await abandonSession(resumable.sessionId);
-    await start();
+    await start("daily");
   }
 
   async function startRetraining(mode: "wrong" | "difficult") {
@@ -194,7 +218,7 @@ export function FlashcardTrainer() {
         <div><button className="outline-button" disabled={busy} onClick={() => void startRetraining("wrong")} type="button">Somente erradas</button><button className="outline-button" disabled={busy} onClick={() => void startRetraining("difficult")} type="button">Somente difíceis</button></div>
         <Link className="outline-button" href={`/chat?flashcardSession=${encodeURIComponent(sessionId)}`}>Usar palavras em conversa</Link>
       </section>
-      <button className="green-button full-button" onClick={() => { setCards([]); setResult(null); }} type="button"><RotateCcw /> Novo treino</button>
+      <button className="green-button full-button" onClick={() => { setCards([]); setResult(null); void loadOverview(); }} type="button"><RotateCcw /> Novo treino</button>
       <Link className="outline-button full-button" href="/palavras">Voltar às palavras</Link>
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
     </section>
@@ -246,10 +270,29 @@ export function FlashcardTrainer() {
     <Link className="back-link" href="/palavras"><ArrowLeft /> Palavras</Link>
     <section className="flashcard-intro"><div className="flashcard-brand"><Brain /></div><div><div className="eyebrow">Revisão inteligente</div><h1 className="title">Treino de cards</h1><p className="subtitle">Recupere a palavra da memória antes de conferir a resposta.</p></div></section>
     {resumable?.currentItem ? <div className="modal-backdrop" role="presentation"><section aria-labelledby="resume-training-title" aria-modal="true" className="confirmation-modal" role="dialog"><RotateCcw /><h2 className="section-title" id="resume-training-title">Treino em andamento</h2><p className="row-meta">Você já concluiu {resumable.attempts.length} apresentações. Escolha como seguir.</p><div className="flashcard-resume-actions"><button className="green-button" disabled={busy} onClick={continueSession} type="button">Continuar treino</button><button className="outline-button" disabled={busy} onClick={() => void restartSession()} type="button">Reiniciar treino</button><button className="danger-button" disabled={busy} onClick={() => void abandonSession(resumable.sessionId)} type="button">Abandonar</button></div></section></div> : null}
-    <section className="section"><h2 className="section-title">Quais palavras priorizar?</h2><p className="row-meta">Palavras com revisão vencida sempre entram primeiro; o critério ordena o restante.</p><div className="flashcard-choice-grid"><button className={criterion === "least_used" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("least_used")} type="button"><Layers3 /><div><strong>Menos usadas</strong><span>Reforça palavras com pouca prática</span></div></button><button className={criterion === "oldest" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("oldest")} type="button"><Clock3 /><div><strong>Há mais tempo sem usar</strong><span>Recupera vocabulário esquecido</span></div></button></div></section>
-    <section className="section"><div className="top-row"><h2 className="section-title">Quantidade de palavras</h2><strong>{count}</strong></div><input aria-label="Quantidade de palavras" className="flashcard-range" min="2" max="30" onChange={(event) => setCount(Number(event.target.value))} step="1" type="range" value={count} /><div className="top-row row-meta"><span>2</span><span>30</span></div></section>
-    <div className="soft-card"><Sparkles /><div><strong>Como funciona</strong><p className="row-meta">Digite ou fale sua tentativa. A resposta só aparece depois, e você confirma a avaliação sugerida.</p></div></div>
-    <button className="green-button full-button" disabled={busy} onClick={start} type="button">{busy ? <Loader2 className="spin" /> : <Brain />} Montar treino com {count} palavras</button>
+    {dailyQueue ? <section className="section flashcard-daily" aria-label="Fila de hoje">
+      <h2 className="section-title">Fila de hoje</h2>
+      {dailyQueue.sessionCardCount > 0 ? <>
+        <p className="row-meta">{dailyQueue.dueCount} revisões + {dailyQueue.newCount} novas · ~{dailyQueue.estimatedMinutes} min{dailyQueue.remainingCount > 0 ? ` · +${dailyQueue.remainingCount} continuam depois` : ""}</p>
+        <button className="green-button full-button" disabled={busy} onClick={() => void start("daily")} type="button">{busy ? <Loader2 className="spin" /> : <Brain />} Começar revisão de hoje</button>
+      </> : <p className="row-meta">{dailyQueue.introducedToday > 0 ? "Fila de hoje concluída. Amanhã há mais — ou pratique abaixo." : "Nada na fila de hoje. Converse para salvar palavras novas ou monte uma sessão custom."}</p>}
+      <div className="top-row row-meta">
+        <span>Novas por dia</span>
+        <span>
+          <button aria-label="Diminuir novas por dia" className="outline-button" disabled={quotaSaving || dailyQueue.quota <= 0} onClick={() => void changeQuota(-1)} type="button">−</button>
+          <strong> {dailyQueue.quota} </strong>
+          <button aria-label="Aumentar novas por dia" className="outline-button" disabled={quotaSaving || dailyQueue.quota >= 50} onClick={() => void changeQuota(1)} type="button">+</button>
+        </span>
+      </div>
+    </section> : null}
+    {dailyQueue && dailyQueue.difficultCount > 0 ? <button className="outline-button full-button" disabled={busy} onClick={() => void start("difficult")} type="button">Só difíceis ({dailyQueue.difficultCount})</button> : null}
+    <button className="outline-button full-button" onClick={() => setCustomOpen((open) => !open)} type="button">Sessão custom</button>
+    {customOpen ? <>
+      <section className="section"><h2 className="section-title">Quais palavras priorizar?</h2><p className="row-meta">Palavras com revisão vencida sempre entram primeiro; o critério ordena o restante.</p><div className="flashcard-choice-grid"><button className={criterion === "least_used" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("least_used")} type="button"><Layers3 /><div><strong>Menos usadas</strong><span>Reforça palavras com pouca prática</span></div></button><button className={criterion === "oldest" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("oldest")} type="button"><Clock3 /><div><strong>Há mais tempo sem usar</strong><span>Recupera vocabulário esquecido</span></div></button></div></section>
+      <section className="section"><div className="top-row"><h2 className="section-title">Quantidade de palavras</h2><strong>{count}</strong></div><input aria-label="Quantidade de palavras" className="flashcard-range" min="2" max="30" onChange={(event) => setCount(Number(event.target.value))} step="1" type="range" value={count} /><div className="top-row row-meta"><span>2</span><span>30</span></div></section>
+      <div className="soft-card"><Sparkles /><div><strong>Como funciona</strong><p className="row-meta">Digite ou fale sua tentativa. A resposta só aparece depois, e você confirma a avaliação sugerida.</p></div></div>
+      <button className="green-button full-button" disabled={busy} onClick={() => void start("custom")} type="button">{busy ? <Loader2 className="spin" /> : <Brain />} Montar treino com {count} palavras</button>
+    </> : null}
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
   </div>;
 }

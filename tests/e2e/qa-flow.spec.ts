@@ -81,6 +81,7 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
   });
 
   await page.goto("/palavras/treino");
+  await page.getByRole("button", { name: "Sessão custom" }).click();
   await page.getByRole("button", { name: /Montar treino/ }).click();
   await expect(page.getByText("hola", { exact: true })).toBeVisible();
   await expect(page.getByText("olá", { exact: true })).toHaveCount(0);
@@ -135,6 +136,7 @@ test("flashcard speech fills an editable attempt and never submits automatically
   }));
 
   await page.goto("/palavras/treino");
+  await page.getByRole("button", { name: "Sessão custom" }).click();
   await page.getByRole("button", { name: /Montar treino/ }).click();
   await page.getByRole("button", { name: "Falar resposta" }).click();
   await page.evaluate(() => {
@@ -165,6 +167,7 @@ test("listening cards keep the text hidden until the learner requests audio", as
   }));
 
   await page.goto("/palavras/treino");
+  await page.getByRole("button", { name: "Sessão custom" }).click();
   await page.getByRole("button", { name: /Montar treino/ }).click();
   await expect(page.getByLabel("Card de escuta")).toBeVisible();
   await expect(page.getByText("hola", { exact: true })).toHaveCount(0);
