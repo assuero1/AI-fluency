@@ -11,6 +11,7 @@ import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, 
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
 import { isRatingCorrect, rebuildFlashcardQueue, suggestRecallRating } from "./flashcard-queue";
 import { calculateAdaptiveReview, reviewToWordFields, type ReviewAttempt } from "./spaced-repetition";
+import { chooseCardTypes, countPlannedTypes, type CardTypeFlags } from "./flashcard-type-selection";
 import {
   flashcardCriteria,
   flashcardQueueKinds,
@@ -18,6 +19,7 @@ import {
   type FlashcardAnswer,
   type FlashcardCriterion,
   type FlashcardQueueKind,
+  type FlashcardType,
   type RecallRating
 } from "./flashcard-contracts";
 
@@ -144,6 +146,15 @@ export function isFlashcardActiveRecallEnabled() {
   return getEnv("FLASHCARD_ACTIVE_RECALL_ENABLED")?.toLowerCase() !== "false";
 }
 
+export function getCardTypeFlags(): CardTypeFlags {
+  const enabled = (name: string) => getEnv(name)?.toLowerCase() !== "false";
+  return {
+    production: enabled("FLASHCARD_PRODUCTION_ENABLED"),
+    cloze: enabled("FLASHCARD_CLOZE_ENABLED"),
+    listening: enabled("FLASHCARD_LISTENING_ENABLED")
+  };
+}
+
 export function normalizeFlashcardCount(value: unknown): number {
   return Math.max(2, Math.min(30, Math.round(Number(value) || 10)));
 }
@@ -160,12 +171,6 @@ export function selectFlashcardWords<T extends TeableRecord<WordFields>>(words: 
   }
   upcoming.sort((a, b) => dateValue(a.fields.review_due_at) - dateValue(b.fields.review_due_at));
   return [...due, ...upcoming].slice(0, count);
-}
-
-// A revisão inteligente é sempre idioma estudado → português (target_to_native).
-export function getActiveRecallDistribution(wordCount: number) {
-  const count = Math.max(0, Math.floor(wordCount));
-  return { targetToNative: count, nativeToTarget: 0, cloze: 0, listening: 0 };
 }
 
 export function validateFlashcardAnswers(cards: Flashcard[], answers: Array<{ cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown }>) {
@@ -244,6 +249,13 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
   }
   if (selected.length < 1) throw new LearningStateError("Salve pelo menos uma palavra antes de iniciar este treino.", 409);
 
+  const desiredTypes = chooseCardTypes(selected, {
+    seed: `${user.id}:${profile.id}:${Date.now()}`,
+    audioEnabled: Boolean(profile.fields.audio_enabled),
+    flags: getCardTypeFlags()
+  });
+  const plannedDistribution = countPlannedTypes(desiredTypes);
+
   const now = new Date().toISOString();
   const session = await client.createRecord<PracticeSessionFields>("practiceSessions", {
     Name: `Flashcards · ${now.slice(0, 10)}`,
@@ -271,7 +283,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
     incorrect_count: 0,
     score: 0,
     language_code: profile.fields.language_code,
-    configuration_json: JSON.stringify({ distribution: getActiveRecallDistribution(selected.length) }),
+    configuration_json: JSON.stringify({ distribution: plannedDistribution }),
     parent_session_id: typeof input.parentSessionId === "string" ? input.parentSessionId : "",
     created_at: now,
     updated_at: now
@@ -281,7 +293,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
   let cards: Flashcard[];
   try {
     await client.createEvent(user.id, "flashcard_generation_started", { session_id: session.id, word_count: selected.length });
-    deck = await buildDeck(selected, profile.fields.language_name || profile.fields.language_code, profile.fields.level || "intermediário", deckSeed);
+    deck = await buildDeck(selected, profile.fields.language_name || profile.fields.language_code, profile.fields.level || "intermediário", deckSeed, desiredTypes);
     cards = [];
     for (const [index, provisional] of deck.cards.entries()) {
       const record = await client.createRecord<FlashcardFields>("flashcards", flashcardToRecord(provisional, session.id, index, now));
@@ -290,7 +302,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
     await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, {
       status: "active",
       unique_card_count: cards.length,
-      configuration_json: JSON.stringify({ distribution: getActiveRecallDistribution(selected.length), deckSeed, adapted: deck.adapted }),
+      configuration_json: JSON.stringify({ distribution: deck.planned, deckSeed, adapted: deck.adapted }),
       updated_at: new Date().toISOString()
     });
     await client.createEvent(user.id, "flashcard_generation_completed", { session_id: session.id, card_count: cards.length, duration_ms: Date.now() - operationStartedAt, fallback_used: deck.adapted });
@@ -304,7 +316,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
 }
 
 export async function createFlashcardRetraining(sourceSessionId: string, mode: unknown) {
-  // Cards são sempre target_to_native; retreinos por tipo de card (produção/escuta) não existem mais.
+  // Retreinos reutilizam o deck misto por estágio; o modo filtra as palavras elegíveis.
   const retrainMode = mode === "wrong" || mode === "difficult" ? mode : null;
   if (!sourceSessionId.trim() || !retrainMode) throw new LearningStateError("Retreino inválido.", 422);
   const client = getTeableClient();
@@ -619,17 +631,11 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
   return result;
 }
 
-export async function buildDeck(words: TeableRecord<WordFields>[], language: string, level: string, seed: string) {
-  const distribution = getActiveRecallDistribution(words.length);
-  const desiredTypes = [
-    ...Array(distribution.targetToNative).fill("target_to_native" as const),
-    ...Array(distribution.nativeToTarget).fill("native_to_target" as const),
-    ...Array(distribution.cloze).fill("cloze" as const),
-    ...Array(distribution.listening).fill("listening" as const)
-  ];
+export async function buildDeck(words: TeableRecord<WordFields>[], language: string, level: string, seed: string, desiredTypes: FlashcardType[]) {
+  const planned = countPlannedTypes(desiredTypes);
   const phrases = await generatePhrases(words, language, level);
   const cards = words.map((word, index) => buildActiveRecallCard(word, desiredTypes[index] ?? "target_to_native", phrases.get(word.id), index));
-  return { cards: seededShuffle(cards, seed), adapted: cards.filter((card) => card.type === "cloze").length < distribution.cloze };
+  return { cards: seededShuffle(cards, seed), planned, adapted: cards.filter((card) => card.type === "cloze").length < planned.cloze };
 }
 
 type GeneratedPhrase = { text: string; translation: string; supportingWordIds: string[] };

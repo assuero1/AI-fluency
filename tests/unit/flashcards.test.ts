@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
-  getActiveRecallDistribution,
+  buildDeck,
+  getCardTypeFlags,
   isFlashcardActiveRecallEnabled,
   normalizeFlashcardCount,
   normalizeFlashcardCriterion,
@@ -55,13 +56,6 @@ describe("current flashcard behavior", () => {
     ], "oldest", 3);
 
     expect(selected.map((item) => item.id)).toEqual(["old", "never-reused", "recent"]);
-  });
-
-  it("builds every card target_to_native (learned language → Portuguese)", () => {
-    expect(getActiveRecallDistribution(2)).toEqual({ targetToNative: 2, nativeToTarget: 0, cloze: 0, listening: 0 });
-    expect(getActiveRecallDistribution(3)).toEqual({ targetToNative: 3, nativeToTarget: 0, cloze: 0, listening: 0 });
-    expect(getActiveRecallDistribution(10)).toEqual({ targetToNative: 10, nativeToTarget: 0, cloze: 0, listening: 0 });
-    for (const count of [2, 5, 10, 30]) expect(Object.values(getActiveRecallDistribution(count)).reduce((sum, value) => sum + value, 0)).toBe(count);
   });
 
   it("prioritizes due reviews and fills the deck with the closest upcoming ones", () => {
@@ -139,6 +133,47 @@ describe("flashcard queue kinds", () => {
     expect(normalizeFlashcardQueueKind("weird")).toBeNull();
     expect(normalizeFlashcardQueueKind(undefined)).toBeNull();
   });
+});
+
+describe("card type rollout flags", () => {
+  const ENV_KEYS = ["FLASHCARD_PRODUCTION_ENABLED", "FLASHCARD_CLOZE_ENABLED", "FLASHCARD_LISTENING_ENABLED"] as const;
+  afterEach(() => { for (const key of ENV_KEYS) delete process.env[key]; });
+
+  it("defaults every type to enabled", () => {
+    expect(getCardTypeFlags()).toEqual({ production: true, cloze: true, listening: true });
+  });
+
+  it("disables a type only on the explicit value 'false'", () => {
+    process.env.FLASHCARD_CLOZE_ENABLED = "false";
+    process.env.FLASHCARD_LISTENING_ENABLED = "FALSE";
+    process.env.FLASHCARD_PRODUCTION_ENABLED = "0";
+    expect(getCardTypeFlags()).toEqual({ production: true, cloze: false, listening: false });
+  });
+});
+
+describe("buildDeck with mixed types", () => {
+  it("builds production cards from the translation when requested", async () => {
+    const deck = await buildDeck([
+      word("casa", { display_text: "casa", translation: "house", review_state: "review" }),
+      word("perro", { display_text: "perro", translation: "dog", review_state: "review" })
+    ], "Espanhol", "Intermediário (B1)", "seed-1", ["native_to_target", "target_to_native"]);
+    const production = deck.cards.find((card) => card.targetWordId === "casa")!;
+    expect(production.type).toBe("native_to_target");
+    expect(production.prompt).toBe("house");
+    expect(production.expectedAnswer).toBe("casa");
+    expect(production.acceptedAnswers).toEqual([]);
+    const comprehension = deck.cards.find((card) => card.targetWordId === "perro")!;
+    expect(comprehension.type).toBe("target_to_native");
+    expect(comprehension.prompt).toBe("perro");
+  }, 15_000);
+
+  it("degrades cloze to deterministic types when no phrase validates", async () => {
+    const deck = await buildDeck([
+      word("casa", { display_text: "casa", translation: "house", review_state: "review" })
+    ], "Espanhol", "Intermediário (B1)", "seed-2", ["cloze"]);
+    expect(["native_to_target", "target_to_native"]).toContain(deck.cards[0].type);
+    expect(deck.adapted).toBe(true);
+  }, 15_000);
 });
 
 function activeCard(id: string, targetWordId: string, prompt: string, expectedAnswer: string) {
