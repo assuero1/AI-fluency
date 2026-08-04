@@ -71,6 +71,11 @@ describe("chunky playful redesign contracts", () => {
     expect(css).toContain("animation: spin 0.9s linear infinite");
   });
 
+  it("keeps status spinners moving when reduced motion is enabled", () => {
+    const css = read("app/globals.css");
+    expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.spin\s*\{[\s\S]*animation-duration: 0\.9s !important;[\s\S]*animation-iteration-count: infinite !important;/);
+  });
+
   it("applies chunky 3D buttons and card borders", () => {
     const css = read("app/globals.css");
     expect(css).toContain("box-shadow: 0 4px 0 var(--section-deep)");

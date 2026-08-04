@@ -50,7 +50,11 @@ export async function translateToPortuguese(text: string, sourceLanguage: string
         content: `Idioma de origem: ${source}\nFrase: ${cleanText}`
       }
     ],
-    { temperature: 0, maxTokens: Math.min(420, Math.max(80, Math.ceil(cleanText.length * 1.2))) }
+    {
+      temperature: 0,
+      maxTokens: Math.min(420, Math.max(120, Math.ceil(cleanText.length * 1.2))),
+      disableThinking: true
+    }
   );
   const translation = result.content.trim().replace(/^(["“])|(["”])$/g, "");
   if (!translation) throw new Error("A IA não retornou uma tradução.");

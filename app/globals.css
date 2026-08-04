@@ -1852,6 +1852,13 @@ textarea:focus-visible,
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+
+  /* Spinners communicate an active request and must remain visibly in motion. */
+  .spin {
+    animation-duration: 0.9s !important;
+    animation-iteration-count: infinite !important;
+    animation-play-state: running !important;
+  }
 }
 .selection-explainer,
 .vocabulary-group {

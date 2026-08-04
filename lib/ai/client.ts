@@ -65,13 +65,7 @@ export async function createChatCompletion(
       ...payload,
       temperature: 0.2,
       max_tokens: Math.max(options?.maxTokens ?? config.maxTokens, 600),
-      messages: [
-        ...messages,
-        {
-          role: "user",
-          content: "Your previous response was empty. Reply now with the requested content only."
-        }
-      ]
+      messages
     }, requestSignal(options?.timeoutMs));
     const retryContent = extractCompletionContent(retryBody);
     if (!retryContent) throw new AiRequestError("AI provider returned an empty response.", 502, retryBody);
