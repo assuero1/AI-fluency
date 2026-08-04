@@ -62,10 +62,11 @@ export async function createChatCompletion(
 
   if (!content) {
     const retryBody = await requestChatCompletion(config.baseUrl, config.apiKey, {
-      ...payload,
+      model: payload.model,
+      messages,
       temperature: 0.2,
       max_tokens: Math.max(options?.maxTokens ?? config.maxTokens, 600),
-      messages
+      ...(payload.thinking ? { thinking: payload.thinking } : {})
     }, requestSignal(options?.timeoutMs));
     const retryContent = extractCompletionContent(retryBody);
     if (!retryContent) throw new AiRequestError("AI provider returned an empty response.", 502, retryBody);

@@ -49,4 +49,23 @@ describe("createChatCompletion", () => {
     expect(retryPayload.messages).not.toContainEqual(expect.objectContaining({ content: expect.stringContaining("previous response was empty") }));
     expect(retryPayload.max_tokens).toBeGreaterThan(firstPayload.max_tokens);
   });
+
+  it("retries an empty structured response without forcing JSON mode", async () => {
+    const messages = [
+      { role: "system" as const, content: "Reply with valid JSON." },
+      { role: "user" as const, content: "Continue the conversation." }
+    ];
+    fetcher
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: "   " } }] }))
+      .mockResolvedValueOnce(jsonResponse({ choices: [{ message: { content: '{"assistant_reply":"Let\'s continue."}' } }] }));
+
+    await expect(createChatCompletion(messages, { maxTokens: 1200, responseFormat: "json", disableThinking: true })).resolves.toMatchObject({
+      content: '{"assistant_reply":"Let\'s continue."}'
+    });
+
+    const fallbackPayload = JSON.parse(fetcher.mock.calls[1][1].body as string);
+    expect(fallbackPayload.messages).toEqual(messages);
+    expect(fallbackPayload.response_format).toBeUndefined();
+    expect(fallbackPayload.thinking).toEqual({ type: "disabled" });
+  });
 });
