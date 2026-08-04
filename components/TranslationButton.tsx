@@ -2,6 +2,7 @@
 
 import { Languages, Loader2, RotateCcw } from "lucide-react";
 import { useState } from "react";
+import { requestTranslation } from "@/lib/learning/translation-request";
 
 type TranslationStatus = "idle" | "loading" | "ready" | "error";
 
@@ -19,14 +20,8 @@ export function TranslationButton({ text, sourceLanguage }: { text: string; sour
 
     setStatus("loading");
     try {
-      const response = await fetch("/api/translate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text, sourceLanguage })
-      });
-      const data = (await response.json()) as { ok?: boolean; translation?: string; error?: string };
-      if (!response.ok || !data.ok || !data.translation) throw new Error(data.error ?? "Tradução indisponível.");
-      setTranslation(data.translation);
+      const translatedText = await requestTranslation(text, sourceLanguage);
+      setTranslation(translatedText);
       setExpanded(true);
       setStatus("ready");
     } catch {
@@ -41,7 +36,7 @@ export function TranslationButton({ text, sourceLanguage }: { text: string; sour
 
   return (
     <div className="translation-control">
-      <button aria-expanded={translation ? expanded : undefined} className="translate-button" onClick={toggleTranslation} type="button">
+      <button aria-busy={status === "loading"} aria-expanded={translation ? expanded : undefined} className="translate-button" disabled={status === "loading"} onClick={toggleTranslation} type="button">
         <Icon aria-hidden="true" className={status === "loading" ? "spin" : undefined} />
         {label}
       </button>

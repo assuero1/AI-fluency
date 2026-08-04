@@ -1061,6 +1061,9 @@ a {
 }
 
 .spin {
+  display: inline-block;
+  transform-box: fill-box;
+  transform-origin: center;
   animation: spin 0.9s linear infinite;
 }
 

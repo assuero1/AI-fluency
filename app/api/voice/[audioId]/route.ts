@@ -1,19 +1,13 @@
 import { jsonError } from "@/lib/api/responses";
+import { parseByteRangeHeader } from "@/lib/kokoro/audio-range";
 import { readCachedAudio, streamPendingAudio } from "@/lib/kokoro/cache";
 
-export async function GET(_request: Request, context: { params: Promise<{ audioId: string }> }) {
+export async function GET(request: Request, context: { params: Promise<{ audioId: string }> }) {
   try {
     const { audioId } = await context.params;
     const result = await readCachedAudio(audioId);
     if (result) {
-      return new Response(result.audio, {
-        headers: {
-          "Content-Type": result.contentType,
-          "Content-Length": String(result.audio.byteLength),
-          "Content-Disposition": `inline; filename="${result.fileName}"`,
-          "Cache-Control": "private, max-age=604800"
-        }
-      });
+      return cachedAudioResponse(request, result);
     }
 
     const pending = await streamPendingAudio(audioId);
@@ -36,4 +30,37 @@ export async function GET(_request: Request, context: { params: Promise<{ audioI
     response.headers.set("Cache-Control", "no-store, max-age=0");
     return response;
   }
+}
+
+function cachedAudioResponse(request: Request, result: { audio: Buffer; contentType: string; fileName: string }) {
+  const range = parseByteRangeHeader(request.headers.get("range"), result.audio.byteLength);
+  const commonHeaders = {
+    "Accept-Ranges": "bytes",
+    "Content-Type": result.contentType,
+    "Content-Disposition": `inline; filename="${result.fileName}"`,
+    "Cache-Control": "private, max-age=604800"
+  };
+
+  if (range === "invalid") {
+    return new Response(null, {
+      status: 416,
+      headers: { ...commonHeaders, "Content-Range": `bytes */${result.audio.byteLength}` }
+    });
+  }
+
+  if (!range) {
+    return new Response(new Uint8Array(result.audio), {
+      headers: { ...commonHeaders, "Content-Length": String(result.audio.byteLength) }
+    });
+  }
+
+  const body = new Uint8Array(result.audio.subarray(range.start, range.end + 1));
+  return new Response(body, {
+    status: 206,
+    headers: {
+      ...commonHeaders,
+      "Content-Length": String(body.byteLength),
+      "Content-Range": `bytes ${range.start}-${range.end}/${result.audio.byteLength}`
+    }
+  });
 }

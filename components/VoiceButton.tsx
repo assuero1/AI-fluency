@@ -36,8 +36,10 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const loadPromiseRef = useRef<Promise<HTMLAudioElement> | null>(null);
+  const audioUrlRef = useRef<string | null>(null);
   const ownerRef = useRef(Symbol("voice-button"));
   const playbackRequestedRef = useRef(false);
+  const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const releaseAudio = useCallback(() => {
     const audio = audioRef.current;
@@ -60,14 +62,53 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
   const startDeviceFallback = useCallback(() => {
     reportDeviceFallback(text, languageCode);
     releaseAudio();
-    if (!playDeviceSpeech(text, languageCode, playbackRate, () => setStatus("ended"))) {
+    const utterance = playDeviceSpeech(text, languageCode, playbackRate, () => {
+      speechUtteranceRef.current = null;
+      setStatus("ended");
+    });
+    if (!utterance) {
       setStatus("error");
       onAudioFailure?.();
       return;
     }
+    speechUtteranceRef.current = utterance;
     setStatus("playing");
     onPlayback?.({ replay: false, slow: playbackRate < 1, deviceFallback: true });
   }, [languageCode, onAudioFailure, onPlayback, playbackRate, releaseAudio, text]);
+
+  const createAudio = useCallback((audioUrl: string) => {
+    releaseAudio();
+    const audio = new Audio(audioUrl);
+    audio.preload = "auto";
+    audioRef.current = audio;
+    audio.onended = () => {
+      if (audioRef.current === audio) setStatus("ended");
+      else if (speechUtteranceRef.current) {
+        window.speechSynthesis?.cancel();
+        speechUtteranceRef.current = null;
+        setStatus("ended");
+      }
+    };
+    audio.onerror = () => {
+      if (audioRef.current !== audio) return;
+      // Preload failures stay silent; only user-initiated playback falls back to device speech.
+      if (!playbackRequestedRef.current) {
+        releaseAudio();
+        setStatus("error");
+        onAudioFailure?.();
+        return;
+      }
+      startDeviceFallback();
+    };
+    audio.load();
+    setStatus("ready");
+    return audio;
+  }, [onAudioFailure, releaseAudio, startDeviceFallback]);
+
+  const recreateAudio = useCallback(() => {
+    if (!audioUrlRef.current) return null;
+    return createAudio(audioUrlRef.current);
+  }, [createAudio]);
 
   const playExisting = useCallback(async (audio: HTMLAudioElement) => {
     if (activeVoice?.owner !== ownerRef.current) activeVoice?.stop();
@@ -95,25 +136,8 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
 
     setStatus("loading");
     const promise = requestSpeech(text, languageCode).then((audioUrl) => {
-      releaseAudio();
-      const audio = new Audio(audioUrl);
-      audio.preload = "auto";
-      audioRef.current = audio;
-      audio.onended = () => setStatus("ended");
-      audio.onerror = () => {
-        if (audioRef.current !== audio) return;
-        // Preload failures stay silent; only user-initiated playback falls back to device speech.
-        if (!playbackRequestedRef.current) {
-          releaseAudio();
-          setStatus("error");
-          onAudioFailure?.();
-          return;
-        }
-        startDeviceFallback();
-      };
-      audio.load();
-      setStatus("ready");
-      return audio;
+      audioUrlRef.current = audioUrl;
+      return createAudio(audioUrl);
     });
     loadPromiseRef.current = promise;
     try {
@@ -125,9 +149,13 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     } finally {
       loadPromiseRef.current = null;
     }
-  }, [languageCode, onAudioFailure, releaseAudio, startDeviceFallback, text]);
+  }, [createAudio, languageCode, releaseAudio, text]);
 
-  useEffect(() => () => releaseAudio(), [releaseAudio]);
+  useEffect(() => () => {
+    speechUtteranceRef.current = null;
+    window.speechSynthesis?.cancel();
+    releaseAudio();
+  }, [releaseAudio]);
 
   useEffect(() => {
     if (!preload || !text.trim()) return;
@@ -139,6 +167,16 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     playbackRequestedRef.current = true;
 
     const existing = audioRef.current;
+    if (!existing && speechUtteranceRef.current && status === "playing") {
+      window.speechSynthesis?.pause();
+      setStatus("paused");
+      return;
+    }
+    if (!existing && speechUtteranceRef.current && status === "paused") {
+      window.speechSynthesis?.resume();
+      setStatus("playing");
+      return;
+    }
     if (existing && status === "playing") {
       existing.pause();
       setStatus("paused");
@@ -153,8 +191,12 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
       return;
     }
     if (existing && status === "ended") {
-      existing.currentTime = 0;
-      await playExisting(existing);
+      const replayAudio = recreateAudio();
+      if (replayAudio) await playExisting(replayAudio);
+      else {
+        existing.currentTime = 0;
+        await playExisting(existing);
+      }
       return;
     }
 
@@ -204,7 +246,7 @@ function reportDeviceFallback(text: string, languageCode: string | undefined) {
 }
 
 function playDeviceSpeech(text: string, languageCode: string | undefined, rate: number, onEnd: () => void) {
-  if (typeof window === "undefined" || !window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") return false;
+  if (typeof window === "undefined" || !window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") return null;
   window.speechSynthesis.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = languageCode || "en";
@@ -212,7 +254,7 @@ function playDeviceSpeech(text: string, languageCode: string | undefined, rate: 
   utterance.onend = onEnd;
   utterance.onerror = onEnd;
   window.speechSynthesis.speak(utterance);
-  return true;
+  return utterance;
 }
 
 function requestSpeech(text: string, languageCode: string | undefined) {

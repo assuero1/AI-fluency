@@ -23,6 +23,9 @@ describe("PWA privacy policy", () => {
     expect(middleware).toContain('response.headers.set("Cache-Control", "no-store, max-age=0")');
     expect(middleware).toContain("const isAudioRoute");
     expect(audioRoute).toContain('"Cache-Control": "private, max-age=604800"');
+    expect(audioRoute).toContain('"Accept-Ranges": "bytes"');
+    expect(audioRoute).toContain("status: 206");
+    expect(audioRoute).toContain('"Content-Range"');
     expect(audioRoute).toContain('response.headers.set("Cache-Control", "no-store, max-age=0")');
   });
 

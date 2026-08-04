@@ -64,6 +64,13 @@ describe("chunky playful redesign contracts", () => {
     }
   });
 
+  it("keeps SVG loading indicators centered and continuously animatable", () => {
+    const css = read("app/globals.css");
+    expect(css).toContain("transform-box: fill-box");
+    expect(css).toContain("transform-origin: center");
+    expect(css).toContain("animation: spin 0.9s linear infinite");
+  });
+
   it("applies chunky 3D buttons and card borders", () => {
     const css = read("app/globals.css");
     expect(css).toContain("box-shadow: 0 4px 0 var(--section-deep)");

@@ -445,6 +445,26 @@ test("assistant and learner messages can be translated to Portuguese", async ({ 
   await expect(page.getByText("Tradução: Yesterday I have coffee.", { exact: false })).toBeVisible();
 });
 
+test("translation recovers from a transient server failure without a second click", async ({ page }) => {
+  let requests = 0;
+  await page.route("**/api/translate", async (route) => {
+    requests += 1;
+    if (requests === 1) {
+      await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ ok: false, error: "Upstream service unreachable." }) });
+      return;
+    }
+    const body = route.request().postDataJSON() as { text?: string };
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, translation: `Tradução: ${body.text ?? ""}` }) });
+  });
+
+  await page.goto(`/chat?conversationId=${fixtureConversationId()}`);
+  const translate = page.getByRole("button", { name: "Traduzir" });
+  await expect(translate).toHaveCount(1);
+  await translate.click();
+  await expect(page.getByText("Tradução: Let's practice with a short answer.", { exact: false })).toBeVisible();
+  expect(requests).toBe(2);
+});
+
 test("voice playback supports pause, resume, replay, and one active audio", async ({ page }) => {
   await page.addInitScript(() => {
     class MockAudio {
@@ -498,6 +518,52 @@ test("voice playback supports pause, resume, replay, and one active audio", asyn
     audios.at(-1)?.onended?.();
   });
   await expect(page.getByRole("button", { name: "Reproduzir áudio novamente" }).first()).toBeVisible();
+});
+
+test("voice playback recreates a stale media element for repeated playback", async ({ page }) => {
+  await page.addInitScript(() => {
+    class MockAudio {
+      currentTime = 0;
+      src = "";
+      onended: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      paused = true;
+      playAttempts = 0;
+      constructor(src: string) {
+        this.src = src;
+        const target = window as unknown as { __qaReplayAudios?: MockAudio[] };
+        target.__qaReplayAudios = [...(target.__qaReplayAudios ?? []), this];
+      }
+      async play() {
+        this.playAttempts += 1;
+        if (this.playAttempts > 1) throw new Error("stale media element");
+        this.paused = false;
+      }
+      pause() { this.paused = true; }
+      removeAttribute() { this.src = ""; }
+      load() {}
+    }
+    Object.defineProperty(window, "Audio", { configurable: true, value: MockAudio });
+    Object.defineProperty(window, "speechSynthesis", { configurable: true, value: undefined });
+  });
+  await page.route("**/api/voice/synthesize", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, audioUrl: "/mock-audio.mp3" }) });
+  });
+
+  await page.goto(`/chat?conversationId=${fixtureConversationId()}`);
+  const audioButtons = page.locator(".audio-pill");
+  expect(await audioButtons.count()).toBeGreaterThan(0);
+  const play = audioButtons.first();
+  await play.click();
+  await expect(page.getByRole("button", { name: "Pausar áudio" }).first()).toBeVisible();
+  await page.evaluate(() => {
+    const audios = (window as unknown as { __qaReplayAudios: Array<{ onended: (() => void) | null }> }).__qaReplayAudios;
+    audios.at(-1)?.onended?.();
+  });
+  await expect(page.getByRole("button", { name: "Reproduzir áudio novamente" }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Reproduzir áudio novamente" }).first().click();
+  await expect(page.getByRole("button", { name: "Pausar áudio" }).first()).toBeVisible();
+  expect(await page.evaluate(() => (window as unknown as { __qaReplayAudios: unknown[] }).__qaReplayAudios.length)).toBeGreaterThan(1);
 });
 
 test("completed chat stays read-only", async ({ page }) => {
