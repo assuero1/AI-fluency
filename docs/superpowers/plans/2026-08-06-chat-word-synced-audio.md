@@ -45,7 +45,7 @@ O servidor Kokoro em produção agora é `ph4r05/kokoro-fastapi` (`https://kokor
 - `prepareCaptionedSpeech(input, options): Promise<{ audioId; audioUrl; words; contentType; outputFormat; voice; cached }>`
 - `POST /api/voice/captioned` body `{text, languageCode?}` → `{ok, audioUrl, words, languageCode, cached}` (erros no padrão `handleApiError`).
 
-- [ ] **Step 1: Tipos e client**
+- [x] **Step 1: Tipos e client**
 
 Adicionar em `lib/kokoro/client.ts` (ou `lib/kokoro/timestamps.ts`):
 
@@ -60,14 +60,14 @@ export async function captionedSpeech(input: string, options?: { voice?: string;
 }
 ```
 
-- [ ] **Step 2: Cache — `words` no metadata**
+- [x] **Step 2: Cache — `words` no metadata**
 
 Em `lib/kokoro/cache.ts`:
 - Estender `CachedAudioMetadata` com `words?: WordTimestamp[]`.
 - Criar `prepareCaptionedSpeech(input, options)`: valida via `resolveSynthesisRequest`; calcula `audioId` (mesmo `createAudioId`); se `getCachedSpeech(audioId)` existir **e** o metadata tiver `words`, retorna com `cached: true`; senão chama `captionedSpeech`, persiste áudio+metadata (com `words`) usando o mesmo fluxo atômico de `createCachedSpeech`, e retorna `{audioId, audioUrl, words, ...}`.
 - `removeCachedFiles`/prune não mudam (o campo `words` vive dentro do `{audioId}.json`).
 
-- [ ] **Step 3: Rota**
+- [x] **Step 3: Rota**
 
 `app/api/voice/captioned/route.ts` (padrão de `app/api/voice/synthesize/route.ts`):
 
@@ -80,11 +80,11 @@ export async function POST(request: Request) {
 }
 ```
 
-- [ ] **Step 4: Testes**
+- [x] **Step 4: Testes**
 
 `tests/unit/kokoro-captioned.test.ts`: mock de `global.fetch` para `captionedSpeech` (200 com header `x-timestamps-path` + GET do JSON; erro 4xx/5xx); rota: validação de texto vazio/longo/voz não permitida; resposta `{ok, audioUrl, words}`; cache hit com `words` no metadata; cache hit sem `words` → re-sintetiza.
 
-- [ ] **Step 5: Verificação**
+- [x] **Step 5: Verificação**
 
 Run: `npm run lint && npm run typecheck && npm run test:unit`
 Expected: verde. Smoke real (dev server + novo `KOKORO_BASE_URL`):
@@ -95,7 +95,7 @@ curl -s -X POST http://localhost:3012/api/voice/captioned -H "Content-Type: appl
 # Esperado: {ok:true, audioUrl, words:[...], languageCode:"en"}
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add lib/kokoro/client.ts lib/kokoro/cache.ts lib/kokoro/validation.ts app/api/voice/captioned/route.ts tests/unit/kokoro-captioned.test.ts
@@ -118,7 +118,7 @@ git commit -m "feat: add captioned speech endpoint with word timestamps"
 - `skipWordIndex(words, index, delta, step = 5): number`.
 - `segmentMessage(text: string, maxLength = 1200): string[]` — agrupa frases em segmentos ≤ limite (reusa `splitIntoSentences`).
 
-- [ ] **Step 1: Testes (TDD)**
+- [x] **Step 1: Testes (TDD)**
 
 Casos obrigatórios (extraídos do estudo):
 - texto simples com pontuação → 1:1 com `words` do servidor (26/26).
@@ -128,7 +128,7 @@ Casos obrigatórios (extraídos do estudo):
 - `skipWordIndex` com clamping (início/fim) e step 5.
 - `segmentMessage`: frases curtas juntam; frase longa (sem pontuação) vira segmento único mesmo acima do limite (não cortar palavra).
 
-- [ ] **Step 2: Implementação**
+- [x] **Step 2: Implementação**
 
 ```ts
 export type WordTimestamp = { word: string; start_time: number; end_time: number };
@@ -142,11 +142,11 @@ export type AlignedToken = { text: string; start?: number; end?: number };
 // segmentMessage: acumula frases enquanto soma de chars <= maxLength.
 ```
 
-- [ ] **Step 3: Verificação**
+- [x] **Step 3: Verificação**
 
 Run: `npx vitest run tests/unit/captions.test.ts` → PASS; depois `npm run lint && npm run typecheck`.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add lib/learning/captions.ts tests/unit/captions.test.ts
@@ -175,7 +175,7 @@ git commit -m "feat: word timestamp alignment and seek utilities"
 
 **Estados:** `idle | loading | playing | paused | ended | error`.
 
-- [ ] **Step 1: Criar o componente** (esqueleto + fluxo principal captioned)
+- [x] **Step 1: Criar o componente** (esqueleto + fluxo principal captioned)
 
 ```tsx
 // Estrutura de estado:
@@ -188,11 +188,11 @@ git commit -m "feat: word timestamp alignment and seek utilities"
 // togglePlayback / skipWords(delta) seguem o contrato acima
 ```
 
-- [ ] **Step 2: Verificar compilação**
+- [x] **Step 2: Verificar compilação**
 
 Run: `npm run lint && npm run typecheck` → verde (componente ainda não usado).
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 git add components/MessageWordPlayer.tsx
@@ -207,11 +207,11 @@ git commit -m "feat: add word-synced message audio player"
 - Modify: `components/ChatConversation.tsx` (trocar `MessageAudioPlayer` → `MessageWordPlayer` na bolha da IA; manter `VoiceButton` nas correções)
 - Modify: `app/globals.css` (estilos novos após o bloco do player de frases)
 
-- [ ] **Step 1: Trocar o componente na bolha da IA**
+- [x] **Step 1: Trocar o componente na bolha da IA**
 
 Mesma chamada: `<MessageWordPlayer languageCode={speechLanguage} preload={!readOnly && message.id === latestAssistantMessageId} showTranscript={transcriptEnabled} text={message.fields.text} />` e atualizar o import.
 
-- [ ] **Step 2: CSS**
+- [x] **Step 2: CSS**
 
 ```css
 /* Word-synced chat audio player */
@@ -223,11 +223,11 @@ Mesma chamada: `<MessageWordPlayer languageCode={speechLanguage} preload={!readO
 /* .word-player-controls reusa .line-player-controls + botões +5/-5 */
 ```
 
-- [ ] **Step 3: Verificação**
+- [x] **Step 3: Verificação**
 
 Run: `npm run lint && npm run typecheck && npm run test:unit` → verde.
 
-- [ ] **Step 4: Commit**
+- [x] **Step 4: Commit**
 
 ```bash
 git add components/ChatConversation.tsx app/globals.css
@@ -238,11 +238,11 @@ git commit -m "feat: word-synced audio player in chat assistant messages"
 
 ### Fase 5: Verificação final, QA manual e rollback
 
-- [ ] **Step 1: Gate completo**
+- [x] **Step 1: Gate completo**
 
 Run: `npm run lint && npm run typecheck && npm run test:unit` → verde.
 
-- [ ] **Step 2: Smoke de integração real (dev server + Kokoro fastapi)**
+- [x] **Step 2: Smoke de integração real (dev server + Kokoro fastapi)**
 
 Run: `npm run dev`, e validar via curl:
 1. `POST /api/voice/captioned` (texto curto e texto com `E.g., don't, 3-to-4`) → `words` com contagem alinhada ao esperado da Fase 2.
