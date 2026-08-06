@@ -4,6 +4,18 @@ type ActiveVoice = { owner: symbol; stop: () => void };
 
 let activeVoice: ActiveVoice | null = null;
 const speechRequests = new Map<string, Promise<string>>();
+const captionedRequests = new Map<string, Promise<CaptionedSpeechResult>>();
+
+export type CaptionedWord = {
+  word: string;
+  start_time: number;
+  end_time: number;
+};
+
+export type CaptionedSpeechResult = {
+  audioUrl: string;
+  words: CaptionedWord[];
+};
 
 /** Para a voz ativa de outro owner (se houver) e registra a nova voz ativa. */
 export function claimActiveVoice(owner: symbol, stop: () => void) {
@@ -39,6 +51,34 @@ export function requestSpeech(text: string, languageCode: string | undefined): P
     if (oldestKey) speechRequests.delete(oldestKey);
   }
   speechRequests.set(key, request);
+  return request;
+}
+
+export function requestCaptionedSpeech(text: string, languageCode: string | undefined): Promise<CaptionedSpeechResult> {
+  const key = `${languageCode ?? ""}\n${text}`;
+  const existing = captionedRequests.get(key);
+  if (existing) return existing;
+
+  const request = fetch("/api/voice/captioned", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text, languageCode })
+  }).then(async (response) => {
+    const data = (await response.json()) as { ok?: boolean; audioUrl?: string; words?: CaptionedWord[]; error?: string };
+    if (!response.ok || !data.ok || !data.audioUrl || !Array.isArray(data.words)) {
+      throw new Error(data.error ?? "Audio unavailable.");
+    }
+    return { audioUrl: data.audioUrl, words: data.words };
+  }).catch((error) => {
+    captionedRequests.delete(key);
+    throw error;
+  });
+
+  if (captionedRequests.size >= 100) {
+    const oldestKey = captionedRequests.keys().next().value;
+    if (oldestKey) captionedRequests.delete(oldestKey);
+  }
+  captionedRequests.set(key, request);
   return request;
 }
 

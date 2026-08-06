@@ -1,5 +1,7 @@
 import { splitIntoSentences } from "@/lib/learning/sentences";
 
+export const MAX_CAPTIONED_SEGMENT_LENGTH = 1200;
+
 export type WordTimestamp = {
   word: string;
   start_time: number;
@@ -165,7 +167,7 @@ export function skipAlignedIndex(aligned: AlignedToken[], fromIndex: number, del
  * pontuação mais longa que o limite vira um segmento próprio (nunca corta no
  * meio de uma palavra).
  */
-export function segmentMessage(text: string, maxLength = 1200): string[] {
+export function segmentMessage(text: string, maxLength = MAX_CAPTIONED_SEGMENT_LENGTH): string[] {
   const sentences = splitIntoSentences(text);
   if (sentences.length === 0) return [];
 
