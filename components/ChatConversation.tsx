@@ -16,6 +16,7 @@ import { TeacherChatPanel } from "./TeacherChatPanel";
 import { VoiceButton } from "./VoiceButton";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields } from "@/lib/learning/conversations";
 import type { SelectionExplanation } from "@/lib/learning/selection-explanation";
+import { resolveSelectionState } from "@/lib/learning/selection-ui";
 import { joinSpeechSegments, markMicReleased, speechLanguageName, speechLocale, speechRecognitionErrorMessage } from "@/lib/learning/speech";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 import type { TeableRecord } from "@/lib/teable/client";
@@ -107,6 +108,8 @@ export function ChatConversation({
   const recognitionRestartTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const speechPolishRef = useRef<{ base: string; raw: string } | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const chatStackRef = useRef<HTMLDivElement | null>(null);
+  const selectionExplainerRef = useRef<HTMLDivElement | null>(null);
   const retryRequestRef = useRef<{ text: string; id: string } | null>(null);
   const latestAssistantMessageId = findLatestAssistantMessageId(messages);
   const correctionsByMessageId = useMemo(() => {
@@ -148,6 +151,57 @@ export function ChatConversation({
     composer.style.height = "auto";
     composer.style.height = `${Math.min(composer.scrollHeight, 168)}px`;
   }, [text]);
+
+  useEffect(() => {
+    const chatStack = chatStackRef.current;
+    if (!chatStack) return;
+
+    const clearSelection = () => {
+      setSelectedText("");
+      setSelectionContext("");
+      setSelectionExplanation(null);
+    };
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target instanceof Node ? event.target : null;
+      if (!target || selectionExplainerRef.current?.contains(target)) return;
+      const selection = window.getSelection();
+      if (!selection || selection.isCollapsed || selection.toString().trim() === "") clearSelection();
+    };
+
+    const handleSelectionChange = () => {
+      const selection = window.getSelection();
+      const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+      const resolution = resolveSelectionState({
+        text: selection?.toString() ?? "",
+        isCollapsed: selection?.isCollapsed ?? true,
+        rangeCount: selection?.rangeCount ?? 0,
+        commonAncestor: range?.commonAncestorContainer ?? null,
+        chatStack,
+        explainer: selectionExplainerRef.current,
+        activeElement: document.activeElement
+      });
+      if (resolution.action === "clear") {
+        clearSelection();
+        return;
+      }
+      if (resolution.action !== "capture" || !range) return;
+      const element = range.commonAncestorContainer instanceof Element
+        ? range.commonAncestorContainer
+        : range.commonAncestorContainer.parentElement;
+      const bubble = element?.closest<HTMLElement>(".bubble");
+      setSelectedText(resolution.text);
+      setSelectionContext(bubble?.innerText ?? resolution.text);
+      setSelectionExplanation(null);
+    };
+
+    document.addEventListener("selectionchange", handleSelectionChange);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("selectionchange", handleSelectionChange);
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, []);
 
   async function sendMessage(nextText?: string) {
     if (readOnly) return;
@@ -278,19 +332,6 @@ export function ChatConversation({
       setIsExitDialogOpen(false);
       setIsSending(false);
     }
-  }
-
-  function captureSelection(event: React.PointerEvent<HTMLDivElement>) {
-    const selection = window.getSelection();
-    const clean = selection?.toString().trim() ?? "";
-    if (!clean || clean.length > 300 || !selection?.rangeCount) return;
-    const range = selection.getRangeAt(0);
-    if (!event.currentTarget.contains(range.commonAncestorContainer)) return;
-    const element = range.commonAncestorContainer instanceof Element ? range.commonAncestorContainer : range.commonAncestorContainer.parentElement;
-    const bubble = element?.closest<HTMLElement>(".bubble");
-    setSelectedText(clean);
-    setSelectionContext(bubble?.innerText ?? clean);
-    setSelectionExplanation(null);
   }
 
   async function explainSelectedText() {
@@ -587,7 +628,7 @@ export function ChatConversation({
         </ModalDialog>
       ) : null}
 
-      <div className="chat-stack" onPointerUp={captureSelection}>
+      <div className="chat-stack" ref={chatStackRef}>
         {messages.map((message) => {
           const messageCorrections = correctionsByMessageId.get(message.id) ?? [];
 
@@ -662,7 +703,7 @@ export function ChatConversation({
           </div>
         ) : null}
 
-        {selectedText ? <div className="selection-explainer">
+        {selectedText ? <div className="selection-explainer" ref={selectionExplainerRef}>
           <div><span className="eyebrow">Trecho selecionado</span><strong>{selectedText}</strong></div>
           <button className="outline-button" disabled={isExplaining} onClick={explainSelectedText} type="button">{isExplaining ? <Loader2 className="spin" /> : <Languages />} Explicar seleção</button>
           {selectionExplanation ? <div className="selection-explanation" aria-live="polite">
