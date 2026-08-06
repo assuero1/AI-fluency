@@ -1379,6 +1379,37 @@ a {
   color: var(--danger);
 }
 
+/* Line-synced chat audio player */
+.chat-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.chat-line {
+  border-radius: 6px;
+  padding: 1px 6px;
+  margin: 0 -6px;
+  transition: background-color 160ms ease;
+}
+
+.chat-line.active {
+  background: var(--section-soft);
+  font-weight: 600;
+}
+
+.line-player-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.line-player-controls .voice-icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
 .wave {
   display: flex;
   align-items: center;
