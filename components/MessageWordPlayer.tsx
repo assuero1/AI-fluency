@@ -13,6 +13,7 @@ import {
   tokenizeForCaptions,
   type AlignedToken
 } from "@/lib/learning/captions";
+import { buildSeamlessTrack, SeamlessPlayer } from "@/lib/learning/seamless-audio";
 import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
 import {
   claimActiveVoice,
@@ -42,8 +43,27 @@ type WordSegment = {
 type CaptionedTrack = {
   segments: WordSegment[];
   aligned: AlignedToken[];
-  tokenSegment: number[];
 };
+
+function buildTrackAlignment(segments: WordSegment[]) {
+  const aligned: AlignedToken[] = [];
+  segments.forEach((segment, segmentIndex) => {
+    const tokens = tokenizeForCaptions(segment.text);
+    // Junção entre segmentos: o último token do segmento anterior ganha espaço.
+    if (segmentIndex > 0 && aligned.length > 0 && tokens.length > 0 && !aligned[aligned.length - 1].spaceAfter) {
+      aligned[aligned.length - 1].spaceAfter = " ";
+    }
+    alignWords(tokens, segment.words).forEach((token) => {
+      aligned.push({
+        text: token.text,
+        spaceAfter: token.spaceAfter,
+        start: typeof token.start === "number" ? token.start + segment.offset : undefined,
+        end: typeof token.end === "number" ? token.end + segment.offset : undefined
+      });
+    });
+  });
+  return aligned;
+}
 
 export function MessageWordPlayer({ text, languageCode, showTranscript, preload = false }: MessageWordPlayerProps) {
   const [mode, setMode] = useState<PlayerMode>("word");
@@ -55,12 +75,11 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
   const trackRef = useRef<CaptionedTrack | null>(null);
   const activeWordRef = useRef(-1);
   const selectedIndexRef = useRef(0);
-  const audioRefs = useRef<(HTMLAudioElement | null)[]>([]);
-  const activeSegmentRef = useRef(-1);
-  const generationRef = useRef(0);
+  const playerRef = useRef<SeamlessPlayer | null>(null);
+  const rafRef = useRef(0);
+  const generationRef = useRef(0); // invalida callbacks antigos
   const ownerRef = useRef(Symbol("message-word-player"));
   const captionedFailedRef = useRef(false);
-  const continuationRef = useRef<(segmentIndex: number, generation: number) => void>(() => undefined);
 
   const setTrack = useCallback((next: CaptionedTrack | null) => {
     trackRef.current = next;
@@ -79,15 +98,8 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
 
   const releaseAudio = useCallback(() => {
     generationRef.current += 1;
-    audioRefs.current.forEach((audio) => {
-      if (audio) {
-        audio.pause();
-        audio.removeAttribute("src");
-        audio.load();
-      }
-    });
-    audioRefs.current = [];
-    activeSegmentRef.current = -1;
+    cancelAnimationFrame(rafRef.current);
+    playerRef.current?.stop();
     window.speechSynthesis?.cancel();
   }, []);
 
@@ -105,6 +117,20 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     setMode("legacy");
   }, [releaseAudio]);
 
+  const startHighlightLoop = useCallback((generation: number) => {
+    const step = () => {
+      if (generationRef.current !== generation) return;
+      const player = playerRef.current;
+      const current = trackRef.current;
+      if (!player || !current) return;
+      const index = activeIndexAtTime(current.aligned, player.position());
+      if (index !== activeWordRef.current) setActiveWord(index);
+      rafRef.current = requestAnimationFrame(step);
+    };
+    cancelAnimationFrame(rafRef.current);
+    rafRef.current = requestAnimationFrame(step);
+  }, [setActiveWord]);
+
   const loadCaptioned = useCallback(async () => {
     if (captionedFailedRef.current) return;
     setStatus("loading");
@@ -119,40 +145,34 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
       const results = await Promise.all(texts.map((segmentText) => requestCaptionedSpeech(segmentText, languageCode)));
       if (generationRef.current !== generation) return;
 
-      const segments: WordSegment[] = [];
-      let offset = 0;
-      results.forEach((result, resultIndex) => {
-        const last = result.words[result.words.length - 1];
-        segments.push({ text: texts[resultIndex], audioUrl: result.audioUrl, words: result.words, offset });
-        offset += last ? last.end_time : 0;
-      });
+      const segments: WordSegment[] = results.map((result, resultIndex) => ({
+        text: texts[resultIndex],
+        audioUrl: result.audioUrl,
+        words: result.words,
+        offset: 0
+      }));
 
-      const aligned: AlignedToken[] = [];
-      const tokenSegment: number[] = [];
-      segments.forEach((segment, segmentIndex) => {
-        const tokens = tokenizeForCaptions(segment.text);
-        // Junção entre segmentos: o último token do segmento anterior ganha espaço.
-        if (segmentIndex > 0 && aligned.length > 0 && tokens.length > 0 && !aligned[aligned.length - 1].spaceAfter) {
-          aligned[aligned.length - 1].spaceAfter = " ";
-        }
-        alignWords(tokens, segment.words).forEach((token) => {
-          aligned.push({
-            text: token.text,
-            spaceAfter: token.spaceAfter,
-            start: typeof token.start === "number" ? token.start + segment.offset : undefined,
-            end: typeof token.end === "number" ? token.end + segment.offset : undefined
-          });
-          tokenSegment.push(segmentIndex);
-        });
-      });
-
-      if (!hasUsableAlignment(aligned)) {
-        // Servidor não retornou timestamps para esta voz → player legado.
+      // Voz sem timestamps no servidor (words vazio) → player legado, sem
+      // gastar o download do áudio aqui.
+      if (!hasUsableAlignment(buildTrackAlignment(segments))) {
         enterLegacyMode();
         return;
       }
 
-      setTrack({ segments, aligned, tokenSegment });
+      // Monta UM buffer contínuo com todos os segmentos: a bolha toca como um
+      // áudio único, sem gap entre as partes.
+      const seamless = await buildSeamlessTrack(segments.map((segment) => segment.audioUrl));
+      if (generationRef.current !== generation) {
+        void seamless.context.close();
+        return;
+      }
+      seamless.partOffsets.forEach((offset, segmentIndex) => {
+        if (segments[segmentIndex]) segments[segmentIndex].offset = offset;
+      });
+
+      playerRef.current?.dispose();
+      playerRef.current = new SeamlessPlayer(seamless);
+      setTrack({ segments, aligned: buildTrackAlignment(segments) });
       setSelectedIndex(0);
       setActiveWord(-1);
       setStatus("idle");
@@ -162,51 +182,10 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     }
   }, [enterLegacyMode, languageCode, setActiveWord, setSelectedIndex, setTrack, text]);
 
-  const ensureAudioRef = useCallback((segmentIndex: number) => {
-    const current = trackRef.current;
-    if (!current) throw new Error("No captioned track.");
-    const existing = audioRefs.current[segmentIndex];
-    if (existing) return existing;
-
-    const audio = new Audio(current.segments[segmentIndex].audioUrl);
-    audio.preload = "auto";
-    audio.ontimeupdate = () => {
-      const latest = trackRef.current;
-      if (!latest) return;
-      const segment = activeSegmentRef.current;
-      if (segment < 0 || segment >= latest.segments.length) return;
-      const time = latest.segments[segment].offset + audio.currentTime;
-      const index = activeIndexAtTime(latest.aligned, time);
-      if (index !== activeWordRef.current) setActiveWord(index);
-    };
-    audio.onended = () => {
-      if (audioRefs.current[segmentIndex] !== audio || activeSegmentRef.current !== segmentIndex) return;
-      const generation = generationRef.current;
-      const next = segmentIndex + 1;
-      if (next < (trackRef.current?.segments.length ?? 0)) {
-        continuationRef.current(next, generation);
-      } else {
-        setStatus("ended");
-      }
-    };
-    audio.onerror = () => {
-      if (audioRefs.current[segmentIndex] !== audio) return;
-      setStatus("error");
-    };
-    audioRefs.current[segmentIndex] = audio;
-    return audio;
-  }, [setActiveWord]);
-
-  const playSegment = useCallback(async (segmentIndex: number, generation: number) => {
-    const current = trackRef.current;
-    if (!current || segmentIndex >= current.segments.length) {
-      setStatus("ended");
-      return;
-    }
-    const audio = ensureAudioRef(segmentIndex);
-    audio.currentTime = 0;
-    activeSegmentRef.current = segmentIndex;
-    setStatus("loading");
+  /** Toca a faixa a partir de `time` segundos (posição absoluta no buffer). */
+  const playAt = useCallback(async (time: number, generation: number) => {
+    const player = playerRef.current;
+    if (!player) return;
 
     // iOS: aguarda a AVAudioSession restaurar a rota do alto-falante.
     const wait = msUntilAudioRouteRestored();
@@ -214,20 +193,22 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     if (generationRef.current !== generation) return;
 
     try {
-      await audio.play();
+      await player.play(time, () => {
+        if (generationRef.current !== generation) return;
+        cancelAnimationFrame(rafRef.current);
+        setStatus("ended");
+      });
       if (generationRef.current !== generation) {
-        audio.pause();
+        player.stop();
         return;
       }
       setStatus("playing");
-      // Buffer-ahead: já baixa o próximo segmento para a transição ser fluida.
-      const next = segmentIndex + 1;
-      if (next < current.segments.length) ensureAudioRef(next);
+      startHighlightLoop(generation);
     } catch {
       if (generationRef.current !== generation) return;
       setStatus("error");
     }
-  }, [ensureAudioRef]);
+  }, [startHighlightLoop]);
 
   const playFromToken = useCallback(async (tokenIndex: number) => {
     const current = trackRef.current;
@@ -246,61 +227,32 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     setSelectedIndex(target);
     setActiveWord(target);
     setStatus("loading");
-
-    const segmentIndex = current.tokenSegment[target];
-    const audio = ensureAudioRef(segmentIndex);
-    const localTime = (current.aligned[target].start as number) - current.segments[segmentIndex].offset;
-    audio.currentTime = Math.max(0, localTime);
-    activeSegmentRef.current = segmentIndex;
-
-    const wait = msUntilAudioRouteRestored();
-    if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-    if (generationRef.current !== generation) return;
-
-    try {
-      await audio.play();
-      if (generationRef.current !== generation) {
-        audio.pause();
-        return;
-      }
-      setStatus("playing");
-      // Buffer-ahead: já baixa o próximo segmento para a transição ser fluida.
-      const next = segmentIndex + 1;
-      if (next < current.segments.length) ensureAudioRef(next);
-    } catch {
-      if (generationRef.current !== generation) return;
-      setStatus("error");
-    }
-  }, [ensureAudioRef, releaseAudio, setActiveWord, setSelectedIndex, stopForAnotherVoice]);
+    await playAt(current.aligned[target].start as number, generation);
+  }, [playAt, releaseAudio, setActiveWord, setSelectedIndex, stopForAnotherVoice]);
 
   async function togglePlayback() {
     if (!text.trim()) return;
     if (mode === "legacy") return;
 
-    if (!trackRef.current) {
+    if (!trackRef.current || !playerRef.current) {
       await loadCaptioned();
-      if (captionedFailedRef.current || !trackRef.current) return;
+      if (captionedFailedRef.current || !trackRef.current || !playerRef.current) return;
     }
 
     if (status === "playing") {
-      audioRefs.current[activeSegmentRef.current]?.pause();
+      playerRef.current.pause();
+      cancelAnimationFrame(rafRef.current);
       setStatus("paused");
       return;
     }
     if (status === "paused") {
-      const audio = audioRefs.current[activeSegmentRef.current];
-      if (audio) {
-        try {
-          await audio.play();
-          setStatus("playing");
-        } catch {
-          void playFromToken(selectedIndexRef.current);
-        }
-      } else {
-        await playFromToken(selectedIndexRef.current);
-      }
+      const player = playerRef.current;
+      const generation = generationRef.current;
+      setStatus("loading");
+      await playAt(player.position(), generation);
       return;
     }
+    // idle | ended | error → começa (ou recomeça) do token atual/0
     await playFromToken(status === "ended" ? 0 : selectedIndexRef.current);
   }
 
@@ -313,21 +265,17 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     const token = current.aligned[target];
     if (typeof token.start !== "number") return;
 
-    const segmentIndex = current.tokenSegment[target];
-    const audio = audioRefs.current[segmentIndex];
-    const sameSegmentActive = status === "playing" || (status === "paused" && activeSegmentRef.current === segmentIndex && !!audio);
-
-    if (sameSegmentActive && audio) {
-      audio.currentTime = (token.start as number) - current.segments[segmentIndex].offset;
-      setSelectedIndex(target);
-      setActiveWord(target);
-      return;
-    }
     if (status === "playing") {
       void playFromToken(target);
       return;
     }
-    // idle/paused (outro segmento)/ended: apenas move a seleção, sem tocar.
+    if (status === "paused") {
+      playerRef.current?.setPosition(token.start);
+      setSelectedIndex(target);
+      setActiveWord(target);
+      return;
+    }
+    // idle/ended: apenas move a seleção, sem tocar.
     releaseAudio();
     setSelectedIndex(target);
     setActiveWord(target);
@@ -345,19 +293,9 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
       void playFromToken(index);
       return;
     }
-    const segmentIndex = current.tokenSegment[index];
-    const audio = audioRefs.current[segmentIndex];
-    if (status === "paused" && audio && activeSegmentRef.current === segmentIndex) {
-      audio.currentTime = (token.start as number) - current.segments[segmentIndex].offset;
-    }
+    if (status === "paused") playerRef.current?.setPosition(token.start);
     setActiveWord(index);
   }
-
-  // Começa a baixar o áudio do primeiro segmento assim que a faixa fica
-  // pronta, para o play não esperar o fetch do arquivo de áudio.
-  useEffect(() => {
-    if (track) ensureAudioRef(0);
-  }, [ensureAudioRef, track]);
 
   useEffect(() => {
     if (!preload || mode !== "word" || trackRef.current) return;
@@ -365,14 +303,10 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     void loadCaptioned().catch(() => undefined);
   }, [loadCaptioned, mode, preload, text]);
 
-  useEffect(() => {
-    continuationRef.current = (segmentIndex, generation) => {
-      void playSegment(segmentIndex, generation);
-    };
-  });
-
   useEffect(() => () => {
     releaseAudio();
+    playerRef.current?.dispose();
+    playerRef.current = null;
     releaseActiveVoice(ownerRef.current);
   }, [releaseAudio]);
 
