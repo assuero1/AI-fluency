@@ -83,6 +83,8 @@ const activeConversation = await create("TEABLE_CONVERSATIONS_TABLE_ID", {
   language_profile_id: profile.id,
   topic_id: topic.id,
   mode: "free_conversation",
+  interaction_mode: "simulation",
+  target_user_message_count: 2,
   status: "active",
   started_at: now,
   ended_at: "",
@@ -99,6 +101,7 @@ await create("TEABLE_MESSAGES_TABLE_ID", {
   transcript_text: "Let's practice with a short answer.",
   language_detected: "en",
   tokens_used: 0,
+  channel: "practice",
   created_at: now
 });
 const completedConversation = await create("TEABLE_CONVERSATIONS_TABLE_ID", {
@@ -107,6 +110,8 @@ const completedConversation = await create("TEABLE_CONVERSATIONS_TABLE_ID", {
   language_profile_id: profile.id,
   topic_id: topic.id,
   mode: "free_conversation",
+  interaction_mode: "conversation",
+  target_user_message_count: 0,
   status: "completed",
   started_at: past,
   ended_at: past,
@@ -151,6 +156,7 @@ const message = await create("TEABLE_MESSAGES_TABLE_ID", {
   transcript_text: "Yesterday I have coffee.",
   language_detected: "en",
   tokens_used: 0,
+  channel: "practice",
   created_at: past
 });
 await create("TEABLE_CORRECTIONS_TABLE_ID", {
@@ -197,6 +203,7 @@ await create("TEABLE_PRACTICE_SESSIONS_TABLE_ID", {
   conversation_id: activeConversation.id,
   type: "conversation",
   focus: "QA fixture",
+  configuration_json: JSON.stringify({ interactionMode: "simulation", targetUserMessageCount: 2 }),
   created_at: now
 });
 await create("TEABLE_APP_EVENTS_TABLE_ID", {

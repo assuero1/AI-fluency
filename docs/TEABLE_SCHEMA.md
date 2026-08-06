@@ -93,6 +93,8 @@ Fields:
 - `language_profile_id`: relation to LanguageProfiles
 - `topic_id`: relation to Topics
 - `mode`: single select
+- `interaction_mode`: single select (`conversation` | `simulation`); blank legacy rows behave as `conversation`
+- `target_user_message_count`: number; `0`/blank disables the learner message goal, valid goals are `1..50`
 - `status`: single select
 - `started_at`: date
 - `ended_at`: date
@@ -108,6 +110,17 @@ Modes:
 - `review_words`
 - `calendar_focus`
 
+Interaction modes:
+
+- `conversation`: current natural conversation partner behavior
+- `simulation`: AI stays in a complementary role and never narrates both sides
+
+Message goal:
+
+- Optional learner-facing progress bar; only `practice` channel user messages count
+- `0` or blank means no goal; integers `1..50` enable a goal
+- The goal is motivational, not a hard limit
+
 ## Table: Messages
 
 Purpose: every user or assistant message.
@@ -122,6 +135,7 @@ Fields:
 - `transcript_text`: long text
 - `language_detected`: text
 - `tokens_used`: number
+- `channel`: single select (`practice` | `teacher`); blank legacy rows behave as `practice`
 - `created_at`: date
 
 Roles:
@@ -129,6 +143,11 @@ Roles:
 - `user`
 - `assistant`
 - `system`
+
+Channels:
+
+- `practice`: main training transcript; counts toward the learner message goal
+- `teacher`: separate persistent AI-teacher chat; never appears in the main transcript, corrections, vocabulary or summary
 
 ## Table: Corrections
 

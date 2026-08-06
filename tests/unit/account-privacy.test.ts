@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isLearningHistoryEventInScope, type LearningHistoryEventScope } from "../../lib/learning/account";
+import { isConversationMessageInScope, isLearningHistoryEventInScope, type LearningHistoryEventScope } from "../../lib/learning/account";
 
 const scope: LearningHistoryEventScope = {
   profileId: "profile-en",
@@ -21,5 +21,11 @@ describe("learning history privacy", () => {
     expect(isLearningHistoryEventInScope({ payload: JSON.stringify({ language_profile_id: "profile-es", conversation_id: "conversation-es" }) }, scope)).toBe(false);
     expect(isLearningHistoryEventInScope({ payload: JSON.stringify({ language_profile_id: "profile-es", conversation_id: "conversation-en" }) }, scope)).toBe(false);
     expect(isLearningHistoryEventInScope({ payload: "invalid-json" }, scope)).toBe(false);
+  });
+
+  it("keeps practice and teacher messages of the same conversation in scope", () => {
+    expect(isConversationMessageInScope({ fields: { conversation_id: "conversation-en", channel: "practice" } }, scope.conversationIds)).toBe(true);
+    expect(isConversationMessageInScope({ fields: { conversation_id: "conversation-en", channel: "teacher" } }, scope.conversationIds)).toBe(true);
+    expect(isConversationMessageInScope({ fields: { conversation_id: "conversation-es", channel: "teacher" } }, scope.conversationIds)).toBe(false);
   });
 });

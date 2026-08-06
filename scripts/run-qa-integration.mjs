@@ -136,7 +136,7 @@ try {
   const populatedExport = await fetch(`${server.baseUrl}/api/export`);
   const populatedExportBody = await populatedExport.json();
   assert(populatedExport.ok, "a populated personal export is available");
-  assert(populatedExportBody.schemaVersion === 2, "personal export declares its schema version");
+  assert(populatedExportBody.schemaVersion === 3, "personal export declares its schema version");
   assert(populatedExportBody.language?.code === "en", "personal export declares the active language");
   assert(populatedExportBody.learningHistory?.flashcards?.length === 2 && populatedExportBody.learningHistory?.flashcardAttempts?.length === 2, "personal export includes flashcards and attempts");
   assert(populatedExportBody.learningHistory?.flashcardAttempts?.some((attempt) => attempt.fields?.audio_replay_count === 2 && attempt.fields?.used_slow_audio === true && attempt.fields?.answered_after_audio_replay === true), "personal export includes persisted audio telemetry");

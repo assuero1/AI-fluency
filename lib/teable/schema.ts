@@ -124,6 +124,8 @@ export const teableSchema: TeableTableDefinition[] = [
       { name: "language_profile_id", type: "relation", note: "LanguageProfiles" },
       { name: "topic_id", type: "relation", note: "Topics" },
       { name: "mode", type: "singleSelect" },
+      { name: "interaction_mode", type: "singleSelect", note: "conversation or simulation; blank legacy rows are conversation" },
+      { name: "target_user_message_count", type: "number", note: "0/blank disables the learner message goal; valid goals are 1..50" },
       { name: "status", type: "singleSelect" },
       { name: "started_at", type: "date" },
       { name: "ended_at", type: "date" },
@@ -146,6 +148,7 @@ export const teableSchema: TeableTableDefinition[] = [
       { name: "language_detected", type: "text" },
       { name: "tokens_used", type: "number" },
       { name: "client_request_id", type: "text" },
+      { name: "channel", type: "singleSelect", note: "practice or teacher; blank legacy rows are practice" },
       { name: "created_at", type: "date" }
     ]
   },

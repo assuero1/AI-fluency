@@ -37,6 +37,8 @@
     "vocabulary:usage-migrate": "node scripts/migrate-word-usage-summaries.mjs",
     "review:srs-v2-fields": "node scripts/ensure-srs-v2-fields.mjs",
     "review:daily-queue-fields": "node scripts/ensure-daily-queue-fields.mjs",
+    "chat:schema-fields": "node scripts/ensure-chat-fields.mjs",
+    "chat:schema-fields:apply": "node scripts/ensure-chat-fields.mjs --apply",
     "scope:reset-test-data": "node scripts/reset-personal-test-data.mjs",
     "security:bundle": "node scripts/verify-client-secrets.mjs"
   },

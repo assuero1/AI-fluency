@@ -33,6 +33,34 @@ npm run start -- -p 3000
 
 Use a process manager such as systemd, PM2, or the platform runtime to keep the process alive. Put a TLS reverse proxy in front of the app and forward only to the local application port.
 
+## Chat v2 Schema Migration
+
+The chat v2 fields are additive and safe to roll back at the code level, but
+they must exist in Teable before the first deploy that writes them:
+
+- `Conversations.interaction_mode` (single select: `conversation` | `simulation`)
+- `Conversations.target_user_message_count` (number; `0`/blank disables the goal)
+- `Messages.channel` (single select: `practice` | `teacher`)
+
+Run the dry-run first and confirm it only lists missing fields/choices:
+
+```bash
+npm run chat:schema-fields -- --env .env.production
+```
+
+Then apply with explicit confirmation:
+
+```bash
+npm run chat:schema-fields:apply -- --env .env.production
+```
+
+Repeat the dry-run and confirm every field reports `action: "none"` before
+deploying the code.
+
+Rollback: revert only the code/deploy. Keep the three fields in Teable, because
+the previous version ignores additive fields. `channel: "teacher"` messages
+remain preserved but invisible to old code; never delete them during rollback.
+
 ## Persistent Audio Cache
 
 Kokoro responses are cached on the app server by text, voice, and output format. Set `AUDIO_CACHE_DIR` to a persistent volume path in production, for example `/var/lib/ai-fluency/audio-cache`.

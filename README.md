@@ -24,6 +24,25 @@ The project has completed:
 - **Phase 15: PWA, security, and deployment readiness**
 - **Phase 16: persistent Kokoro audio cache**
 - **Phase 17: final integrated acceptance**
+- **Phase 18: AI teacher, simulations, and learner message goals**
+
+Phase 18 adds three integrated capabilities to the chat:
+
+- A persistent, contextual AI-teacher panel opened from the conversation, kept
+  separate from the main transcript, goals, corrections, vocabulary, and
+  summary via the `Messages.channel` field (`practice` | `teacher`).
+- A choice between `conversation` and `simulation` when starting a topic, with
+  the AI staying in a complementary role during simulations.
+- An optional learner message goal (`target_user_message_count`, 1..50) with an
+  accessible progress bar that counts only the learner's own practice-channel
+  messages and never double-counts retries.
+
+The schema migration is additive and idempotent:
+
+```bash
+npm run chat:schema-fields            # dry-run
+npm run chat:schema-fields:apply      # applies after confirmation
+```
 
 Existing planning documents:
 

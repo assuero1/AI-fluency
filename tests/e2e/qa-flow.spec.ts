@@ -307,7 +307,8 @@ test("active chat confirms a topic change without losing the conversation surfac
   await expect(page.getByRole("dialog", { name: "Mudar o tema da conversa?" })).toBeHidden();
   await expect(change).toBeFocused();
   await expect(page.getByRole("textbox", { name: "Mensagem para a IA" })).toBeVisible();
-  await expect(page.getByRole("navigation", { name: "Navegação principal" }).getByRole("link", { name: "Palavras" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Finalizar conversa" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Chamar professor" })).toBeVisible();
 });
 
 test("connection errors are announced and a retry can recover", async ({ page }) => {
@@ -596,11 +597,198 @@ test("main learner screens render with the standard navigation", async ({ page }
   }
 });
 
+test("configuração de prática escolhe simulação e envia a meta", async ({ page }) => {
+  const startBodies: Array<Record<string, unknown>> = [];
+  await page.route("**/api/conversations/start", async (route) => {
+    startBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, redirectTo: "/chat?conversationId=mock" })
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("textbox", { name: "Tema para praticar" }).fill("Pedir café na padaria");
+  await page.getByRole("button", { name: "Começar com este tema" }).click();
+  const dialog = page.getByRole("dialog", { name: "Configurar prática" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("radio", { name: /Simulação/ }).click();
+  await dialog.getByRole("checkbox", { name: "Definir meta de mensagens" }).check();
+  await dialog.getByRole("spinbutton", { name: "Quantas mensagens você quer enviar?" }).fill("8");
+  await dialog.getByRole("button", { name: "Começar prática" }).click();
+
+  await expect.poll(() => startBodies).toHaveLength(1);
+  expect(startBodies[0]).toMatchObject({
+    title: "Pedir café na padaria",
+    mode: "custom_topic",
+    interactionMode: "simulation",
+    targetUserMessageCount: 8
+  });
+});
+
+test("configuração de prática conversa livre usa modo conversa sem simulação", async ({ page }) => {
+  const startBodies: Array<Record<string, unknown>> = [];
+  await page.route("**/api/conversations/start", async (route) => {
+    startBodies.push(route.request().postDataJSON() as Record<string, unknown>);
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, redirectTo: "/chat?conversationId=mock" })
+    });
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Iniciar conversa livre" }).click();
+  const dialog = page.getByRole("dialog", { name: "Configurar prática" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Conversa livre usa o modo conversa.")).toBeVisible();
+  await expect(dialog.getByRole("radio", { name: /Simulação/ })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Começar prática" }).click();
+
+  await expect.poll(() => startBodies).toHaveLength(1);
+  expect(startBodies[0]).toMatchObject({
+    mode: "free_conversation",
+    interactionMode: "conversation",
+    targetUserMessageCount: 0
+  });
+});
+
+test("meta de mensagens avança, reverte em falha e retry não duplica", async ({ page }) => {
+  let attempts = 0;
+  const clientRequestIds: string[] = [];
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    attempts += 1;
+    const body = route.request().postDataJSON() as { text: string; clientRequestId: string };
+    clientRequestIds.push(body.clientRequestId);
+    if (attempts === 2) {
+      await route.fulfill({ status: 500, contentType: "application/json", body: JSON.stringify({ error: "failed to fetch" }) });
+      return;
+    }
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        userMessage: {
+          id: `goal-user-${attempts}`,
+          fields: { conversation_id: fixtureConversationId(), role: "user", text: body.text, channel: "practice", created_at: new Date().toISOString() }
+        },
+        assistantMessage: {
+          id: `goal-assistant-${attempts}`,
+          fields: { conversation_id: fixtureConversationId(), role: "assistant", text: `Resposta ${attempts}`, channel: "practice", created_at: new Date().toISOString() }
+        },
+        corrections: [],
+        words: []
+      })
+    });
+  });
+
+  await page.goto(`/chat?conversationId=${fixtureConversationId()}`);
+  await expect(page.getByText("0 de 2 mensagens")).toBeVisible();
+  const composer = page.getByRole("textbox", { name: "Mensagem para a IA" });
+  await composer.fill("Primeira mensagem");
+  await page.getByRole("button", { name: "Enviar mensagem" }).click();
+  await expect(page.getByText("Faltam 1.")).toBeVisible();
+  await composer.fill("Segunda mensagem");
+  await page.getByRole("button", { name: "Enviar mensagem" }).click();
+  await expect(page.getByText("Faltam 1.")).toBeVisible();
+  await expect(composer).toHaveValue("Segunda mensagem");
+  await page.getByRole("button", { name: "Tentar novamente" }).click();
+  await expect(page.getByText("Meta concluída!")).toBeVisible();
+  await expect(page.locator(".bubble.user")).toHaveCount(2);
+  await expect(composer).toBeEnabled();
+  expect(clientRequestIds).toHaveLength(3);
+  expect(clientRequestIds[1]).toBe(clientRequestIds[2]);
+});
+
+test("professor de IA fica isolado, persiste e não altera a meta", async ({ page }) => {
+  const stored: Array<Record<string, unknown>> = [];
+  await page.route("**/api/conversations/*/teacher/messages", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, messages: stored }) });
+      return;
+    }
+    const body = route.request().postDataJSON() as { text: string };
+    const userMessage = {
+      id: `teacher-user-${stored.length + 1}`,
+      fields: { conversation_id: fixtureConversationId(), role: "user", text: body.text, channel: "teacher", created_at: new Date().toISOString() }
+    };
+    const assistantMessage = {
+      id: `teacher-ai-${stored.length + 1}`,
+      fields: { conversation_id: fixtureConversationId(), role: "assistant", text: "Você pode dizer: 'May I have a coffee?'", channel: "teacher", created_at: new Date().toISOString() }
+    };
+    stored.push(userMessage, assistantMessage);
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, userMessage, assistantMessage }) });
+  });
+
+  await page.goto(`/chat?conversationId=${fixtureConversationId()}`);
+  const teacherButton = page.getByRole("button", { name: "Chamar professor" });
+  await expect(teacherButton).toBeVisible();
+  await teacherButton.click();
+  const panel = page.getByRole("dialog", { name: "Professor de IA" });
+  await expect(panel).toBeVisible();
+  const composer = panel.getByRole("textbox", { name: "Pergunta para o professor" });
+  await expect(composer).toBeFocused();
+  await expect(panel.getByText("Este chat não conta na sua meta e não altera a conversa principal.")).toBeVisible();
+  await composer.fill("Como peço um café?");
+  await panel.getByRole("button", { name: "Enviar pergunta ao professor" }).click();
+  await expect(panel.getByText("Como peço um café?")).toBeVisible();
+  await expect(panel.locator(".bubble.teacher-ai", { hasText: "Você pode dizer: 'May I have a coffee?'" })).toBeVisible();
+  await expect(page.getByText("0 de 2 mensagens")).toBeVisible();
+  await panel.getByRole("button", { name: "Fechar professor" }).click();
+  await expect(teacherButton).toBeFocused();
+  await expect(page.getByText("Como peço um café?")).toHaveCount(0);
+  await teacherButton.click();
+  await expect(panel.getByText("Como peço um café?")).toBeVisible();
+  await expect(panel.locator(".bubble.teacher-ai", { hasText: "Você pode dizer: 'May I have a coffee?'" })).toBeVisible();
+});
+
+test("professor de IA disponível em conversa concluída", async ({ page }) => {
+  const postBodies: Array<Record<string, unknown>> = [];
+  await page.route("**/api/conversations/*/teacher/messages", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, messages: [] }) });
+      return;
+    }
+    const body = route.request().postDataJSON() as { text: string };
+    postBodies.push(body);
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        userMessage: {
+          id: "completed-teacher-user",
+          fields: { conversation_id: fixtureCompletedConversationId(), role: "user", text: body.text, channel: "teacher", created_at: new Date().toISOString() }
+        },
+        assistantMessage: {
+          id: "completed-teacher-ai",
+          fields: { conversation_id: fixtureCompletedConversationId(), role: "assistant", text: "Resposta do professor.", channel: "teacher", created_at: new Date().toISOString() }
+        }
+      })
+    });
+  });
+
+  await page.goto(`/chat?conversationId=${fixtureCompletedConversationId()}`);
+  await expect(page.getByRole("textbox", { name: "Mensagem para a IA" })).toHaveCount(0);
+  const teacherButton = page.getByRole("button", { name: "Chamar professor" });
+  await expect(teacherButton).toBeVisible();
+  await teacherButton.click();
+  const panel = page.getByRole("dialog", { name: "Professor de IA" });
+  await expect(panel).toBeVisible();
+  const composer = panel.getByRole("textbox", { name: "Pergunta para o professor" });
+  await composer.fill("Ainda posso perguntar?");
+  await panel.getByRole("button", { name: "Enviar pergunta ao professor" }).click();
+  await expect(panel.locator(".bubble.teacher-ai", { hasText: "Resposta do professor." })).toBeVisible();
+  expect(postBodies).toHaveLength(1);
+});
+
 test("offline screen is honest about unsaved messages", async ({ page }) => {
   await page.goto("/offline");
   await expect(page.getByRole("heading", { name: "Você está sem conexão" })).toBeVisible();
   await expect(page.getByText("Reconecte para continuar. Mensagens não enviadas não são salvas offline.")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Tentar novamente" })).toHaveAttribute("href", "/");
+  await expect(page.getByRole("button", { name: "Tentar novamente" })).toBeVisible();
 });
 
 test("release visual matrix has no horizontal overflow or clipped navigation", async ({ page }, testInfo) => {

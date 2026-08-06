@@ -55,6 +55,8 @@ const SELECT_CHOICES = {
   output_format: ["mp3", "wav", "opus"],
   last_test_status: ["not_tested", "success", "error"],
   mode: ["free_conversation", "suggested_topic", "custom_topic", "review_words", "calendar_focus"],
+  interaction_mode: ["conversation", "simulation"],
+  channel: ["practice", "teacher"],
   status: ["preparing", "active", "completed", "abandoned", "failed", "paused", "error"],
   role: ["user", "assistant", "system"],
   error_type: ["grammar", "vocabulary", "pronunciation", "tense", "preposition", "word_order", "naturalness", "spelling"],
@@ -142,6 +144,8 @@ const TABLES = [
       ["language_profile_id", "text"],
       ["topic_id", "text"],
       ["mode", "singleSelect"],
+      ["interaction_mode", "singleSelect"],
+      ["target_user_message_count", "number"],
       ["status", "singleSelect"],
       ["started_at", "date"],
       ["ended_at", "date"],
@@ -162,6 +166,7 @@ const TABLES = [
       ["language_detected", "text"],
       ["tokens_used", "number"],
       ["client_request_id", "text"],
+      ["channel", "singleSelect"],
       ["created_at", "date"]
     ]
   },

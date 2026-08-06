@@ -19,6 +19,7 @@ import {
 } from "./conversation-state";
 import { matchesLearningScope } from "./scope";
 import { createTopic } from "./topics";
+import { normalizeStoredInteractionMode } from "./chat-contracts";
 import type { PracticeSessionFields } from "./flashcards";
 
 type ConversationSummary = {
@@ -465,6 +466,7 @@ async function generateConversationSummary(
           content: [
             `Tema: ${topicTitle}`,
             `Modo: ${conversation.fields.mode}`,
+            `Tipo de interação: ${normalizeStoredInteractionMode(conversation.fields.interaction_mode)}`,
             `Transcrição:\n${transcript}`,
             `Correções: ${correctionList || "nenhuma"}`,
             `Palavras: ${wordList || "nenhuma"}`,

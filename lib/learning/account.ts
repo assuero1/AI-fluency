@@ -272,6 +272,13 @@ export function isLearningHistoryEventInScope(fields: LearningHistoryEventFields
     && payload.word_ids.some((value) => typeof value === "string" && scope.wordIds.has(value));
 }
 
+export function isConversationMessageInScope(
+  message: { fields: { conversation_id?: string; channel?: string } },
+  conversationIds: Set<string>
+) {
+  return typeof message.fields.conversation_id === "string" && conversationIds.has(message.fields.conversation_id);
+}
+
 async function getScopedLearningData() {
   const client = getTeableClient();
   const user = await getOrCreatePersonalUser();
@@ -306,7 +313,7 @@ async function getScopedLearningData() {
     profile,
     profiles: ownProfiles,
     conversations: scopedConversations,
-    messages: messages.filter((item) => conversationIds.has(item.fields.conversation_id)),
+    messages: messages.filter((item) => isConversationMessageInScope(item, conversationIds)),
     corrections: corrections.filter((item) => conversationIds.has(item.fields.conversation_id)),
     words: scopedWords,
     wordOccurrences: wordOccurrences.filter((item) => wordIds.has(item.fields.word_id) || conversationIds.has(item.fields.conversation_id)),

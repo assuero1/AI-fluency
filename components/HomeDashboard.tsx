@@ -18,6 +18,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { IconBubble } from "./IconBubble";
+import { ConversationSetupDialog, ConfirmedConversationStart, ConversationStartDraft } from "./ConversationSetupDialog";
 import { MetricGrid } from "./MetricGrid";
 import { Pill } from "./Pill";
 import { ScreenHeader } from "./ScreenHeader";
@@ -63,6 +64,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
   const [suggestions, setSuggestions] = useState(home.suggestions);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [startDraft, setStartDraft] = useState<ConversationStartDraft | null>(null);
 
   const profile = home.profile;
   const languageCode = (profile?.languageCode ?? "en").slice(0, 2).toUpperCase();
@@ -111,7 +113,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
     }
   }
 
-  async function startConversation(input: { title?: string; topicId?: string; mode?: string; source?: string; reason?: string }) {
+  async function confirmConversationStart(input: ConfirmedConversationStart) {
     const actionKey = input.topicId ?? input.mode ?? input.title ?? "custom";
     setPendingAction(actionKey);
     setError(null);
@@ -124,6 +126,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
       });
       const data = (await response.json()) as { ok?: boolean; error?: string; redirectTo?: string };
       if (!response.ok || !data.ok) throw new Error(data.error ?? "Não foi possível iniciar a conversa.");
+      setStartDraft(null);
       router.push(data.redirectTo ?? "/chat");
     } catch (startError) {
       setError(startError instanceof Error ? startError.message : "Erro inesperado ao iniciar conversa.");
@@ -174,7 +177,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           <button
             className="outline-button practice-reminder-action"
             disabled={Boolean(pendingAction)}
-            onClick={() => startConversation({ mode: "free_conversation", title: "Conversa livre" })}
+            onClick={() => setStartDraft({ mode: "free_conversation", title: "Conversa livre" })}
             type="button"
           >
             Praticar agora
@@ -202,7 +205,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
         <button
           className="green-button full-button"
           disabled={!topic.trim() || Boolean(pendingAction)}
-          onClick={() => startConversation({ title: topic, mode: "custom_topic", source: "user_custom" })}
+          onClick={() => setStartDraft({ title: topic, mode: "custom_topic", source: "user_custom" })}
           style={{ marginTop: 14 }}
           type="button"
         >
@@ -238,7 +241,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
                   className="outline-button"
                   disabled={Boolean(pendingAction)}
                   onClick={() =>
-                    startConversation({
+                    setStartDraft({
                       topicId: item.id,
                       title: item.title,
                       mode: item.source === "calendar_based" ? "calendar_focus" : item.source === "weak_words" ? "review_words" : "suggested_topic",
@@ -313,7 +316,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           <button
             className="dark-button"
             disabled={Boolean(pendingAction)}
-            onClick={() => startConversation({ mode: "free_conversation", title: "Conversa livre" })}
+            onClick={() => setStartDraft({ mode: "free_conversation", title: "Conversa livre" })}
             type="button"
           >
             {pendingAction === "free_conversation" ? <Loader2 className="spin" /> : <Mic />}
@@ -322,7 +325,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           <button
             className="outline-button"
             disabled={Boolean(pendingAction)}
-            onClick={() => startConversation({ mode: "free_conversation", title: "Conversa por texto" })}
+            onClick={() => setStartDraft({ mode: "free_conversation", title: "Conversa por texto" })}
             type="button"
             aria-label="Digitar conversa"
           >
@@ -330,6 +333,15 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           </button>
         </div>
       </section>
+
+      {startDraft ? (
+        <ConversationSetupDialog
+          busy={Boolean(pendingAction)}
+          draft={startDraft}
+          onCancel={() => setStartDraft(null)}
+          onConfirm={confirmConversationStart}
+        />
+      ) : null}
     </>
   );
 }

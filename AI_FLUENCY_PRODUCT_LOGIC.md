@@ -278,6 +278,8 @@ Campos:
 - language_profile_id
 - topic_id
 - mode
+- interaction_mode
+- target_user_message_count
 - status
 - started_at
 - ended_at
@@ -292,6 +294,11 @@ Modes:
 - custom_topic
 - review_words
 - calendar_focus
+
+`mode` continua sendo a origem do treino. O tipo de interacao fica em
+`interaction_mode` (`conversation` ou `simulation`); registros antigos sem valor
+se comportam como `conversation`. `target_user_message_count` define a meta
+opcional de mensagens (inteiro `1..50`; `0`/vazio desativa).
 
 ### Message
 
@@ -308,12 +315,16 @@ Campos:
 - created_at
 - language_detected
 - tokens_used
+- channel
 
 Roles:
 
 - user
 - assistant
 - system
+
+`channel` separa o chat principal (`practice`) do chat do professor (`teacher`).
+Mensagens antigas sem valor sao tratadas como `practice`.
 
 ### Correction
 
@@ -485,6 +496,66 @@ Ao finalizar conversa:
 4. Identificar foco recomendado.
 5. Salvar nota no calendario.
 6. Gerar sugestoes de tema para a proxima pratica.
+
+## Conversa x simulacao, meta de mensagens e professor de IA
+
+### Origem (`mode`) x tipo de interacao (`interaction_mode`)
+
+- `mode` preserva a origem do treino (`custom_topic`, `suggested_topic`,
+  `free_conversation`, `review_words`, `calendar_focus`) e nao muda de
+  significado.
+- `interaction_mode` escolhe o comportamento da IA: `conversation` (parceiro
+  natural de dialogo, comportamento atual) ou `simulation` (a IA assume o papel
+  complementar mais plausivel do cenario e permanece em personagem).
+- Registros historicos sem `interaction_mode` sao normalizados para
+  `conversation` em runtime; nao ha backfill obrigatorio.
+
+### Simulacao
+
+- Exemplo: tema "pedir cafe na padaria" -> a IA atua como atendente/garcom e o
+  usuario e o cliente.
+- A IA abre e continua a cena no idioma alvo, sem narrar as duas partes, sem
+  escrever a fala do usuario e sem sair do personagem para dar aula.
+- Correcoes continuam no bloco separado da UI; `assistant_reply` permanece em
+  personagem.
+- Trocar o tema durante o chat permite manter ou alterar o tipo de interacao
+  sem resetar a meta de mensagens.
+
+### Meta de mensagens
+
+- Opcional: `0` desativa; inteiros de `1` a `50` ativam a barra "X de Y
+  mensagens".
+- Contam somente mensagens do aluno persistidas (ou otimistas) no canal
+  `practice`; respostas da IA, acoes rapidas e o chat do professor nao contam.
+- A barra avanca otimisticamente e reverte em falha; retry com o mesmo
+  `client_request_id` nao conta duas vezes.
+- A meta e motivacional, nao um limite: ao atingir, o usuario pode finalizar ou
+  continuar conversando. Conversa concluida mostra o resultado final em modo
+  somente leitura.
+
+### Professor de IA
+
+- Chat auxiliar persistente e contextual, aberto em um painel modal a partir de
+  "Chamar professor", sem trocar de pagina.
+- Mensagens ficam na mesma tabela com `channel: "teacher"`; nao aparecem no
+  transcript principal, na contagem da meta, nas correcoes, no vocabulario nem
+  no resumo.
+- O professor responde em portugues brasileiro, usa o idioma alvo apenas em
+  exemplos, recebe contexto do chat (ate as 12 mensagens principais mais
+  recentes e ate 3 correcoes) e nunca assume o personagem da simulacao.
+- Disponivel em conversas `active` e `completed`; conversas `abandoned` nao
+  aceitam novas perguntas.
+- O painel carrega o historico sob demanda; perguntas repetidas por retry sao
+  idempotentes pelo `client_request_id`.
+
+### Compatibilidade, exportacao e exclusao
+
+- Registros antigos (sem `interaction_mode`, `target_user_message_count` ou
+  `channel`) continuam funcionando como `conversation`, sem meta e `practice`.
+- A exportacao sobe para `schemaVersion: 3` e inclui mensagens dos dois canais
+  em `learningHistory.messages` (sem colecao separada).
+- A exclusao de historico remove mensagens `practice` e `teacher` juntas pelo
+  mesmo grupo `messages`, baseado no `conversation_id`.
 
 ## Sistema de voz com Kokoro
 

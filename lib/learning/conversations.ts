@@ -8,6 +8,14 @@ import { isMutableConversationStatus, selectScopedConversation } from "./convers
 import { getActiveLanguageProfile, getExistingPersonalUser, LanguageProfileFields } from "./profile";
 import { formatTutorContext, getTutorContext, TutorContext } from "./tutor-context";
 import { ConversationQuickAction, getConversationQuickActionPrompt } from "./quick-actions";
+import {
+  InteractionMode,
+  isInteractionMode,
+  isPracticeChannel,
+  isValidClientRequestId,
+  MessageChannel,
+  normalizeStoredInteractionMode
+} from "./chat-contracts";
 
 export type ConversationFields = {
   Name?: string;
@@ -15,6 +23,8 @@ export type ConversationFields = {
   language_profile_id: string;
   topic_id: string;
   mode: string;
+  interaction_mode?: InteractionMode;
+  target_user_message_count?: number;
   status: string;
   started_at: string;
   ended_at: string;
@@ -33,6 +43,7 @@ export type MessageFields = {
   language_detected: string;
   tokens_used: number;
   client_request_id?: string;
+  channel?: MessageChannel;
   created_at: string;
 };
 
@@ -150,16 +161,35 @@ export async function flushConversationEventWrites() {
   await Promise.all(Array.from(pendingEventWrites));
 }
 
+export function validateConversationConfiguration(input: {
+  interactionMode?: unknown;
+  targetUserMessageCount?: unknown;
+}) {
+  const interactionMode = input.interactionMode === undefined ? "conversation" : input.interactionMode;
+  if (!isInteractionMode(interactionMode)) {
+    throw new LearningStateError("Escolha conversa ou simulação.", 422);
+  }
+
+  const rawTarget = input.targetUserMessageCount ?? 0;
+  if (typeof rawTarget !== "number" || !Number.isInteger(rawTarget) || rawTarget < 0 || rawTarget > 50) {
+    throw new LearningStateError("A meta deve ser um número inteiro entre 1 e 50, ou ficar desativada.", 422);
+  }
+  return { interactionMode, targetUserMessageCount: rawTarget };
+}
+
 export async function startConversation(input: {
   topicId?: string;
   title?: string;
   mode?: string;
   source?: string;
   reason?: string;
+  interactionMode?: unknown;
+  targetUserMessageCount?: unknown;
 }) {
   const { client, user, profile } = await assertPracticeReady();
   const ai = await getAiConfig();
   const now = new Date().toISOString();
+  const configuration = validateConversationConfiguration(input);
 
   let topicId = input.topicId ?? "";
   let topicTitle = input.title?.trim() || "Conversa livre";
@@ -192,6 +222,8 @@ export async function startConversation(input: {
     language_profile_id: profile.id,
     topic_id: topicId,
     mode: input.mode ?? (topicId ? "custom_topic" : "free_conversation"),
+    interaction_mode: configuration.interactionMode,
+    target_user_message_count: configuration.targetUserMessageCount,
     status: "active",
     started_at: now,
     ended_at: "",
@@ -207,6 +239,10 @@ export async function startConversation(input: {
     conversation_id: conversation.id,
     type: "conversation",
     focus: topicTitle,
+    configuration_json: JSON.stringify({
+      interactionMode: configuration.interactionMode,
+      targetUserMessageCount: configuration.targetUserMessageCount
+    }),
     created_at: now
   });
 
@@ -214,7 +250,9 @@ export async function startConversation(input: {
     conversation_id: conversation.id,
     topic_id: topicId,
     mode: conversation.fields.mode,
-    title: topicTitle
+    title: topicTitle,
+    interactionMode: configuration.interactionMode,
+    targetUserMessageCount: configuration.targetUserMessageCount
   });
 
   return {
@@ -223,8 +261,11 @@ export async function startConversation(input: {
   };
 }
 
-export async function changeConversationTopic(conversationId: string, title: string) {
-  const cleanTitle = title.trim();
+export async function changeConversationTopic(
+  conversationId: string,
+  input: { title?: string; interactionMode?: unknown }
+) {
+  const cleanTitle = (typeof input.title === "string" ? input.title : "").trim();
   if (!cleanTitle) throw new LearningStateError("Informe um novo tema para a conversa.", 422);
 
   const context = await getConversation(conversationId);
@@ -236,11 +277,18 @@ export async function changeConversationTopic(conversationId: string, title: str
   // The transcript stays attached to the same active conversation; only its pedagogical focus changes.
   const created = await createTopic({ title: cleanTitle, source: "user_custom", reason: "Tema alterado durante a conversa." });
   const client = getTeableClient();
-  const conversation = await client.updateRecord<ConversationFields>("conversations", context.conversation.id, {
+  const updates: Partial<ConversationFields> = {
     Name: created.topic.fields.title,
     topic_id: created.topic.id,
     mode: "custom_topic"
-  });
+  };
+  if (input.interactionMode !== undefined) {
+    updates.interaction_mode = validateConversationConfiguration({
+      interactionMode: input.interactionMode,
+      targetUserMessageCount: undefined
+    }).interactionMode;
+  }
+  const conversation = await client.updateRecord<ConversationFields>("conversations", context.conversation.id, updates);
   await client.createEvent(context.conversation.fields.user_id, "conversation_topic_changed", {
     conversation_id: context.conversation.id,
     previous_topic_id: context.conversation.fields.topic_id,
@@ -325,7 +373,7 @@ export async function getConversation(conversationId?: string) {
   ]);
 
   const conversationMessages = messages
-    .filter((message) => message.fields.conversation_id === conversation.id)
+    .filter((message) => message.fields.conversation_id === conversation.id && isPracticeChannel(message.fields.channel))
     .sort((a, b) => new Date(a.fields.created_at).getTime() - new Date(b.fields.created_at).getTime());
 
   const conversationCorrections = corrections
@@ -413,6 +461,7 @@ export async function sendConversationMessage(conversationId: string, text: stri
     language_detected: context.profile?.fields.language_code ?? "",
     tokens_used: 0,
     client_request_id: clientRequestId ?? "",
+    channel: "practice",
     created_at: now
   });
 
@@ -436,7 +485,13 @@ export async function runConversationQuickAction(conversationId: string, action:
     [
       {
         role: "system",
-        content: buildTutorSystemPrompt(context.profile, context.topicTitle, context.topicReason, tutorContext)
+        content: buildTutorSystemPrompt(
+          context.profile,
+          context.topicTitle,
+          context.topicReason,
+          tutorContext,
+          normalizeStoredInteractionMode(context.conversation.fields.interaction_mode)
+        )
       },
       ...context.messages.slice(-10).map((message) => ({
         role: message.fields.role === "assistant" ? ("assistant" as const) : ("user" as const),
@@ -460,6 +515,7 @@ export async function runConversationQuickAction(conversationId: string, action:
     transcript_text: quickActionReply,
     language_detected: context.profile?.fields.language_code ?? "",
     tokens_used: ai.tokensUsed,
+    channel: "practice",
     created_at: now
   });
 
@@ -533,7 +589,13 @@ async function createAnalyzedAssistantTurn(
     [
       {
         role: "system",
-        content: buildStructuredTutorPrompt(profile, topicTitle, topicReason, tutorContext)
+        content: buildStructuredTutorPrompt(
+          profile,
+          topicTitle,
+          topicReason,
+          tutorContext,
+          normalizeStoredInteractionMode(conversation.fields.interaction_mode)
+        )
       },
       ...history.slice(-10).map((message) => ({
         role: message.fields.role === "assistant" ? ("assistant" as const) : ("user" as const),
@@ -556,6 +618,7 @@ async function createAnalyzedAssistantTurn(
       transcript_text: assistantReply,
       language_detected: profile?.fields.language_code ?? "",
       tokens_used: ai.tokensUsed,
+      channel: "practice",
       created_at: now
     }),
     saveCorrections(conversation, userMessage, analysis)
@@ -586,7 +649,13 @@ async function createAssistantMessage(
     [
       {
         role: "system",
-        content: buildTutorSystemPrompt(profile, topicTitle, topicReason, tutorContext)
+        content: buildTutorSystemPrompt(
+          profile,
+          topicTitle,
+          topicReason,
+          tutorContext,
+          normalizeStoredInteractionMode(conversation.fields.interaction_mode)
+        )
       },
       ...history.slice(-10).map((message) => ({
         role: message.fields.role === "assistant" ? ("assistant" as const) : ("user" as const),
@@ -615,15 +684,33 @@ async function createAssistantMessage(
     transcript_text: assistantReply,
     language_detected: profile?.fields.language_code ?? "",
     tokens_used: ai.tokensUsed,
+    channel: "practice",
     created_at: now
   });
+}
+
+function buildInteractionInstructions(mode: InteractionMode) {
+  return mode === "simulation"
+    ? [
+        "Você está conduzindo uma simulação de situação real.",
+        "Assuma o papel complementar mais plausível para o cenário e permaneça nesse personagem.",
+        "O usuário representa a outra pessoa da situação.",
+        "Não narre as duas partes, não escreva a fala do usuário e não interrompa a cena para dar aula.",
+        "Abra e continue a situação como uma interação real no idioma-alvo.",
+        "As correções são processadas separadamente; sua mensagem ao aluno deve permanecer em personagem."
+      ]
+    : [
+        "Aja como um professor de conversação presente na conversa, não como entrevistador ou questionário.",
+        "Primeiro reaja ao que o aluno disse; depois contribua com uma observação, opinião, exemplo curto ou experiência relacionada ao tema."
+      ];
 }
 
 export function buildTutorSystemPrompt(
   profile: TeableRecord<LanguageProfileFields> | null,
   topicTitle: string,
   topicReason = "",
-  tutorContext?: TutorContext
+  tutorContext?: TutorContext,
+  interactionMode: InteractionMode = "conversation"
 ) {
   const language = profile?.fields.language_name ?? "Inglês";
   const level = profile?.fields.level ?? "Intermediário (B1)";
@@ -640,8 +727,7 @@ export function buildTutorSystemPrompt(
     `Estilo de correção: ${correctionStyle}.`,
     tutorContext ? formatTutorContext(tutorContext) : "",
     "Converse principalmente no idioma alvo, com frases naturais e adequadas ao nível.",
-    "Aja como um professor de conversação presente na conversa, não como um entrevistador ou questionário.",
-    "Primeiro reaja ao que o aluno disse; depois contribua com uma observação, opinião, exemplo curto ou experiência relacionada ao tema.",
+    ...buildInteractionInstructions(interactionMode),
     "Use de uma a três frases curtas por turno para manter o ritmo de conversa real.",
     "Perguntas são opcionais. Faça no máximo uma quando ela surgir naturalmente e alterne perguntas com comentários que permitam ao aluno reagir livremente.",
     "Evite sequências de perguntas, perguntas genéricas repetidas e mudanças bruscas de assunto.",
@@ -655,7 +741,8 @@ export function buildStructuredTutorPrompt(
   profile: TeableRecord<LanguageProfileFields> | null,
   topicTitle: string,
   topicReason = "",
-  tutorContext?: TutorContext
+  tutorContext?: TutorContext,
+  interactionMode: InteractionMode = "conversation"
 ) {
   const language = profile?.fields.language_name ?? "Inglês";
   const level = profile?.fields.level ?? "Intermediário (B1)";
@@ -672,8 +759,7 @@ export function buildStructuredTutorPrompt(
     `Estilo de correção: ${correctionStyle}.`,
     tutorContext ? formatTutorContext(tutorContext) : "",
     "Analise a última mensagem do usuário e continue a conversa com ritmo natural.",
-    "Aja como professor de conversação e parceiro de diálogo, não como entrevistador.",
-    "Comece reagindo ao conteúdo do aluno e acrescente uma contribuição real: comentário, opinião, exemplo ou experiência curta ligada ao tema.",
+    ...buildInteractionInstructions(interactionMode),
     "Perguntas são opcionais e limitadas a no máximo uma por turno. Não termine toda resposta com pergunta e não faça sequências de perguntas.",
     "Retome palavras ou detalhes do aluno para demonstrar escuta e manter o mesmo fio de conversa.",
     "Responda somente JSON válido, sem markdown, sem texto fora do JSON.",
@@ -852,8 +938,4 @@ function normalizeSeverity(value: string | undefined) {
   const allowed = new Set(["low", "medium", "high"]);
   const normalized = value?.trim().toLowerCase();
   return normalized && allowed.has(normalized) ? normalized : "medium";
-}
-
-function isValidClientRequestId(value: string) {
-  return /^[a-zA-Z0-9][a-zA-Z0-9_-]{7,127}$/.test(value);
 }

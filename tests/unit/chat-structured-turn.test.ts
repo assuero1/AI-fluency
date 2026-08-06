@@ -41,7 +41,14 @@ vi.mock("../../lib/learning/conversation-state", () => ({
 }));
 vi.mock("../../lib/learning/quick-actions", () => ({ getConversationQuickActionPrompt: vi.fn() }));
 
-const { parseLearningAnalysis, sendConversationMessage } = await import("../../lib/learning/conversations");
+const {
+  buildStructuredTutorPrompt,
+  buildTutorSystemPrompt,
+  getConversationWithTutorStart,
+  parseLearningAnalysis,
+  runConversationQuickAction,
+  sendConversationMessage
+} = await import("../../lib/learning/conversations");
 
 describe("turno estruturado do chat", () => {
   beforeEach(() => {
@@ -114,6 +121,70 @@ describe("turno estruturado do chat", () => {
 
     expect(result.corrections).toHaveLength(1);
     expect(result.assistantMessage.fields.text).toBe("Almost! Try again.");
+  });
+
+  it("keeps legacy and practice messages in the main transcript and excludes teacher messages from AI history", async () => {
+    listRecordsWhere.mockImplementation(async (table: string) => {
+      if (table === "messages") {
+        return [
+          { id: "m1", fields: { conversation_id: "conv-1", role: "assistant", text: "Hello!", created_at: "2026-08-01T00:00:00.000Z" } },
+          { id: "m2", fields: { conversation_id: "conv-1", role: "user", text: "Hi!", created_at: "2026-08-01T00:00:01.000Z" } },
+          { id: "m3", fields: { conversation_id: "conv-1", role: "user", text: "Teacher secret", channel: "teacher", created_at: "2026-08-01T00:00:02.000Z" } }
+        ];
+      }
+      return [];
+    });
+
+    const result = await sendConversationMessage("conv-1", "Another message", "client-id-123");
+
+    const historyMessages = createChatCompletion.mock.calls[0][0] as Array<{ content: string }>;
+    const historyText = historyMessages.map((message) => message.content).join("\n");
+    expect(historyText).toContain("Hello!");
+    expect(historyText).toContain("Hi!");
+    expect(historyText).not.toContain("Teacher secret");
+    expect(result.userMessage.fields.channel).toBe("practice");
+  });
+
+  it("writes practice channel on user, assistant, opening and quick-action messages", async () => {
+    await sendConversationMessage("conv-1", "Hello there", "client-id-456");
+    const messagesCreated = createRecord.mock.calls.filter((call) => call[0] === "messages");
+    expect(messagesCreated.some((call) => call[1].role === "user" && call[1].channel === "practice")).toBe(true);
+    expect(messagesCreated.some((call) => call[1].role === "assistant" && call[1].channel === "practice")).toBe(true);
+
+    createRecord.mockClear();
+    listRecordsWhere.mockResolvedValue([]);
+    createChatCompletion.mockResolvedValue({ content: "Let's start!", tokensUsed: 5 });
+    await getConversationWithTutorStart("conv-1");
+    expect(createRecord.mock.calls.some((call) => call[0] === "messages" && call[1].role === "assistant" && call[1].channel === "practice")).toBe(true);
+
+    createRecord.mockClear();
+    await runConversationQuickAction("conv-1", "repeat");
+    expect(createRecord.mock.calls.some((call) => call[0] === "messages" && call[1].role === "assistant" && call[1].channel === "practice")).toBe(true);
+  });
+});
+
+describe("interaction mode prompts", () => {
+  it("keeps conversation rules in the conversation prompt", () => {
+    const prompt = buildTutorSystemPrompt(null, "Rotina");
+    expect(prompt).toContain("Aja como um professor de conversação presente na conversa, não como entrevistador ou questionário.");
+    expect(prompt).toContain("Primeiro reaja ao que o aluno disse");
+  });
+
+  it("keeps the structured conversation partner rules by default", () => {
+    const prompt = buildStructuredTutorPrompt(null, "Rotina");
+    expect(prompt).toContain("Aja como um professor de conversação presente na conversa, não como entrevistador ou questionário.");
+  });
+
+  it("makes the simulation prompt stay in a complementary role in both builders", () => {
+    const system = buildTutorSystemPrompt(null, "Pedir café na padaria", "", undefined, "simulation");
+    const structured = buildStructuredTutorPrompt(null, "Pedir café na padaria", "", undefined, "simulation");
+    for (const prompt of [system, structured]) {
+      expect(prompt).toContain("Assuma o papel complementar mais plausível para o cenário e permaneça nesse personagem.");
+      expect(prompt).toContain("O usuário representa a outra pessoa da situação.");
+      expect(prompt).toContain("Não narre as duas partes, não escreva a fala do usuário e não interrompa a cena para dar aula.");
+      expect(prompt).toContain("Abra e continue a situação como uma interação real no idioma-alvo.");
+      expect(prompt).toContain("sua mensagem ao aluno deve permanecer em personagem");
+    }
   });
 });
 

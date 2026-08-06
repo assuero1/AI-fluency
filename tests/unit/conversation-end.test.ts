@@ -98,4 +98,25 @@ describe("endConversation idempotency", () => {
     expect(second.dailyFeedback.id).toBe(first.dailyFeedback.id);
     expect(second.redirectTo).toBe(first.redirectTo);
   });
+
+  it("summarizes only the filtered practice transcript and the interaction mode", async () => {
+    getConversation.mockResolvedValue({
+      conversation: { ...conversation, fields: { ...conversation.fields, interaction_mode: "simulation" } },
+      topicTitle: "Rotina",
+      messages: [{ id: "message-1", fields: { role: "user", text: "hello there", channel: "practice" } }],
+      corrections: [],
+      profile: { id: "profile-1", fields: { language_code: "en" } }
+    });
+    const { endConversation } = await import("../../lib/learning/feedback");
+
+    await endConversation("conversation-1");
+
+    const summaryCall = createChatCompletion.mock.calls.find((call) =>
+      String(call[0][0].content).includes("resumo pedagógico")
+    );
+    const prompt = String(summaryCall?.[0][1]?.content ?? "");
+    expect(prompt).toContain("hello there");
+    expect(prompt).toContain("Tipo de interação: simulation");
+    expect(prompt).not.toContain("teacher secret");
+  });
 });

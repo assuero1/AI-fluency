@@ -1,16 +1,18 @@
 "use client";
 
-import { Bot, CalendarDays, ChevronRight, Clock3, Flame, Languages, Loader2, LogOut, Mic, MicOff, Send, Shuffle, Volume2 } from "lucide-react";
+import { Bot, CalendarDays, ChevronRight, Clock3, Flame, GraduationCap, Languages, Loader2, LogOut, MessageCircle, Mic, MicOff, Send, Shuffle, Users, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IconBubble } from "./IconBubble";
 import { CopyButton } from "./CopyButton";
+import { ConversationGoalProgress } from "./ConversationGoalProgress";
 import { LoadingDots } from "@/components/LoadingDots";
 import { ModalDialog } from "./ModalDialog";
 import { Pill } from "./Pill";
 import { TranslationButton } from "./TranslationButton";
 import { ScreenHeader } from "./ScreenHeader";
+import { TeacherChatPanel } from "./TeacherChatPanel";
 import { VoiceButton } from "./VoiceButton";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields } from "@/lib/learning/conversations";
 import type { SelectionExplanation } from "@/lib/learning/selection-explanation";
@@ -18,6 +20,7 @@ import { joinSpeechSegments, markMicReleased, speechLanguageName, speechLocale, 
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 import type { TeableRecord } from "@/lib/teable/client";
 import type { ConversationQuickAction } from "@/lib/learning/quick-actions";
+import { getMessageGoalProgress, InteractionMode, normalizeStoredInteractionMode } from "@/lib/learning/chat-contracts";
 
 type ChatConversationProps = {
   conversation: TeableRecord<ConversationFields>;
@@ -79,9 +82,16 @@ export function ChatConversation({
   const [selectionExplanation, setSelectionExplanation] = useState<SelectionExplanation | null>(null);
   const [isExplaining, setIsExplaining] = useState(false);
   const [activeTopicTitle, setActiveTopicTitle] = useState(topicTitle);
+  const [activeInteractionMode, setActiveInteractionMode] = useState<InteractionMode>(() =>
+    normalizeStoredInteractionMode(conversation.fields.interaction_mode)
+  );
   const [isTopicDialogOpen, setIsTopicDialogOpen] = useState(false);
+  const [isTeacherOpen, setIsTeacherOpen] = useState(false);
   const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
   const [nextTopicTitle, setNextTopicTitle] = useState("");
+  const [nextInteractionMode, setNextInteractionMode] = useState<InteractionMode>(() =>
+    normalizeStoredInteractionMode(conversation.fields.interaction_mode)
+  );
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [pendingQuickAction, setPendingQuickAction] = useState<ConversationQuickAction | null>(null);
@@ -110,6 +120,11 @@ export function ChatConversation({
     }
     return grouped;
   }, [corrections]);
+
+  const messageGoal = useMemo(
+    () => getMessageGoalProgress(messages, conversation.fields.target_user_message_count),
+    [messages, conversation.fields.target_user_message_count]
+  );
 
   useEffect(() => {
     const speechWindow = window as SpeechWindow;
@@ -217,11 +232,12 @@ export function ChatConversation({
       const response = await fetch(`/api/conversations/${conversation.id}/topic`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title: cleanTitle })
+        body: JSON.stringify({ title: cleanTitle, interactionMode: nextInteractionMode })
       });
       const data = (await response.json()) as { ok?: boolean; error?: string; topic?: { fields?: { title?: string } } };
       if (!response.ok || !data.ok) throw new Error(data.error ?? "Não foi possível mudar o tema.");
       setActiveTopicTitle(data.topic?.fields?.title ?? cleanTitle);
+      setActiveInteractionMode(nextInteractionMode);
       setNextTopicTitle("");
       setIsTopicDialogOpen(false);
     } catch (changeError) {
@@ -491,10 +507,39 @@ export function ChatConversation({
           </div>
           <ChevronRight />
         </div>
-        <button className="outline-button" disabled={readOnly || isSending} onClick={() => setIsTopicDialogOpen(true)} type="button">
-          <Shuffle /> Mudar
-        </button>
+        <div className="chat-topic-actions">
+          <button
+            aria-haspopup="dialog"
+            className="outline-button"
+            disabled={isSending}
+            onClick={() => setIsTeacherOpen(true)}
+            type="button"
+          >
+            <GraduationCap /> Chamar professor
+          </button>
+          <button
+            className="outline-button"
+            disabled={readOnly || isSending}
+            onClick={() => {
+              setNextInteractionMode(activeInteractionMode);
+              setIsTopicDialogOpen(true);
+            }}
+            type="button"
+          >
+            <Shuffle /> Mudar
+          </button>
+        </div>
       </div>
+
+      <ConversationGoalProgress progress={messageGoal} readOnly={readOnly} />
+
+      {isTeacherOpen ? (
+        <TeacherChatPanel
+          conversationId={conversation.id}
+          onClose={() => setIsTeacherOpen(false)}
+          topicTitle={activeTopicTitle}
+        />
+      ) : null}
 
       {isTopicDialogOpen ? (
         <ModalDialog
@@ -508,6 +553,31 @@ export function ChatConversation({
             <p className="row-meta" id="change-topic-description">O histórico será preservado. A IA passa a conduzir a conversa pelo novo tema a partir da próxima mensagem.</p>
             <label className="field-label" htmlFor="next-topic">Novo tema</label>
             <input data-autofocus className="field-input" id="next-topic" onChange={(event) => setNextTopicTitle(event.target.value)} placeholder="Ex.: entrevista de emprego" value={nextTopicTitle} />
+            <div className="field-label">Como você quer praticar o novo tema?</div>
+            <div className="interaction-choice-grid">
+              {(["conversation", "simulation"] as const).map((mode) => {
+                const selected = nextInteractionMode === mode;
+                return (
+                  <button
+                    aria-checked={selected}
+                    className={`interaction-choice${selected ? " selected" : ""}`}
+                    key={mode}
+                    onClick={() => setNextInteractionMode(mode)}
+                    role="radio"
+                    tabIndex={selected ? 0 : -1}
+                    type="button"
+                  >
+                    {mode === "conversation" ? <MessageCircle aria-hidden="true" /> : <Users aria-hidden="true" />}
+                    <span className="interaction-choice-title">{mode === "conversation" ? "Conversa" : "Simulação"}</span>
+                    <span className="interaction-choice-help">
+                      {mode === "conversation"
+                        ? "A IA conversa com você sobre o tema."
+                        : "A IA assume um papel da situação e você vive a cena."}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
             <div className="modal-actions">
               <button className="outline-button" disabled={isSending} onClick={() => setIsTopicDialogOpen(false)} type="button">Cancelar</button>
               <button className="green-button" disabled={isSending || !nextTopicTitle.trim()} onClick={changeTopic} type="button">
@@ -760,6 +830,7 @@ function createOptimisticUserMessage(
       transcript_text: text,
       language_detected: languageCode ?? "",
       tokens_used: 0,
+      channel: "practice",
       created_at: new Date().toISOString()
     }
   };

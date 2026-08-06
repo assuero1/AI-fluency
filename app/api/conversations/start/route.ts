@@ -10,7 +10,9 @@ export async function POST(request: Request) {
       title: typeof body.title === "string" ? body.title : undefined,
       mode: typeof body.mode === "string" ? body.mode : undefined,
       source: typeof body.source === "string" ? body.source : undefined,
-      reason: typeof body.reason === "string" ? body.reason : undefined
+      reason: typeof body.reason === "string" ? body.reason : undefined,
+      interactionMode: body.interactionMode,
+      targetUserMessageCount: body.targetUserMessageCount
     });
 
     after(() => flushConversationEventWrites());

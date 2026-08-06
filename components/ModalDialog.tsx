@@ -6,6 +6,7 @@ import { createPortal } from "react-dom";
 type ModalDialogProps = {
   busy?: boolean;
   children: ReactNode;
+  className?: string;
   descriptionId?: string;
   onClose: () => void;
   titleId: string;
@@ -20,7 +21,7 @@ const focusableSelector = [
   '[tabindex]:not([tabindex="-1"])'
 ].join(",");
 
-export function ModalDialog({ busy = false, children, descriptionId, onClose, titleId }: ModalDialogProps) {
+export function ModalDialog({ busy = false, children, className, descriptionId, onClose, titleId }: ModalDialogProps) {
   const dialogRef = useRef<HTMLElement | null>(null);
   const closeRef = useRef(onClose);
   const busyRef = useRef(busy);
@@ -88,7 +89,7 @@ export function ModalDialog({ busy = false, children, descriptionId, onClose, ti
         aria-describedby={descriptionId}
         aria-labelledby={titleId}
         aria-modal="true"
-        className="confirmation-modal"
+        className={["confirmation-modal", className].filter(Boolean).join(" ")}
         ref={dialogRef}
         role="dialog"
         tabIndex={-1}
