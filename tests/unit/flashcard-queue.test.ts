@@ -1,15 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { advanceFlashcardQueue, createFlashcardQueue, rebuildFlashcardQueue, selectNextQueueItem, suggestRecallRating } from "../../lib/learning/flashcard-queue";
+import { advanceFlashcardQueue, createFlashcardQueue, inferRecallRating, rebuildFlashcardQueue, resolveBinaryRating, selectNextQueueItem } from "../../lib/learning/flashcard-queue";
 import type { Flashcard } from "../../lib/learning/flashcard-contracts";
 
 const cards = ["a", "b", "c", "d", "e", "f"].map((id) => ({ id } as Flashcard));
 
 describe("flashcard pedagogical queue", () => {
-  it("suggests ratings from match and response time", () => {
-    expect(suggestRecallRating({ match: "incorrect", forgot: false, responseTimeMs: 1000, cardType: "native_to_target" })).toBe("forgot");
-    expect(suggestRecallRating({ match: "minor_error", forgot: false, responseTimeMs: 1000, cardType: "native_to_target" })).toBe("hard");
-    expect(suggestRecallRating({ match: "exact", forgot: false, responseTimeMs: 3000, cardType: "native_to_target" })).toBe("easy");
-    expect(suggestRecallRating({ match: "exact", forgot: false, responseTimeMs: 9000, cardType: "native_to_target" })).toBe("good");
+  it("infers ratings from match and response time", () => {
+    expect(inferRecallRating({ match: "incorrect", forgot: false, responseTimeMs: 1000, cardType: "native_to_target" })).toBe("forgot");
+    expect(inferRecallRating({ match: "minor_error", forgot: false, responseTimeMs: 1000, cardType: "native_to_target" })).toBe("hard");
+    expect(inferRecallRating({ match: "exact", forgot: false, responseTimeMs: 3000, cardType: "native_to_target" })).toBe("easy");
+    expect(inferRecallRating({ match: "exact", forgot: false, responseTimeMs: 9000, cardType: "native_to_target" })).toBe("good");
+  });
+
+  it("resolves the binary choice into a 4-value rating", () => {
+    const base = { responseTimeMs: 1000, cardType: "native_to_target" } as const;
+    expect(resolveBinaryRating({ ...base, remembered: false, match: "exact", forgot: false })).toBe("forgot");
+    expect(resolveBinaryRating({ ...base, remembered: true, match: "incorrect", forgot: false })).toBe("hard");
+    expect(resolveBinaryRating({ ...base, remembered: true, match: "incorrect", forgot: true })).toBe("hard");
+    expect(resolveBinaryRating({ ...base, remembered: true, match: "minor_error", forgot: false })).toBe("hard");
+    expect(resolveBinaryRating({ ...base, remembered: true, match: "exact", forgot: false })).toBe("easy");
+    expect(resolveBinaryRating({ ...base, remembered: true, match: "exact", forgot: false, responseTimeMs: 9000 })).toBe("good");
   });
 
   it("returns forgotten cards after three other presentations", () => {

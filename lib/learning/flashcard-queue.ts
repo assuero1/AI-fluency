@@ -4,11 +4,19 @@ export function createFlashcardQueue(cards: Flashcard[]): QueueItem[] {
   return cards.map((card) => ({ cardId: card.id, presentationNumber: 1, dueAfterIndex: 0 }));
 }
 
-export function suggestRecallRating(input: { match: AnswerMatch; forgot: boolean; responseTimeMs: number; cardType: Flashcard["type"] }): RecallRating {
+export function inferRecallRating(input: { match: AnswerMatch; forgot: boolean; responseTimeMs: number; cardType: Flashcard["type"] }): RecallRating {
   if (input.forgot || input.match === "incorrect") return "forgot";
   if (input.match === "minor_error" || input.match === "unknown") return "hard";
   const fastThreshold = input.cardType === "cloze" ? 10_000 : 6_000;
   return input.responseTimeMs > 0 && input.responseTimeMs <= fastThreshold ? "easy" : "good";
+}
+
+// Binary UI: the user only says "remembered" or not; the 4-value rating is inferred.
+// A wrong/forgotten answer the user claims to know counts as "hard" (typed slip), never good/easy.
+export function resolveBinaryRating(input: { remembered: boolean; match: AnswerMatch; forgot: boolean; responseTimeMs: number; cardType: Flashcard["type"] }): RecallRating {
+  if (!input.remembered) return "forgot";
+  if (input.forgot || input.match === "incorrect") return "hard";
+  return inferRecallRating(input);
 }
 
 export function advanceFlashcardQueue(queue: QueueItem[], current: QueueItem, rating: RecallRating, completedPresentationCount: number): QueueItem[] {

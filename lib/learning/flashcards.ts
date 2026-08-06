@@ -9,7 +9,7 @@ import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUse
 import { matchesLearningScope } from "./scope";
 import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, summarizeDailyQueue } from "./daily-queue";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
-import { isRatingCorrect, rebuildFlashcardQueue, suggestRecallRating } from "./flashcard-queue";
+import { isRatingCorrect, rebuildFlashcardQueue, inferRecallRating } from "./flashcard-queue";
 import { calculateAdaptiveReview, previewReviewIntervals, reviewToWordFields, type ReviewAttempt } from "./spaced-repetition";
 import { chooseCardTypes, countPlannedTypes, type CardTypeFlags } from "./flashcard-type-selection";
 import {
@@ -485,8 +485,8 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
   if (!forgot && !userAnswer) throw new LearningStateError("Informe uma resposta ou marque que não lembra.", 422);
   const matchResult = forgot ? "incorrect" as const : compareAnswerForCard(card, userAnswer);
   const responseTimeMs = Math.max(0, Math.min(300_000, Math.round(Number(input.responseTimeMs) || 0)));
-  const suggestedRating = suggestRecallRating({ match: matchResult, forgot, responseTimeMs, cardType: card.type });
-  const rating = isRecallRating(input.rating) ? input.rating : suggestedRating;
+  const inferredRating = inferRecallRating({ match: matchResult, forgot, responseTimeMs, cardType: card.type });
+  const rating = isRecallRating(input.rating) ? input.rating : inferredRating;
   const now = new Date().toISOString();
   const record = await client.createRecord<FlashcardAttemptFields>("flashcardAttempts", {
     practice_session_id: sessionId,
@@ -497,7 +497,7 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
     user_answer: userAnswer,
     normalized_answer: normalizeFlashcardAnswer(userAnswer),
     match_result: matchResult,
-    suggested_rating: suggestedRating,
+    suggested_rating: inferredRating,
     final_rating: rating,
     was_correct: isRatingCorrect(rating),
     response_time_ms: responseTimeMs,

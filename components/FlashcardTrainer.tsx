@@ -4,7 +4,7 @@ import { ArrowLeft, Brain, Check, Clock3, Layers3, Loader2, Mic, MicOff, RotateC
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { compareAnswerForCard } from "@/lib/learning/flashcard-answer";
-import { advanceFlashcardQueue, createFlashcardQueue, selectNextQueueItem, suggestRecallRating } from "@/lib/learning/flashcard-queue";
+import { advanceFlashcardQueue, createFlashcardQueue, selectNextQueueItem, inferRecallRating } from "@/lib/learning/flashcard-queue";
 import type { AnswerMatch, DailyQueueSummary, Flashcard, FlashcardAnswer, FlashcardCriterion, FlashcardPracticeResult, FlashcardQueueKind, QueueItem, RecallRating } from "@/lib/learning/flashcard-contracts";
 import { Pill } from "./Pill";
 import { VoiceButton } from "./VoiceButton";
@@ -114,7 +114,7 @@ export function FlashcardTrainer() {
     const match = forgot ? "incorrect" : compareAnswerForCard(card, input);
     const responseTimeMs = Math.max(0, Date.now() - presentationStartedAt);
     setListening(false);
-    setRevealed({ match, forgot, responseTimeMs, suggestedRating: suggestRecallRating({ match, forgot, responseTimeMs, cardType: card.type }) });
+    setRevealed({ match, forgot, responseTimeMs, suggestedRating: inferRecallRating({ match, forgot, responseTimeMs, cardType: card.type }) });
   }
 
   async function grade(rating: RecallRating) {
