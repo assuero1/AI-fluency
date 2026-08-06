@@ -13,7 +13,7 @@ import { Pill } from "./Pill";
 import { TranslationButton } from "./TranslationButton";
 import { ScreenHeader } from "./ScreenHeader";
 import { TeacherChatPanel } from "./TeacherChatPanel";
-import { MessageAudioPlayer } from "./MessageAudioPlayer";
+import { MessageWordPlayer } from "./MessageWordPlayer";
 import { VoiceButton } from "./VoiceButton";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields } from "@/lib/learning/conversations";
 import type { SelectionExplanation } from "@/lib/learning/selection-explanation";
@@ -638,7 +638,7 @@ export function ChatConversation({
               <IconBubble Icon={Bot} />
               <div className="bubble ai">
                 {audioEnabled ? (
-                  <MessageAudioPlayer
+                  <MessageWordPlayer
                     languageCode={speechLanguage}
                     preload={!readOnly && message.id === latestAssistantMessageId}
                     showTranscript={transcriptEnabled}
