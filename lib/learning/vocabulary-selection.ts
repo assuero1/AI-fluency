@@ -460,6 +460,15 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
     );
     let createdWord = false;
     if (!word) {
+      // A word without a translation is worse than no word: the Palavras tab
+      // would show a permanent placeholder. The candidate stays available in
+      // future conversations, when the AI analysis may succeed.
+      if (!family.translation) {
+        console.error(
+          `Skipping new vocabulary word without translation (conversation ${conversationId}): "${family.lemma}" (${familyCandidates.length} candidate(s)).`
+        );
+        continue;
+      }
       const fields: WordFields = {
         Name: family.lemma,
         user_id: scope.userId,

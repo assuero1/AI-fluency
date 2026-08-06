@@ -291,6 +291,53 @@ describe("vocabulary candidate selection", () => {
     });
   });
 
+  describe("translation requirement", () => {
+    it("does not create a new word when no translation could be generated", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      createChatCompletion.mockResolvedValue({ content: "[]", tokensUsed: 1 });
+      messages = [buildMessage("m-solar", "user", "Solar panels")];
+      const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+
+      const result = await saveSelectedVocabulary("conversation-no-translation", ["user:solar"]);
+
+      expect(result.newWordCount).toBe(0);
+      expect(words).toHaveLength(0);
+      expect(createRecord.mock.calls.filter(([table]) => table === "words")).toHaveLength(0);
+      expect(error).toHaveBeenCalled();
+    });
+
+    it("fills the translation of an existing word that was saved without one", async () => {
+      words.push({
+        id: "word-1",
+        fields: {
+          user_id: "user-1",
+          language_profile_id: "profile-1",
+          lemma: "solar",
+          display_text: "solar",
+          canonical_key: JSON.stringify(["user-1", "profile-1", "solar"]),
+          forms_json: "[]",
+          translation: "",
+          part_of_speech: "",
+          total_uses: 1,
+          last_used_at: "2026-07-01T10:00:00.000Z",
+          first_used_at: "2026-07-01T10:00:00.000Z"
+        }
+      });
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([{ id: "user:solar", lemma: "solar", translation: "solar", part_of_speech: "adjective" }]),
+        tokensUsed: 1
+      });
+      messages = [buildMessage("m-solar-2", "user", "Solar panels")];
+      const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+
+      const result = await saveSelectedVocabulary("conversation-fill-translation", ["user:solar"]);
+
+      expect(result.newWordCount).toBe(0);
+      expect(result.updatedWordCount).toBe(1);
+      expect(words[0].fields.translation).toBe("solar");
+    });
+  });
+
   describe("shared analysis cache", () => {
     it("reuses the picker analysis when saving so lemmas cannot diverge", async () => {
       profile = { id: "profile-1", fields: { language_code: "en" } };
@@ -389,6 +436,10 @@ describe("vocabulary candidate selection", () => {
     it("still resolves the save when the daily feedback bump fails", async () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
       addSavedWordsToDailyFeedback.mockRejectedValue(new Error("teable down"));
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([{ id: "user:solar", lemma: "solar", translation: "solar", part_of_speech: "adjective" }]),
+        tokensUsed: 1
+      });
       messages = [buildMessage("m-solar", "user", "Solar panels")];
       const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
 

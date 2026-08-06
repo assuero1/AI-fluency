@@ -152,6 +152,10 @@ describe("vocabulary integrity", () => {
   });
 
   it("increments by each missing occurrence and is idempotent on retries", async () => {
+    createChatCompletion.mockResolvedValue({
+      content: JSON.stringify([{ id: "user:work", lemma: "work", translation: "trabalhar" }]),
+      tokensUsed: 1
+    });
     const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
 
     const first = await saveSelectedVocabulary("conversation-1", ["user:work"]);
@@ -181,6 +185,13 @@ describe("vocabulary integrity", () => {
   });
 
   it("records assistant vocabulary without counting it as learner usage", async () => {
+    createChatCompletion.mockResolvedValue({
+      content: JSON.stringify([
+        { id: "user:work", lemma: "work", translation: "trabalhar" },
+        { id: "assistant:work", lemma: "work", translation: "trabalhar" }
+      ]),
+      tokensUsed: 1
+    });
     const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
 
     const result = await saveSelectedVocabulary("conversation-1", ["user:work", "assistant:work"]);
@@ -224,6 +235,10 @@ describe("vocabulary integrity", () => {
 
   it("rejects corrected occurrences on the server even when their id is submitted", async () => {
     corrections = [{ id: "correction-1", fields: { conversation_id: "conversation-1", message_id: "message-user-1", original_text: "Work", corrected_text: "Worked" } }];
+    createChatCompletion.mockResolvedValue({
+      content: JSON.stringify([{ id: "user:work", lemma: "work", translation: "trabalhar" }]),
+      tokensUsed: 1
+    });
     const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
 
     const result = await saveSelectedVocabulary("conversation-1", ["user:work"]);
