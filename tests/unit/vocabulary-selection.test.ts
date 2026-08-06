@@ -211,11 +211,11 @@ describe("vocabulary candidate selection", () => {
       await groupNewVocabularyCandidates(candidates, [], "en");
 
       expect(createChatCompletion).toHaveBeenCalledTimes(3);
-      expect(createChatCompletion.mock.calls[0][1]).toMatchObject({ maxTokens: 600 });
+      expect(createChatCompletion.mock.calls[0][1]).toMatchObject({ maxTokens: 2_000, timeoutMs: 15_000 });
     });
 
-    it("warns and falls back when a chunk fails instead of swallowing the error", async () => {
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    it("logs an error and falls back when a chunk fails instead of swallowing it", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
       createChatCompletion
         .mockRejectedValueOnce(new Error("timeout"))
         .mockResolvedValueOnce({ content: "[]", tokensUsed: 1 });
@@ -224,19 +224,19 @@ describe("vocabulary candidate selection", () => {
 
       const groups = await groupNewVocabularyCandidates(candidates, [], "en");
 
-      expect(warn).toHaveBeenCalled();
+      expect(error).toHaveBeenCalled();
       expect(groups.length).toBeGreaterThan(0);
       expect(groups.every((group) => group.lemma.startsWith("working"))).toBe(true);
     });
 
-    it("warns when the chunk response is not parseable JSON", async () => {
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    it("logs an error when the chunk response is not parseable JSON", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
       createChatCompletion.mockResolvedValue({ content: "[{not json]", tokensUsed: 1 });
       const { groupNewVocabularyCandidates } = await import("../../lib/learning/vocabulary-selection");
 
       await groupNewVocabularyCandidates([buildCandidate("user:working", "user", 1)], [], "en");
 
-      expect(warn).toHaveBeenCalled();
+      expect(error).toHaveBeenCalled();
     });
   });
 

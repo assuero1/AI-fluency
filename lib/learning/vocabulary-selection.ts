@@ -663,10 +663,10 @@ async function analyzeVocabularyChunk(chunk: VocabularyCandidate[], language: st
         content: "Analise vocabulário no idioma informado. Responda somente JSON válido: um array com objetos {id, lemma, translation, part_of_speech}. Preserve cada id exatamente, agrupe flexões usando o mesmo lemma canônico de dicionário, traduza brevemente para português brasileiro e informe a classe gramatical no idioma alvo."
       },
       { role: "user", content: `Idioma: ${language}\nItens: ${JSON.stringify(chunk.map((candidate) => ({ id: candidate.id, text: candidate.text, context: candidate.context })))}` }
-    ], { temperature: 0, maxTokens: 600, timeoutMs: 4_500 });
+    ], { temperature: 0, maxTokens: 2_000, timeoutMs: 15_000 });
     content = response.content;
   } catch (error) {
-    console.warn(`Vocabulary analysis failed for ${chunk.length} candidate(s); keeping fallback lemmas.`, error);
+    console.error(`Vocabulary analysis failed for ${chunk.length} candidate(s) in ${language}; keeping fallback lemmas.`, error);
     return {} as Record<string, VocabularyLinguisticData>;
   }
   try {
@@ -689,7 +689,7 @@ async function analyzeVocabularyChunk(chunk: VocabularyCandidate[], language: st
     }
     return result;
   } catch (error) {
-    console.warn("Vocabulary analysis response could not be parsed; keeping fallback lemmas.", error);
+    console.error(`Vocabulary analysis response could not be parsed for ${chunk.length} candidate(s) in ${language}; keeping fallback lemmas.`, error);
     return {} as Record<string, VocabularyLinguisticData>;
   }
 }
