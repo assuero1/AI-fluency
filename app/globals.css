@@ -1098,6 +1098,35 @@ a {
   white-space: nowrap;
 }
 
+.chat-teacher-fab {
+  position: fixed;
+  top: 50%;
+  left: max(14px, calc((100vw - min(100vw, 430px)) / 2 + 14px));
+  transform: translateY(-50%);
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: var(--chat);
+  color: #fff;
+  box-shadow: 0 4px 0 var(--chat-deep), 0 12px 26px rgba(20, 143, 214, 0.35);
+  cursor: pointer;
+}
+
+.chat-teacher-fab:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.chat-teacher-fab:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--chat) 45%, transparent);
+  outline-offset: 3px;
+}
+
 .teacher-chat-modal {
   width: 100%;
   height: 92svh;
@@ -1214,44 +1243,6 @@ a {
   margin-left: auto;
   max-width: calc(100% - 38px);
   background: var(--neutral-soft);
-}
-
-.teacher-composer {
-  flex: 0 0 auto;
-  grid-template-columns: minmax(0, 1fr) 52px;
-  gap: 10px;
-  align-items: end;
-  min-height: 0;
-  padding: 10px 10px 10px 14px;
-  border-radius: 22px;
-  background: #fff;
-}
-
-.teacher-composer .composer-input {
-  min-height: 48px;
-  padding: 11px 0;
-  font-size: 17px;
-  line-height: 1.4;
-}
-
-.teacher-composer .composer-input::placeholder {
-  color: var(--muted);
-}
-
-.teacher-composer .send-button {
-  width: 52px;
-  height: 52px;
-  border-radius: 18px;
-  background: var(--chat);
-  color: #fff;
-  box-shadow: 0 3px 0 var(--chat-deep);
-}
-
-.teacher-composer .send-button:disabled {
-  background: var(--line-deep);
-  color: #fff;
-  box-shadow: none;
-  opacity: 1;
 }
 
 .topic-pill {
@@ -1615,6 +1606,47 @@ a {
 .send-button:disabled {
   cursor: not-allowed;
   opacity: 0.45;
+}
+
+/* Composer do professor: input largo + botão de enviar flutuante à esquerda.
+   Vem depois de .composer de propósito: a grade de 3 colunas (com microfone)
+   não se aplica aqui. */
+.teacher-composer {
+  flex: 0 0 auto;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 10px;
+  align-items: end;
+  min-height: 0;
+  padding: 10px 10px 10px 12px;
+  border-radius: 22px;
+  background: #fff;
+}
+
+.teacher-composer .composer-input {
+  min-height: 48px;
+  padding: 11px 0;
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.teacher-composer .composer-input::placeholder {
+  color: var(--muted);
+}
+
+.teacher-composer .send-button {
+  width: 52px;
+  height: 52px;
+  border-radius: 999px;
+  background: var(--chat);
+  color: #fff;
+  box-shadow: 0 3px 0 var(--chat-deep);
+}
+
+.teacher-composer .send-button:disabled {
+  background: var(--line-deep);
+  color: #fff;
+  box-shadow: none;
+  opacity: 1;
 }
 
 .voice-icon-button {

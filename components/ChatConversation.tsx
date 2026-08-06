@@ -509,15 +509,6 @@ export function ChatConversation({
         </div>
         <div className="chat-topic-actions">
           <button
-            aria-haspopup="dialog"
-            className="outline-button"
-            disabled={isSending}
-            onClick={() => setIsTeacherOpen(true)}
-            type="button"
-          >
-            <GraduationCap /> Chamar professor
-          </button>
-          <button
             className="outline-button"
             disabled={readOnly || isSending}
             onClick={() => {
@@ -530,6 +521,18 @@ export function ChatConversation({
           </button>
         </div>
       </div>
+
+      <button
+        aria-haspopup="dialog"
+        aria-label="Chamar professor"
+        className="chat-teacher-fab"
+        disabled={isSending}
+        onClick={() => setIsTeacherOpen(true)}
+        title="Chamar professor"
+        type="button"
+      >
+        <GraduationCap size={26} aria-hidden="true" />
+      </button>
 
       {isTeacherOpen ? (
         <TeacherChatPanel
