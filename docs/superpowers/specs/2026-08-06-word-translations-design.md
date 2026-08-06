@@ -58,6 +58,9 @@ Nova função interna `translateMissingTranslations(analyses, candidates, langua
   Preserve cada id exatamente." e usuário com idioma + itens
   `{id, text, context}` (mesmo shape da análise principal).
 - Parâmetros: `temperature: 0`, `maxTokens: 800`, `timeoutMs: 15_000`.
+- O loop aborta após **2 falhas consecutivas** de lote (com `console.error`),
+  para não ficar minutos tentando contra um provedor fora do ar; o contador
+  zera a cada lote bem-sucedido.
 - As traduções obtidas são mescladas no resultado (sem sobrescrever lemma nem
   partOfSpeech já obtidos).
 - Chamada dentro de `analyzeConversationVocabulary`, **depois** de mesclar
@@ -103,13 +106,20 @@ para apontar outro arquivo (ex.: `.env.qa.local`).
 4. **`--apply`**: exige `--backup <arquivo>`; grava primeiro um JSON com todos
    os registros afetados (id + fields completos), no formato dos backups em
    `backups/`.
-5. Traduz em **lotes de 20** com o mesmo prompt da análise de vocabulário
-   (sistema pedindo `[{id, translation}]` em pt-BR; usuário com
-   `{id, text: display_text || lemma}` — a tabela `words` não guarda frase de
-   exemplo), via chat completions usando `AI_BASE_URL`, `AI_API_KEY` e
-   `AI_CHAT_MODEL` do env (`temperature: 0`, `maxTokens: 2_000`, timeout de 15s).
+5. Traduz em **lotes de 20**, agrupados por idioma: o script lista a tabela
+   `TEABLE_LANGUAGE_PROFILES_TABLE_ID` (mesma paginação), resolve
+   `fields.language_profile_id` → `language_code` e separa os lotes para que
+   cada chamada à IA seja de um idioma só. Prompt igual ao da análise de
+   vocabulário (sistema pedindo `[{id, translation}]` em pt-BR; usuário com
+   `Idioma: <code>\nItens: [{id, text: display_text || lemma}]` — a tabela
+   `words` não guarda frase de exemplo; sem idioma conhecido, o prefixo
+   `Idioma:` é omitido), via chat completions usando `AI_BASE_URL`,
+   `AI_API_KEY` e `AI_CHAT_MODEL` do env (`temperature: 0`, `maxTokens: 2_000`,
+   timeout de 15s).
 6. Para lotes que falharem ou deixarem palavras sem tradução, fallback em
-   **lotes de 5** (mesmo prompt da Seção 1.2).
+   **lotes de 5** (mesmo prompt da Seção 1.2, incluindo o prefixo `Idioma:`),
+   abortando após 2 falhas consecutivas para não ficar minutos contra um
+   provedor fora do ar.
 7. PATCH de cada registro traduzido:
    `PATCH /table/{tableId}/record/{recordId}?fieldKeyType=name` com
    `{ fields: { translation } }`.
@@ -121,7 +131,9 @@ para apontar outro arquivo (ex.: `.env.qa.local`).
 
 - Sem `--backup` junto de `--apply` → erro e saída.
 - Falha de IA em uma palavra mesmo após o fallback → ela fica de fora do PATCH
-  e aparece no relatório; o script não aborta o lote seguinte.
+  e aparece no relatório; o script não aborta o lote seguinte — exceto no
+  fallback, que para após 2 falhas consecutivas de lote (provedor fora do ar
+  não se recupera no meio do loop).
 - Falha de escrita no Teable em um registro → loga e continua; o relatório
   separa "traduzidas" de "escritas com sucesso".
 

@@ -37,6 +37,7 @@ export function parseTranslationItems(content, allowedIds) {
 
 async function translateBatch(env, batch) {
   const baseUrl = required(env, "AI_BASE_URL").replace(/\/+$/, "");
+  const language = String(batch[0]?.language ?? "").trim();
   const response = await fetch(`${baseUrl}/chat/completions`, {
     method: "POST",
     headers: {
@@ -50,7 +51,7 @@ async function translateBatch(env, batch) {
           role: "system",
           content: "Traduza cada item para português brasileiro. Responda somente JSON válido: um array com objetos {id, translation}. Preserve cada id exatamente."
         },
-        { role: "user", content: `Itens: ${JSON.stringify(batch.map((item) => ({ id: item.id, text: item.text })))}` }
+        { role: "user", content: `${language ? `Idioma: ${language}\n` : ""}Itens: ${JSON.stringify(batch.map((item) => ({ id: item.id, text: item.text })))}` }
       ],
       temperature: 0,
       max_tokens: 2_000
@@ -63,26 +64,51 @@ async function translateBatch(env, batch) {
   return parseTranslationItems(content, new Set(batch.map((item) => item.id)));
 }
 
-export async function translateWords(env, words, translate = translateBatch) {
+function groupByLanguage(items) {
+  const groups = new Map();
+  for (const item of items) {
+    const key = item.language || "";
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(item);
+  }
+  return [...groups.values()];
+}
+
+export async function translateWords(env, words, translate = translateBatch, languageByProfileId = {}) {
   const translations = {};
   const items = words.map((record) => ({
     id: record.id,
-    text: String(record.fields?.display_text || record.fields?.lemma || record.fields?.Name || record.id)
+    text: String(record.fields?.display_text || record.fields?.lemma || record.fields?.Name || record.id),
+    language: String(languageByProfileId[record.fields?.language_profile_id] ?? "")
   }));
-  for (const batch of chunkItems(items, TRANSLATION_BATCH_SIZE)) {
-    try {
-      Object.assign(translations, await translate(env, batch));
-    } catch (error) {
-      console.error(`Translation batch failed for ${batch.length} word(s).`, error);
+  for (const group of groupByLanguage(items)) {
+    for (const batch of chunkItems(group, TRANSLATION_BATCH_SIZE)) {
+      try {
+        Object.assign(translations, await translate(env, batch));
+      } catch (error) {
+        console.error(`Translation batch failed for ${batch.length} word(s).`, error);
+      }
     }
   }
   const missing = items.filter((item) => !translations[item.id]);
-  for (const batch of chunkItems(missing, TRANSLATION_FALLBACK_BATCH_SIZE)) {
-    try {
-      Object.assign(translations, await translate(env, batch));
-    } catch (error) {
-      console.error(`Translation fallback batch failed for ${batch.length} word(s).`, error);
+  let consecutiveFailures = 0;
+  let aborted = false;
+  for (const group of groupByLanguage(missing)) {
+    for (const batch of chunkItems(group, TRANSLATION_FALLBACK_BATCH_SIZE)) {
+      try {
+        Object.assign(translations, await translate(env, batch));
+        consecutiveFailures = 0;
+      } catch (error) {
+        consecutiveFailures += 1;
+        console.error(`Translation fallback batch failed for ${batch.length} word(s).`, error);
+        if (consecutiveFailures >= 2) {
+          console.error("Aborting remaining fallback batches after consecutive failures.");
+          aborted = true;
+          break;
+        }
+      }
     }
+    if (aborted) break;
   }
   return translations;
 }
@@ -101,6 +127,17 @@ async function main() {
     records.push(...page);
     if (page.length < 1000) break;
   }
+  const languageByProfileId = {};
+  const profilesTableId = env.TEABLE_LANGUAGE_PROFILES_TABLE_ID?.trim();
+  if (profilesTableId) {
+    for (let skip = 0; ; skip += 1000) {
+      const page = recordsFrom(await teableRequest(env, `/api/table/${profilesTableId}/record?take=1000&skip=${skip}&fieldKeyType=name`));
+      for (const profile of page) languageByProfileId[profile.id] = String(profile.fields?.language_code ?? "");
+      if (page.length < 1000) break;
+    }
+  } else {
+    console.error("TEABLE_LANGUAGE_PROFILES_TABLE_ID is not set; translation prompts will be sent without language context.");
+  }
   const missing = wordsMissingTranslation(records);
 
   if (!apply) {
@@ -116,7 +153,7 @@ async function main() {
   fs.mkdirSync(path.dirname(backupPath), { recursive: true });
   fs.writeFileSync(backupPath, `${JSON.stringify({ version: 1, createdAt: new Date().toISOString(), words: missing }, null, 2)}\n`, { mode: 0o600, flag: "wx" });
 
-  const translations = await translateWords(env, missing);
+  const translations = await translateWords(env, missing, undefined, languageByProfileId);
   let written = 0;
   const failed = [];
   for (const record of missing) {

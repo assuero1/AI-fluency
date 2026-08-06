@@ -43,4 +43,70 @@ describe("backfill-word-translations", () => {
     expect(Object.keys(translations)).toHaveLength(21);
     expect(translations.w0).toBe("tr-w0");
   });
+
+  it("sends words of different languages in separate single-language batches", async () => {
+    const words = [
+      { id: "en1", fields: { display_text: "cat", language_profile_id: "p-en" } },
+      { id: "en2", fields: { display_text: "dog", language_profile_id: "p-en" } },
+      { id: "es1", fields: { display_text: "gato", language_profile_id: "p-es" } }
+    ];
+    const translate = vi.fn(async (_env: unknown, batch: Array<{ id: string; language: string }>) =>
+      Object.fromEntries(batch.map((item) => [item.id, `tr-${item.id}`]))
+    );
+
+    const translations = await translateWords({}, words, translate, { "p-en": "en", "p-es": "es" });
+
+    expect(Object.keys(translations)).toHaveLength(3);
+    expect(translate).toHaveBeenCalledTimes(2);
+    const batchLanguages = translate.mock.calls.map((call) =>
+      (call[1] as Array<{ language: string }>).map((item) => item.language)
+    );
+    expect(batchLanguages).toEqual([["en", "en"], ["es"]]);
+  });
+
+  it("prefixes the user message with Idioma when the language is known", async () => {
+    const fetchMock = vi.fn(async (_url: unknown, init: { body: string }) => {
+      const body = JSON.parse(init.body) as { messages: Array<{ content: string }> };
+      const itemsJson = body.messages[1].content.replace(/^(Idioma: .*\n)?Itens: /, "");
+      const ids = (JSON.parse(itemsJson) as Array<{ id: string }>).map((item) => item.id);
+      return {
+        ok: true,
+        json: async () => ({
+          choices: [{ message: { content: JSON.stringify(ids.map((id) => ({ id, translation: `tr-${id}` }))) } }]
+        })
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      const env = { AI_BASE_URL: "https://ai.example", AI_API_KEY: "key", AI_CHAT_MODEL: "model" };
+      const words = [{ id: "w1", fields: { display_text: "chat", language_profile_id: "p-fr" } }];
+
+      await translateWords(env, words, undefined, { "p-fr": "fr" });
+
+      const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body) as { messages: Array<{ content: string }> };
+      expect(body.messages[1].content.startsWith("Idioma: fr\nItens: ")).toBe(true);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("aborts the fallback after 2 consecutive failures (1 primary + 2 fallback calls for 11 words)", async () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const words = Array.from({ length: 11 }, (_, index) => ({
+      id: `w${index}`,
+      fields: { display_text: `word${index}`, translation: "" }
+    }));
+    // Primary batch returns nothing; the fallback would need 3 batches of 5,
+    // but bails out after 2 consecutive failures: 1 + 2 calls total.
+    const translate = vi.fn()
+      .mockResolvedValueOnce({})
+      .mockRejectedValue(new Error("provider down"));
+
+    const translations = await translateWords({}, words, translate);
+
+    expect(translate).toHaveBeenCalledTimes(3);
+    expect(translations).toEqual({});
+    expect(error).toHaveBeenCalled();
+    error.mockRestore();
+  });
 });

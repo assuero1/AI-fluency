@@ -13,6 +13,7 @@ declare module "*.mjs" {
   export function translateWords(
     env: Record<string, string>,
     words: Array<{ id: string; fields?: Record<string, unknown> }>,
-    translate?: (env: Record<string, string>, batch: Array<{ id: string; text: string }>) => Promise<Record<string, string>>
+    translate?: (env: Record<string, string>, batch: Array<{ id: string; text: string; language: string }>) => Promise<Record<string, string>>,
+    languageByProfileId?: Record<string, string>
   ): Promise<Record<string, string>>;
 }

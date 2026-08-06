@@ -718,6 +718,9 @@ async function translateMissingTranslations(
   language: string
 ) {
   const missing = candidates.filter((candidate) => !analyses[candidate.id]?.translation);
+  // A down provider will not recover mid-loop, so stop after 2 consecutive
+  // batch failures instead of spinning through every remaining batch.
+  let consecutiveFailures = 0;
   for (let index = 0; index < missing.length; index += VOCABULARY_TRANSLATION_FALLBACK_CHUNK_SIZE) {
     const batch = missing.slice(index, index + VOCABULARY_TRANSLATION_FALLBACK_CHUNK_SIZE);
     let content: string;
@@ -730,8 +733,14 @@ async function translateMissingTranslations(
         { role: "user", content: `Idioma: ${language}\nItens: ${JSON.stringify(batch.map((candidate) => ({ id: candidate.id, text: candidate.text, context: candidate.context })))}` }
       ], { temperature: 0, maxTokens: 800, timeoutMs: 15_000 });
       content = response.content;
+      consecutiveFailures = 0;
     } catch (error) {
+      consecutiveFailures += 1;
       console.error(`Translation fallback failed for ${batch.length} candidate(s) in ${language}.`, error);
+      if (consecutiveFailures >= 2) {
+        console.error(`Aborting remaining translation fallback batches in ${language} after consecutive failures.`);
+        break;
+      }
       continue;
     }
     const allowedIds = new Set(batch.map((candidate) => candidate.id));

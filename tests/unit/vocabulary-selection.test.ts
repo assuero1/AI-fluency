@@ -289,6 +289,26 @@ describe("vocabulary candidate selection", () => {
 
       expect(createChatCompletion).toHaveBeenCalledTimes(1);
     });
+
+    it("aborts the fallback after 2 consecutive failures when the provider is down", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      const candidates = Array.from({ length: 11 }, (_, index) => buildCandidate(`user:working${index}`, "user", 1));
+      // The analysis chunk answers without translations; with 11 candidates the
+      // fallback would need 3 batches of 5, but bails out after 2 consecutive
+      // failures: 1 (analysis chunk) + 2 (fallback attempts) calls total.
+      createChatCompletion
+        .mockResolvedValueOnce({
+          content: JSON.stringify(candidates.map((candidate) => ({ id: candidate.id, lemma: candidate.normalized, translation: "" }))),
+          tokensUsed: 1
+        })
+        .mockRejectedValue(new Error("provider down"));
+      const { groupNewVocabularyCandidates } = await import("../../lib/learning/vocabulary-selection");
+
+      await groupNewVocabularyCandidates(candidates, [], "en");
+
+      expect(createChatCompletion).toHaveBeenCalledTimes(3);
+      expect(error).toHaveBeenCalled();
+    });
   });
 
   describe("translation requirement", () => {
