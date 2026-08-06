@@ -730,6 +730,11 @@ test("professor de IA fica isolado, persiste e não altera a meta", async ({ pag
   await expect(panel).toBeVisible();
   const composer = panel.getByRole("textbox", { name: "Pergunta para o professor" });
   await expect(composer).toBeFocused();
+  const composerMetrics = await panel.locator("form.composer").evaluate((form) => {
+    const input = form.querySelector<HTMLTextAreaElement>(".composer-input");
+    return { formWidth: form.getBoundingClientRect().width, inputWidth: input?.getBoundingClientRect().width ?? 0 };
+  });
+  expect(composerMetrics.inputWidth).toBeGreaterThan(composerMetrics.formWidth * 0.6);
   await expect(panel.getByText("Este chat não conta na sua meta e não altera a conversa principal.")).toBeVisible();
   await composer.fill("Como peço um café?");
   await panel.getByRole("button", { name: "Enviar pergunta ao professor" }).click();

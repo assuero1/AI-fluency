@@ -239,6 +239,9 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
           void sendQuestion();
         }}
       >
+        <button className="send-button" disabled={busy || !text.trim() || loadState.status !== "ready"} type="submit" aria-label="Enviar pergunta ao professor">
+          {busy ? <Loader2 className="spin" /> : <Send />}
+        </button>
         <textarea
           aria-label="Pergunta para o professor"
           className="composer-input"
@@ -255,9 +258,6 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
           rows={1}
           value={text}
         />
-        <button className="send-button" disabled={busy || !text.trim() || loadState.status !== "ready"} type="submit" aria-label="Enviar pergunta ao professor">
-          {busy ? <Loader2 className="spin" /> : <Send />}
-        </button>
       </form>
     </ModalDialog>
   );
