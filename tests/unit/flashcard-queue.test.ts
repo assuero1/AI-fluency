@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceFlashcardQueue, createFlashcardQueue, selectNextQueueItem, suggestRecallRating } from "../../lib/learning/flashcard-queue";
+import { advanceFlashcardQueue, createFlashcardQueue, rebuildFlashcardQueue, selectNextQueueItem, suggestRecallRating } from "../../lib/learning/flashcard-queue";
 import type { Flashcard } from "../../lib/learning/flashcard-contracts";
 
 const cards = ["a", "b", "c", "d", "e", "f"].map((id) => ({ id } as Flashcard));
@@ -33,5 +33,25 @@ describe("flashcard pedagogical queue", () => {
     const queue = createFlashcardQueue(cards.slice(0, 1));
     expect(advanceFlashcardQueue(queue, queue[0], "good", 1)).toEqual([]);
     expect(selectNextQueueItem([], 1)).toBeNull();
+  });
+
+  it("rebuilds the queue from persisted attempts for resume", () => {
+    const rebuilt = rebuildFlashcardQueue(cards.slice(0, 2), [
+      { cardId: "a", presentationNumber: 1, rating: "forgot" }
+    ]);
+    expect(rebuilt.queue).toEqual([
+      { cardId: "b", presentationNumber: 1, dueAfterIndex: 0 },
+      { cardId: "a", presentationNumber: 2, dueAfterIndex: 4 }
+    ]);
+    expect(rebuilt.currentItem).toEqual({ cardId: "b", presentationNumber: 1, dueAfterIndex: 0 });
+  });
+
+  it("rejects a persisted history that diverges from the queue order", () => {
+    expect(() => rebuildFlashcardQueue(cards.slice(0, 2), [
+      { cardId: "b", presentationNumber: 1, rating: "good" }
+    ])).toThrow("histórico da fila não corresponde");
+    expect(() => rebuildFlashcardQueue(cards.slice(0, 2), [
+      { cardId: "a", presentationNumber: 2, rating: "good" }
+    ])).toThrow("histórico da fila não corresponde");
   });
 });

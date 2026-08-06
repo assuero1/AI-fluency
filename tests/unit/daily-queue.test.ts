@@ -188,4 +188,17 @@ describe("selectDifficultWords", () => {
     ]);
     expect(selected.map((item) => item.id)).toEqual(["harder", "leech", "hard"]);
   });
+
+  it("breaks lapse ties by earliest due date and caps the selection at 30", () => {
+    const tied = selectDifficultWords([
+      word("later", { review_state: "difficult", lapse_count: 2, review_due_at: "2026-08-05T09:00:00.000Z" }),
+      word("sooner", { review_state: "difficult", lapse_count: 2, review_due_at: "2026-08-01T09:00:00.000Z" })
+    ]);
+    expect(tied.map((item) => item.id)).toEqual(["sooner", "later"]);
+
+    const many = Array.from({ length: 35 }, (_, index) =>
+      word(`d-${index}`, { review_state: "difficult", lapse_count: index }));
+    expect(selectDifficultWords(many)).toHaveLength(30);
+    expect(selectDifficultWords(many)[0].id).toBe("d-34");
+  });
 });

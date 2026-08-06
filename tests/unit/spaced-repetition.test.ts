@@ -62,6 +62,22 @@ describe("adaptive spaced repetition v2", () => {
     expect(review).toMatchObject({ reviewIntervalDays: 15, learningStep: 3, reviewStreak: 3, reviewState: "review" });
   });
 
+  it("regraduates from relearning with three quarters of the pre-lapse interval on easy", () => {
+    const review = calculateAdaptiveReview(
+      { review_interval_days: 20, review_ease: 2.3, review_streak: 0, lapse_count: 1, learning_step: 1, last_rating: "forgot", review_state: "difficult" },
+      [{ rating: "easy", responseTimeMs: 1_000 }], now
+    );
+    expect(review).toMatchObject({ reviewIntervalDays: 15, learningStep: 3, reviewEase: 2.4, reviewState: "review" });
+  });
+
+  it("floors the regraduated interval at four days", () => {
+    const review = calculateAdaptiveReview(
+      { review_interval_days: 6, review_ease: 2.3, review_streak: 0, lapse_count: 1, learning_step: 2, last_rating: "forgot", review_state: "difficult" },
+      [{ rating: "good", responseTimeMs: 3_000 }], now
+    );
+    expect(review).toMatchObject({ reviewIntervalDays: 4, learningStep: 3, reviewState: "review" });
+  });
+
   it("applies multiple attempts sequentially, crediting in-session recovery", () => {
     const recovered = calculateAdaptiveReview(
       { review_interval_days: 30, review_streak: 5, lapse_count: 0, review_state: "review" },
