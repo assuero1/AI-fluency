@@ -82,10 +82,10 @@ export function requestCaptionedSpeech(text: string, languageCode: string | unde
   return request;
 }
 
-export function reportDeviceFallback(text: string, languageCode: string | undefined) {
+export function reportDeviceFallback(text: string, languageCode: string | undefined, reason?: string) {
   const body = JSON.stringify({
     event_name: "voice_device_fallback",
-    payload: { language: languageCode ?? "", textLength: text.length }
+    payload: { language: languageCode ?? "", textLength: text.length, reason: reason ?? "" }
   });
   if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
     navigator.sendBeacon("/api/events", new Blob([body], { type: "application/json" }));
@@ -105,8 +105,16 @@ export function playDeviceSpeech(text: string, languageCode: string | undefined,
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = languageCode || "en";
   utterance.rate = rate;
-  utterance.onend = onEnd;
-  utterance.onerror = onEnd;
+  // iOS dispara onend E onerror ("interrupted") para a mesma utterance quando o
+  // próximo speak cancela a fila — sem o guard cada frase encadeava duas vezes.
+  let finished = false;
+  const finish = () => {
+    if (finished) return;
+    finished = true;
+    onEnd();
+  };
+  utterance.onend = finish;
+  utterance.onerror = finish;
   window.speechSynthesis.speak(utterance);
   return utterance;
 }

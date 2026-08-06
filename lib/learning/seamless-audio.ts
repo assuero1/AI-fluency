@@ -1,138 +1,104 @@
 /**
  * Monta uma única faixa de áudio contínua a partir de várias URLs: baixa e
- * decodifica tudo em paralelo e concatena num só AudioBuffer (Web Audio API).
- * Assim uma mensagem toca como um áudio único, sem gap audível na transição
- * entre as partes (segmentos ou frases).
+ * decodifica tudo em paralelo, concatena as amostras e reempacota como um só
+ * WAV (blob URL). Assim a mensagem toca num único <audio> — sem gap entre as
+ * partes — usando o elemento de mídia nativo, que não depende de gesto do
+ * usuário nem de rota de áudio (diferente de AudioContext, problemático no
+ * iOS quando o play acontece depois de awaits de rede).
  */
 
 export type SeamlessTrack = {
-  context: AudioContext;
-  buffer: AudioBuffer;
-  /** Posição inicial (segundos) de cada parte dentro do buffer concatenado. */
+  /** Blob URL de um WAV contínuo com todas as partes. */
+  audioUrl: string;
+  /** Posição inicial (segundos) de cada parte dentro da faixa concatenada. */
   partOffsets: number[];
+  duration: number;
+  dispose: () => void;
 };
 
 export async function buildSeamlessTrack(urls: string[]): Promise<SeamlessTrack> {
   if (urls.length === 0) throw new Error("No audio parts.");
-  const AudioContextCtor =
-    window.AudioContext ??
-    (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-  if (!AudioContextCtor) throw new Error("Web Audio API unavailable.");
+  const DecodeContext =
+    window.OfflineAudioContext ??
+    (window as { webkitOfflineAudioContext?: typeof OfflineAudioContext }).webkitOfflineAudioContext;
+  if (!DecodeContext) throw new Error("Web Audio API unavailable.");
 
-  const context = new AudioContextCtor();
-  try {
-    const buffers = await Promise.all(urls.map(async (url) => {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`Audio fetch failed: ${response.status}`);
-      const raw = await response.arrayBuffer();
-      // decodeAudioData converte tudo para o sampleRate do contexto,
-      // então as partes podem ser concatenadas frame a frame.
-      return context.decodeAudioData(raw);
-    }));
+  // decodeAudioData vive em BaseAudioContext: o contexto offline decodifica
+  // sem precisar de gesto nem de AudioContext "running".
+  const decodeContext = new DecodeContext(1, 1, 44100);
+  const buffers = await Promise.all(urls.map(async (url) => {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Audio fetch failed: ${response.status}`);
+    const raw = await response.arrayBuffer();
+    return decodeContext.decodeAudioData(raw);
+  }));
 
-    const partOffsets: number[] = [];
-    let totalLength = 0;
-    buffers.forEach((part) => {
-      partOffsets.push(totalLength / context.sampleRate);
-      totalLength += part.length;
-    });
+  const sampleRate = buffers[0]?.sampleRate ?? 44100;
+  const partOffsets: number[] = [];
+  let totalLength = 0;
+  buffers.forEach((part) => {
+    partOffsets.push(totalLength / part.sampleRate);
+    totalLength += part.length;
+  });
 
-    const channels = Math.max(...buffers.map((part) => part.numberOfChannels));
-    const merged = context.createBuffer(channels, totalLength, context.sampleRate);
-    let writeOffset = 0;
-    buffers.forEach((part) => {
-      for (let channel = 0; channel < channels; channel += 1) {
-        const source = part.getChannelData(Math.min(channel, part.numberOfChannels - 1));
-        merged.getChannelData(channel).set(source, writeOffset);
-      }
-      writeOffset += part.length;
-    });
-
-    return { context, buffer: merged, partOffsets };
-  } catch (error) {
-    void context.close();
-    throw error;
+  const channelCount = Math.max(...buffers.map((part) => part.numberOfChannels));
+  const merged: Float32Array[] = [];
+  for (let channel = 0; channel < channelCount; channel += 1) {
+    merged.push(new Float32Array(totalLength));
   }
+  let writeOffset = 0;
+  buffers.forEach((part) => {
+    for (let channel = 0; channel < channelCount; channel += 1) {
+      const source = part.getChannelData(Math.min(channel, part.numberOfChannels - 1));
+      merged[channel].set(source, writeOffset);
+    }
+    writeOffset += part.length;
+  });
+
+  const wavBytes = encodeWav(merged, sampleRate);
+  const blobUrl = URL.createObjectURL(new Blob([wavBytes], { type: "audio/wav" }));
+  return {
+    audioUrl: blobUrl,
+    partOffsets,
+    duration: totalLength / sampleRate,
+    dispose: () => URL.revokeObjectURL(blobUrl)
+  };
 }
 
-/**
- * Toca um SeamlessTrack como um áudio único, com posição contínua, pausa com
- * retomada no ponto exato e seek arbitrário (para pular para uma palavra/frase).
- */
-export class SeamlessPlayer {
-  private source: AudioBufferSourceNode | null = null;
-  private startedAt = 0;
-  private startOffset = 0;
-  private stopped = true;
+/** Empacota amostras float32 [-1, 1] como WAV PCM 16-bit. */
+function encodeWav(channels: Float32Array[], sampleRate: number) {
+  const channelCount = channels.length;
+  const frameCount = channels[0]?.length ?? 0;
+  const bytesPerSample = 2;
+  const dataSize = frameCount * channelCount * bytesPerSample;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
 
-  constructor(private readonly track: SeamlessTrack) {}
+  const writeString = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.charCodeAt(index));
+  };
 
-  get duration() {
-    return this.track.buffer.duration;
-  }
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, channelCount, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * channelCount * bytesPerSample, true);
+  view.setUint16(32, channelCount * bytesPerSample, true);
+  view.setUint16(34, 8 * bytesPerSample, true);
+  writeString(36, "data");
+  view.setUint32(40, dataSize, true);
 
-  /** Posição atual de reprodução em segundos (congelada quando parado/pausado). */
-  position() {
-    if (this.stopped) return this.startOffset;
-    const elapsed = this.track.context.currentTime - this.startedAt;
-    return Math.min(this.startOffset + elapsed, this.duration);
-  }
-
-  /** Ajusta a posição quando parado/pausado (para o resume continuar dali). */
-  setPosition(time: number) {
-    if (this.stopped) this.startOffset = this.clampTime(time);
-  }
-
-  /** Toca a partir de `from` segundos; `onEnded` dispara só no fim natural. */
-  async play(from: number, onEnded: () => void) {
-    this.stopSource();
-    await this.track.context.resume();
-    const source = this.track.context.createBufferSource();
-    source.buffer = this.track.buffer;
-    source.connect(this.track.context.destination);
-    source.onended = () => {
-      if (this.source !== source) return;
-      this.stopped = true;
-      this.startOffset = this.duration;
-      onEnded();
-    };
-    this.source = source;
-    this.startOffset = this.clampTime(from);
-    this.startedAt = this.track.context.currentTime;
-    this.stopped = false;
-    source.start(0, this.startOffset);
-  }
-
-  pause() {
-    this.startOffset = this.position();
-    this.stopSource();
-  }
-
-  stop() {
-    this.startOffset = 0;
-    this.stopSource();
-  }
-
-  dispose() {
-    this.stopSource();
-    void this.track.context.close();
-  }
-
-  private stopSource() {
-    const source = this.source;
-    this.source = null;
-    this.stopped = true;
-    if (source) {
-      source.onended = null;
-      try {
-        source.stop();
-      } catch {
-        // Fonte já parada — nada a fazer.
-      }
+  let offset = 44;
+  for (let frame = 0; frame < frameCount; frame += 1) {
+    for (let channel = 0; channel < channelCount; channel += 1) {
+      const sample = Math.max(-1, Math.min(1, channels[channel][frame]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += bytesPerSample;
     }
   }
-
-  private clampTime(time: number) {
-    return Math.max(0, Math.min(time, this.duration));
-  }
+  return buffer;
 }
