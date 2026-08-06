@@ -9,7 +9,7 @@ import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUse
 import { matchesLearningScope } from "./scope";
 import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, summarizeDailyQueue } from "./daily-queue";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
-import { isRatingCorrect, rebuildFlashcardQueue, inferRecallRating } from "./flashcard-queue";
+import { isRatingCorrect, rebuildFlashcardQueue, inferRecallRating, resolveBinaryRating } from "./flashcard-queue";
 import { calculateAdaptiveReview, previewReviewIntervals, reviewToWordFields, type ReviewAttempt } from "./spaced-repetition";
 import { chooseCardTypes, countPlannedTypes, type CardTypeFlags } from "./flashcard-type-selection";
 import {
@@ -374,7 +374,7 @@ export async function getActiveFlashcardPractice() {
     client.listRecords<WordFields>("words", 500)
   ]);
   const cards = cardRecords.filter((record) => record.fields.practice_session_id === session.id).sort((a, b) => a.fields.initial_position - b.fields.initial_position).map(flashcardRecordToCard);
-  const attempts = attemptRecords.filter((record) => record.fields.practice_session_id === session.id).sort(compareAttemptRecords).map((record) => ({ id: record.id, ...attemptRecordToAnswer(record) }));
+  const attempts = attemptRecords.filter((record) => record.fields.practice_session_id === session.id && !record.fields.undone_at).sort(compareAttemptRecords).map((record) => ({ id: record.id, ...attemptRecordToAnswer(record) }));
   if (!cards.length) throw new LearningStateError("A sessão ativa não possui cards persistidos.", 409);
   const previewNow = new Date();
   const wordsById = new Map(wordRecords.map((word) => [word.id, word]));
@@ -433,7 +433,7 @@ export async function abandonFlashcardPractice(sessionId: string) {
   return { sessionId: session.id, status: "abandoned" as const };
 }
 
-export async function persistFlashcardAttempt(input: { sessionId?: unknown; clientAttemptId?: unknown; cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown; audioReplayCount?: unknown; usedSlowAudio?: unknown; audioFailed?: unknown }) {
+export async function persistFlashcardAttempt(input: { sessionId?: unknown; clientAttemptId?: unknown; cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; remembered?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown; audioReplayCount?: unknown; usedSlowAudio?: unknown; audioFailed?: unknown }) {
   const sessionId = typeof input.sessionId === "string" ? input.sessionId : "";
   const clientAttemptId = typeof input.clientAttemptId === "string" ? input.clientAttemptId : "";
   if (!sessionId || !isClientOperationId(clientAttemptId)) throw new LearningStateError("Identificador da tentativa inválido.", 422);
@@ -451,7 +451,7 @@ export async function persistFlashcardAttempt(input: { sessionId?: unknown; clie
   try { return await operation; } finally { attemptLocks.delete(lockKey); }
 }
 
-async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptId: string, input: { cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown; audioReplayCount?: unknown; usedSlowAudio?: unknown; audioFailed?: unknown }) {
+async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptId: string, input: { cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; remembered?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown; audioReplayCount?: unknown; usedSlowAudio?: unknown; audioFailed?: unknown }) {
   const operationStartedAt = Date.now();
   const client = getTeableClient();
   const user = await getOrCreatePersonalUser();
@@ -471,7 +471,7 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
     return { id: existing.id, ...attemptRecordToAnswer(existing) };
   }
   const cards = cardRecords.filter((record) => record.fields.practice_session_id === sessionId).sort((a, b) => a.fields.initial_position - b.fields.initial_position).map(flashcardRecordToCard);
-  const priorAttempts = attemptRecords.filter((record) => record.fields.practice_session_id === sessionId).sort(compareAttemptRecords).map(attemptRecordToAnswer);
+  const priorAttempts = attemptRecords.filter((record) => record.fields.practice_session_id === sessionId && !record.fields.undone_at).sort(compareAttemptRecords).map(attemptRecordToAnswer);
   const rebuilt = rebuildFlashcardQueue(cards, priorAttempts);
   const current = rebuilt.currentItem;
   const cardId = typeof input.cardId === "string" ? input.cardId : "";
@@ -488,7 +488,9 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
   const matchResult = forgot ? "incorrect" as const : compareAnswerForCard(card, userAnswer);
   const responseTimeMs = Math.max(0, Math.min(300_000, Math.round(Number(input.responseTimeMs) || 0)));
   const inferredRating = inferRecallRating({ match: matchResult, forgot, responseTimeMs, cardType: card.type });
-  const rating = isRecallRating(input.rating) ? input.rating : inferredRating;
+  const rating = typeof input.remembered === "boolean"
+    ? resolveBinaryRating({ remembered: input.remembered, match: matchResult, forgot, responseTimeMs, cardType: card.type })
+    : isRecallRating(input.rating) ? input.rating : inferredRating;
   const now = new Date().toISOString();
   const record = await client.createRecord<FlashcardAttemptFields>("flashcardAttempts", {
     practice_session_id: sessionId,
@@ -516,6 +518,21 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
   const attemptWordIds = [card.targetWordId, ...card.supportingWordIds];
   const reviewableWords = words.filter((item) => attemptWordIds.includes(item.id) && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
   if (reviewableWords.length && !(card.type === "listening" && input.audioFailed === true)) {
+    const reviewSnapshot = Object.fromEntries(reviewableWords.map((word) => [word.id, {
+      familiarity_score: word.fields.familiarity_score ?? null,
+      review_due_at: word.fields.review_due_at ?? null,
+      review_interval_days: word.fields.review_interval_days ?? null,
+      review_ease: word.fields.review_ease ?? null,
+      review_streak: word.fields.review_streak ?? null,
+      lapse_count: word.fields.lapse_count ?? null,
+      learning_step: word.fields.learning_step ?? null,
+      last_reviewed_at: word.fields.last_reviewed_at ?? null,
+      last_rating: word.fields.last_rating ?? null,
+      average_response_time_ms: word.fields.average_response_time_ms ?? null,
+      review_state: word.fields.review_state ?? null,
+      review_version: word.fields.review_version ?? null,
+      leech_flagged_at: word.fields.leech_flagged_at ?? null
+    }]));
     try {
       let resultingState = "";
       for (const word of reviewableWords) {
@@ -523,7 +540,7 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
         await client.updateRecord<WordFields>("words", word.id, reviewToWordFields(review));
         if (word.id === card.targetWordId) resultingState = review.reviewState;
       }
-      await client.updateRecord<FlashcardAttemptFields>("flashcardAttempts", record.id, { review_applied: true, resulting_review_state: resultingState });
+      await client.updateRecord<FlashcardAttemptFields>("flashcardAttempts", record.id, { review_applied: true, resulting_review_state: resultingState, review_snapshot: JSON.stringify(reviewSnapshot) });
     } catch (error) {
       try {
         await client.createEvent(user.id, "flashcard_incremental_review_failed", { session_id: sessionId, flashcard_id: card.id, message: error instanceof Error ? error.message : "unknown" });
@@ -567,7 +584,7 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
   const persistedCards = cardRecords.filter((record) => record.fields.practice_session_id === session.id).sort((a, b) => a.fields.initial_position - b.fields.initial_position).map(flashcardRecordToCard);
   const cards = persistedCards.length ? persistedCards : focus.cards ?? [];
   if (!cards.length) throw new LearningStateError("Esta sessão não possui um baralho verificável. Inicie um novo treino.", 409);
-  const persistedAttempts = attemptRecords.filter((record) => record.fields.practice_session_id === session.id).sort(compareAttemptRecords).map(attemptRecordToAnswer);
+  const persistedAttempts = attemptRecords.filter((record) => record.fields.practice_session_id === session.id && !record.fields.undone_at).sort(compareAttemptRecords).map(attemptRecordToAnswer);
   const validatedAnswers = persistedAttempts.length
     ? persistedAttempts.map((answer) => ({ ...answer, wordIds: [cards.find((card) => card.id === answer.cardId)!.targetWordId, ...cards.find((card) => card.id === answer.cardId)!.supportingWordIds] }))
     : validateFlashcardAnswers(cards, answers.slice(0, 91));

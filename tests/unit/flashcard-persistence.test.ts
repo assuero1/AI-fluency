@@ -68,7 +68,7 @@ describe("flashcard attempt persistence and resume", () => {
     expect(updateRecord).toHaveBeenCalledWith("words", "word-a", expect.objectContaining({
       review_version: "srs-v2", review_state: "learning", learning_step: 0, review_ease: 2.22, familiarity_score: 3.5
     }));
-    expect(updateRecord).toHaveBeenCalledWith("flashcardAttempts", "attempt-1", { review_applied: true, resulting_review_state: "learning" });
+    expect(updateRecord).toHaveBeenCalledWith("flashcardAttempts", "attempt-1", expect.objectContaining({ review_applied: true, resulting_review_state: "learning" }));
   });
 
   it("keeps the attempt unapplied when the incremental SRS write fails", async () => {
@@ -136,5 +136,47 @@ describe("flashcard attempt persistence and resume", () => {
 
     expect(active?.attempts).toHaveLength(1);
     expect(active?.currentItem).toMatchObject({ cardId: cardRecord.id, presentationNumber: 2 });
+  });
+
+  it("resolves the rating server-side from the binary choice", async () => {
+    listRecords.mockImplementation(async (table: string) => {
+      if (table === "practiceSessions") return [session];
+      if (table === "flashcards") return [cardRecord];
+      if (table === "flashcardAttempts") return attempts;
+      return [];
+    });
+    const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    const wrongButClaimed = await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "bin-0001", cardId: cardRecord.id, presentationNumber: 1, userAnswer: "olla", remembered: true, forgot: false, responseTimeMs: 2400 });
+    expect(wrongButClaimed.rating).toBe("hard");
+    expect(wrongButClaimed.suggestedRating).toBe("forgot");
+  });
+
+  it("maps 'Não lembrei' to forgot regardless of the typed answer", async () => {
+    const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    const result = await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "bin-0002", cardId: cardRecord.id, presentationNumber: 1, userAnswer: "hola", remembered: false, forgot: false, responseTimeMs: 1200 });
+    expect(result.rating).toBe("forgot");
+  });
+
+  it("stores a review snapshot of the affected words when applying the incremental review", async () => {
+    listRecords.mockImplementation(async (table: string) => {
+      if (table === "practiceSessions") return [session];
+      if (table === "flashcards") return [cardRecord];
+      if (table === "flashcardAttempts") return attempts;
+      if (table === "words") return [{ id: "word-a", fields: { user_id: user.id, language_profile_id: profile.id, familiarity_score: 4, review_ease: 2.5 } }];
+      return [];
+    });
+    const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "bin-0003", cardId: cardRecord.id, presentationNumber: 1, userAnswer: "hola", remembered: true, responseTimeMs: 2400 });
+    const attemptUpdate = updateRecord.mock.calls.find(([table]) => table === "flashcardAttempts");
+    const snapshot = JSON.parse((attemptUpdate![2] as { review_snapshot: string }).review_snapshot);
+    expect(snapshot["word-a"]).toMatchObject({ familiarity_score: 4, review_ease: 2.5 });
+  });
+
+  it("ignores undone attempts when rebuilding the queue", async () => {
+    attempts = [{ id: "attempt-0", fields: { practice_session_id: session.id, flashcard_id: cardRecord.id, word_id: "word-a", presentation_number: 1, client_attempt_id: "old-001", user_answer: "x", normalized_answer: "x", match_result: "incorrect", suggested_rating: "forgot", final_rating: "forgot", was_correct: false, response_time_ms: 1000, used_speech: false, audio_replay_count: 0, created_at: "2026-07-10T12:01:00.000Z", undone_at: "2026-07-10T12:02:00.000Z" } }];
+    const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    // Sem o filtro, a tentativa antiga contaria e presentationNumber 1 falharia com 409.
+    const result = await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "bin-0004", cardId: cardRecord.id, presentationNumber: 1, userAnswer: "hola", remembered: true, responseTimeMs: 1500 });
+    expect(result.presentationNumber).toBe(1);
   });
 });
