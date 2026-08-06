@@ -19,7 +19,6 @@ import type { SelectionExplanation } from "@/lib/learning/selection-explanation"
 import { joinSpeechSegments, markMicReleased, speechLanguageName, speechLocale, speechRecognitionErrorMessage } from "@/lib/learning/speech";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 import type { TeableRecord } from "@/lib/teable/client";
-import type { ConversationQuickAction } from "@/lib/learning/quick-actions";
 import { getMessageGoalProgress, InteractionMode, normalizeStoredInteractionMode } from "@/lib/learning/chat-contracts";
 
 type ChatConversationProps = {
@@ -94,7 +93,6 @@ export function ChatConversation({
   );
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
-  const [pendingQuickAction, setPendingQuickAction] = useState<ConversationQuickAction | null>(null);
   const [isListening, setIsListening] = useState(false);
   const [speechSupport, setSpeechSupport] = useState<"checking" | "supported" | "unsupported">("checking");
   const [error, setError] = useState<string | null>(null);
@@ -243,28 +241,6 @@ export function ChatConversation({
     } catch (changeError) {
       setError(normalizeChatError(changeError, "Não foi possível mudar o tema agora. Tente novamente."));
     } finally {
-      setIsSending(false);
-    }
-  }
-
-  async function runQuickAction(action: ConversationQuickAction) {
-    if (readOnly || isSending) return;
-    setIsSending(true);
-    setPendingQuickAction(action);
-    setError(null);
-    try {
-      const response = await fetch(`/api/conversations/${conversation.id}/actions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action })
-      });
-      const data = (await response.json()) as { ok?: boolean; error?: string; assistantMessage?: TeableRecord<MessageFields> };
-      if (!response.ok || !data.ok || !data.assistantMessage) throw new Error(data.error ?? "Não foi possível executar esta ação.");
-      setMessages((current) => [...current, data.assistantMessage!]);
-    } catch (actionError) {
-      setError(normalizeChatError(actionError, "Não foi possível executar esta ação agora. Tente novamente."));
-    } finally {
-      setPendingQuickAction(null);
       setIsSending(false);
     }
   }
@@ -695,15 +671,6 @@ export function ChatConversation({
             <p><strong>Como usar:</strong> {selectionExplanation.usage}</p>
             {selectionExplanation.example ? <p><strong>Exemplo:</strong> {selectionExplanation.example}</p> : null}
           </div> : null}
-        </div> : null}
-
-        {!readOnly ? <div className="quick-actions">
-          <button className="outline-button" disabled={isSending} onClick={() => runQuickAction("repeat")} type="button">
-            {pendingQuickAction === "repeat" ? <Loader2 className="spin" /> : null} Repetir
-          </button>
-          <button className="outline-button" disabled={isSending} onClick={() => runQuickAction("harder")} type="button">
-            {pendingQuickAction === "harder" ? <Loader2 className="spin" /> : null} Mais difícil
-          </button>
         </div> : null}
 
         {!readOnly ? <button className="green-button full-button" disabled={isSending} onClick={finishConversation} type="button">
