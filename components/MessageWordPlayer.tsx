@@ -114,15 +114,18 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
       if (texts.length === 0) throw new Error("Empty message.");
       if (texts.some((segment) => segment.length > MAX_CAPTIONED_SEGMENT_LENGTH)) throw new Error("Message too long.");
 
+      // Busca os segmentos em paralelo: no cache frio cada um custa uma
+      // síntese TTS, e em série o primeiro play esperaria N round-trips.
+      const results = await Promise.all(texts.map((segmentText) => requestCaptionedSpeech(segmentText, languageCode)));
+      if (generationRef.current !== generation) return;
+
       const segments: WordSegment[] = [];
       let offset = 0;
-      for (const segmentText of texts) {
-        const result = await requestCaptionedSpeech(segmentText, languageCode);
+      results.forEach((result, resultIndex) => {
         const last = result.words[result.words.length - 1];
-        segments.push({ text: segmentText, audioUrl: result.audioUrl, words: result.words, offset });
+        segments.push({ text: texts[resultIndex], audioUrl: result.audioUrl, words: result.words, offset });
         offset += last ? last.end_time : 0;
-      }
-      if (generationRef.current !== generation) return;
+      });
 
       const aligned: AlignedToken[] = [];
       const tokenSegment: number[] = [];
@@ -217,6 +220,9 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
         return;
       }
       setStatus("playing");
+      // Buffer-ahead: já baixa o próximo segmento para a transição ser fluida.
+      const next = segmentIndex + 1;
+      if (next < current.segments.length) ensureAudioRef(next);
     } catch {
       if (generationRef.current !== generation) return;
       setStatus("error");
@@ -258,6 +264,9 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
         return;
       }
       setStatus("playing");
+      // Buffer-ahead: já baixa o próximo segmento para a transição ser fluida.
+      const next = segmentIndex + 1;
+      if (next < current.segments.length) ensureAudioRef(next);
     } catch {
       if (generationRef.current !== generation) return;
       setStatus("error");
@@ -343,6 +352,12 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     }
     setActiveWord(index);
   }
+
+  // Começa a baixar o áudio do primeiro segmento assim que a faixa fica
+  // pronta, para o play não esperar o fetch do arquivo de áudio.
+  useEffect(() => {
+    if (track) ensureAudioRef(0);
+  }, [ensureAudioRef, track]);
 
   useEffect(() => {
     if (!preload || mode !== "word" || trackRef.current) return;
