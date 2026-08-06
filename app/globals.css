@@ -1218,6 +1218,40 @@ a {
 
 .teacher-composer {
   flex: 0 0 auto;
+  grid-template-columns: minmax(0, 1fr) 52px;
+  gap: 10px;
+  align-items: end;
+  min-height: 0;
+  padding: 10px 10px 10px 14px;
+  border-radius: 22px;
+  background: #fff;
+}
+
+.teacher-composer .composer-input {
+  min-height: 48px;
+  padding: 11px 0;
+  font-size: 17px;
+  line-height: 1.4;
+}
+
+.teacher-composer .composer-input::placeholder {
+  color: var(--muted);
+}
+
+.teacher-composer .send-button {
+  width: 52px;
+  height: 52px;
+  border-radius: 18px;
+  background: var(--chat);
+  color: #fff;
+  box-shadow: 0 3px 0 var(--chat-deep);
+}
+
+.teacher-composer .send-button:disabled {
+  background: var(--line-deep);
+  color: #fff;
+  box-shadow: none;
+  opacity: 1;
 }
 
 .topic-pill {
@@ -1243,11 +1277,11 @@ a {
 
 .message-goal {
   display: grid;
-  gap: 8px;
-  margin-top: 16px;
-  padding: 14px 16px;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px 12px;
   border: 1px solid var(--line);
-  border-radius: 18px;
+  border-radius: 14px;
   background: var(--primary-soft);
 }
 
@@ -1256,24 +1290,27 @@ a {
 }
 
 .message-goal-copy {
-  display: grid;
-  gap: 2px;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
 }
 
 .message-goal-copy strong {
   color: var(--text);
-  font-size: 15px;
+  font-size: 13px;
   font-weight: 800;
 }
 
 .message-goal-copy span {
   color: var(--muted);
-  font-size: 13px;
-  font-weight: 620;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
 }
 
 .message-goal-track {
-  height: 10px;
+  height: 7px;
   overflow: hidden;
   border-radius: 999px;
   background: rgba(0, 0, 0, 0.1);

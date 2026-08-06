@@ -531,8 +531,6 @@ export function ChatConversation({
         </div>
       </div>
 
-      <ConversationGoalProgress progress={messageGoal} readOnly={readOnly} />
-
       {isTeacherOpen ? (
         <TeacherChatPanel
           conversationId={conversation.id}
@@ -709,6 +707,8 @@ export function ChatConversation({
           {isSending ? <Loader2 className="spin" /> : null}
           Finalizar conversa
         </button> : <div className="empty-state">Esta conversa foi finalizada e está disponível apenas para consulta.</div>}
+
+        <ConversationGoalProgress progress={messageGoal} readOnly={readOnly} />
 
         {!readOnly ? <form
           className="composer"
