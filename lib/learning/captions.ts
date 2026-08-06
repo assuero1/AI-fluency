@@ -11,10 +11,13 @@ export type WordTimestamp = {
 export type CaptionToken = {
   text: string;
   isWord: boolean;
+  /** Espaçamento original logo após o token (pode conter quebras de linha). */
+  spaceAfter: string;
 };
 
 export type AlignedToken = {
   text: string;
+  spaceAfter: string;
   start?: number;
   end?: number;
 };
@@ -24,14 +27,20 @@ const TOKEN_RE = /[\p{L}\p{N}]+(?:['’\-–][\p{L}\p{N}]+)*|[^\p{L}\p{N}\s]/gu;
 /**
  * Tokeniza o texto de exibição como o servidor Kokoro agrupa as palavras:
  * apóstrofos e hífens internos ficam dentro do token ("don't", "3-to-4") e a
- * pontuação vira um token separado.
+ * pontuação vira um token separado. O espaçamento original entre tokens é
+ * preservado em `spaceAfter` para a exibição fiel do texto.
  */
 export function tokenizeForCaptions(text: string): CaptionToken[] {
-  const matches = text.match(TOKEN_RE) ?? [];
-  return matches.map((token) => ({
-    text: token,
-    isWord: /[\p{L}\p{N}]/u.test(token)
-  }));
+  const matches = [...text.matchAll(TOKEN_RE)];
+  return matches.map((match, index) => {
+    const end = match.index + match[0].length;
+    const nextStart = index + 1 < matches.length ? matches[index + 1].index : text.length;
+    return {
+      text: match[0],
+      isWord: /[\p{L}\p{N}]/u.test(match[0]),
+      spaceAfter: text.slice(end, nextStart)
+    };
+  });
 }
 
 /** Forma normalizada para comparação de tokens (só letras/números, minúsculas). */
@@ -46,7 +55,7 @@ function normalizeForMatch(value: string) {
  * Tokens sem par ficam sem timestamp e não quebram o fluxo do player.
  */
 export function alignWords(tokens: CaptionToken[], words: WordTimestamp[]): AlignedToken[] {
-  const aligned: AlignedToken[] = tokens.map((token) => ({ text: token.text }));
+  const aligned: AlignedToken[] = tokens.map((token) => ({ text: token.text, spaceAfter: token.spaceAfter }));
   const maxGroup = 4;
   let wordIndex = 0;
   let tokenIndex = 0;
@@ -92,6 +101,15 @@ export function timedIndices(aligned: AlignedToken[]): number[] {
     if (typeof token.start === "number" && typeof token.end === "number") indices.push(index);
   });
   return indices;
+}
+
+/**
+ * Indica se o alinhamento produziu algo tocável. Vozes sem timestamps no
+ * servidor (hoje todas exceto inglês) geram `words: []` e nenhum token
+ * alinhado — nesse caso o player deve degradar para o modo legado.
+ */
+export function hasUsableAlignment(aligned: AlignedToken[]): boolean {
+  return timedIndices(aligned).length > 0;
 }
 
 /** Índice da palavra ativa para um tempo de reprodução (start incluso, end exclusivo). */

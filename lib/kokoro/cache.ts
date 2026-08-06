@@ -113,10 +113,12 @@ export async function prepareCaptionedSpeech(input: string, options?: { voice?: 
   const cached = await getCachedSpeech(audioId);
   if (cached) {
     const metadata = await readMetadata(config.cacheDir, audioId);
-    if (metadata?.words?.length) {
+    // Aceita até `words: []` (voz sem timestamps no servidor): evita re-sintetizar
+    // a cada pedido; o cliente degrada para o player legado com o áudio em cache.
+    if (metadata?.words) {
       return { ...cached, words: metadata.words, cached: true };
     }
-    // Áudio em cache sem timestamps → re-sintetiza para obter os words.
+    // Áudio antigo em cache sem o campo `words` → re-sintetiza para obtê-lo.
   }
 
   const existing = captionedInFlight.get(audioId);

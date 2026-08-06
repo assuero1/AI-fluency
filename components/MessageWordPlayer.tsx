@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   activeIndexAtTime,
   alignWords,
+  hasUsableAlignment,
   MAX_CAPTIONED_SEGMENT_LENGTH,
   segmentMessage,
   skipAlignedIndex,
@@ -127,15 +128,26 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
       const tokenSegment: number[] = [];
       segments.forEach((segment, segmentIndex) => {
         const tokens = tokenizeForCaptions(segment.text);
+        // Junção entre segmentos: o último token do segmento anterior ganha espaço.
+        if (segmentIndex > 0 && aligned.length > 0 && tokens.length > 0 && !aligned[aligned.length - 1].spaceAfter) {
+          aligned[aligned.length - 1].spaceAfter = " ";
+        }
         alignWords(tokens, segment.words).forEach((token) => {
           aligned.push({
             text: token.text,
+            spaceAfter: token.spaceAfter,
             start: typeof token.start === "number" ? token.start + segment.offset : undefined,
             end: typeof token.end === "number" ? token.end + segment.offset : undefined
           });
           tokenSegment.push(segmentIndex);
         });
       });
+
+      if (!hasUsableAlignment(aligned)) {
+        // Servidor não retornou timestamps para esta voz → player legado.
+        enterLegacyMode();
+        return;
+      }
 
       setTrack({ segments, aligned, tokenSegment });
       setSelectedIndex(0);
@@ -378,7 +390,7 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
               key={index}
               onClick={() => selectToken(index)}
             >
-              {token.text}{/[\p{L}\p{N}]/u.test(token.text) ? " " : ""}
+              {token.text}{token.spaceAfter}
             </span>
           ))}
         </div>

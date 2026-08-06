@@ -1412,8 +1412,9 @@ a {
 
 /* Word-synced chat audio player */
 .chat-words {
-  display: flex;
-  flex-wrap: wrap;
+  /* Inline (não flex): o espaçamento original dentro de cada .chat-word precisa
+     renderizar; itens flex colapsam o espaço final de cada span. */
+  display: block;
   line-height: 1.6;
 }
 

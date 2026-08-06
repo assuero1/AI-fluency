@@ -3,6 +3,7 @@ import {
   activeIndexAtTime,
   alignWords,
   clampWordIndex,
+  hasUsableAlignment,
   segmentMessage,
   skipAlignedIndex,
   skipWordIndex,
@@ -44,6 +45,37 @@ describe("tokenizeForCaptions", () => {
   it("returns an empty list for blank text", () => {
     expect(tokenizeForCaptions("   \n ")).toEqual([]);
   });
+
+  it("captures the original whitespace after each token", () => {
+    const tokens = tokenizeForCaptions("¡Hola! ¿Qué tal?\nHoy  estaba...");
+    expect(tokens.map((token) => [token.text, token.spaceAfter])).toEqual([
+      ["¡", ""],
+      ["Hola", ""],
+      ["!", " "],
+      ["¿", ""],
+      ["Qué", " "],
+      ["tal", ""],
+      ["?", "\n"],
+      ["Hoy", "  "],
+      ["estaba", ""],
+      [".", ""],
+      [".", ""],
+      [".", ""]
+    ]);
+  });
+});
+
+describe("hasUsableAlignment", () => {
+  it("is false when the server returns no words (vozes sem timestamps)", () => {
+    const aligned = alignWords(tokenizeForCaptions("¿Qué tal?"), []);
+    expect(hasUsableAlignment(aligned)).toBe(false);
+    expect(hasUsableAlignment([])).toBe(false);
+  });
+
+  it("is true when at least one token has a timestamp", () => {
+    const aligned = alignWords(tokenizeForCaptions("Hello there."), SIMPLE_WORDS);
+    expect(hasUsableAlignment(aligned)).toBe(true);
+  });
 });
 
 describe("alignWords", () => {
@@ -53,9 +85,9 @@ describe("alignWords", () => {
 
     expect(aligned.length).toBe(tokens.length);
     expect(timedIndices(aligned)).toEqual([0, 1, 2, 3, 4, 5, 6, 7]);
-    expect(aligned[0]).toEqual({ text: "Hello", start: 0.25, end: 0.55 });
-    expect(aligned[2]).toEqual({ text: ".", start: 0.825, end: 0.9 });
-    expect(aligned[7]).toEqual({ text: "?", start: 1.775, end: 1.95 });
+    expect(aligned[0]).toEqual({ text: "Hello", spaceAfter: " ", start: 0.25, end: 0.55 });
+    expect(aligned[2]).toEqual({ text: ".", spaceAfter: " ", start: 0.825, end: 0.9 });
+    expect(aligned[7]).toEqual({ text: "?", spaceAfter: "", start: 1.775, end: 1.95 });
   });
 
   it("merges normalized tokens like E.g. into the server word", () => {
@@ -85,9 +117,9 @@ describe("alignWords", () => {
     const tokens = tokenizeForCaptions("Hello there.");
     const aligned = alignWords(tokens, []);
     expect(aligned).toEqual([
-      { text: "Hello" },
-      { text: "there" },
-      { text: "." }
+      { text: "Hello", spaceAfter: " " },
+      { text: "there", spaceAfter: "" },
+      { text: ".", spaceAfter: "" }
     ]);
     expect(timedIndices(aligned)).toEqual([]);
   });
