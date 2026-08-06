@@ -13,6 +13,7 @@ import { Pill } from "./Pill";
 import { TranslationButton } from "./TranslationButton";
 import { ScreenHeader } from "./ScreenHeader";
 import { TeacherChatPanel } from "./TeacherChatPanel";
+import { MessageAudioPlayer } from "./MessageAudioPlayer";
 import { VoiceButton } from "./VoiceButton";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields } from "@/lib/learning/conversations";
 import type { SelectionExplanation } from "@/lib/learning/selection-explanation";
@@ -636,19 +637,18 @@ export function ChatConversation({
             <div className="chat-row" key={message.id}>
               <IconBubble Icon={Bot} />
               <div className="bubble ai">
-                {transcriptEnabled ? message.fields.text : "Resposta da IA disponível em áudio."}
+                {audioEnabled ? (
+                  <MessageAudioPlayer
+                    languageCode={speechLanguage}
+                    preload={!readOnly && message.id === latestAssistantMessageId}
+                    showTranscript={transcriptEnabled}
+                    text={message.fields.text}
+                  />
+                ) : transcriptEnabled ? message.fields.text : "Resposta da IA disponível em áudio."}
                 {transcriptEnabled ? <div className="message-actions">
                   <CopyButton compact label="Copiar mensagem da IA" text={message.fields.text} />
                   <TranslationButton sourceLanguage={speechLanguage} text={message.fields.text} />
                 </div> : null}
-                {audioEnabled ? (
-                  <VoiceButton
-                    languageCode={speechLanguage}
-                    label="Ouvir mensagem"
-                    preload={!readOnly && message.id === latestAssistantMessageId}
-                    text={message.fields.text}
-                  />
-                ) : null}
               </div>
             </div>
           ) : (
