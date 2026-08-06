@@ -70,6 +70,9 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
     if (index < 0 || index >= lines.length) return;
     claimActiveVoice(ownerRef.current, stopForAnotherVoice);
     releaseAudio();
+    // Captura a geração ANTES do wait do iOS: um stop/unmount durante a
+    // espera incrementa a geração e precisa invalidar os callbacks deste play.
+    const generation = generationRef.current;
     setCurrentLine(index);
     setStatus("loading");
 
@@ -79,7 +82,6 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
     if (routeRestoreWait > 0) {
       await new Promise((resolve) => setTimeout(resolve, routeRestoreWait));
     }
-    const generation = generationRef.current;
 
     if (deviceFallbackRef.current) {
       playDeviceLine(index, generation);
@@ -172,6 +174,8 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
   function skipLine(delta: number) {
     const target = Math.min(Math.max(currentLine + delta, 0), lines.length - 1);
     if (target === currentLine && status !== "ended") return;
+    // No fallback (speechSynthesis) não é possível redirecionar uma utterance
+    // pausada para outra linha, então o skip pausado toca a linha alvo na hora.
     if (status === "playing" || status === "paused" && audioRef.current === null && deviceFallbackRef.current) {
       void playLine(target);
       return;
