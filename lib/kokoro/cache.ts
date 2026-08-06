@@ -3,7 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { KokoroRequestError, streamSpeech, synthesizeSpeech } from "./client";
+import { captionedSpeech, KokoroRequestError, streamSpeech, synthesizeSpeech, type WordTimestamp } from "./client";
 import { getKokoroConfig } from "./config";
 import { resolveSynthesisRequest, SynthesisValidationError } from "./validation";
 import { normalizeSpeechLanguage, selectKokoroVoice } from "./voices";
@@ -17,6 +17,7 @@ type CachedAudioMetadata = {
   speed: number;
   createdAt: string;
   bytes: number;
+  words?: WordTimestamp[];
 };
 
 type CachedSpeech = {
@@ -28,6 +29,8 @@ type CachedSpeech = {
   cached: boolean;
 };
 
+type CaptionedSpeechResult = CachedSpeech & { words: WordTimestamp[] };
+
 type PendingSpeech = {
   id: string;
   text: string;
@@ -38,6 +41,7 @@ type PendingSpeech = {
 };
 
 const inFlight = new Map<string, Promise<CachedSpeech>>();
+const captionedInFlight = new Map<string, Promise<CaptionedSpeechResult>>();
 const pendingSpeech = new Map<string, PendingSpeech>();
 let lastPendingPruneAt = 0;
 
@@ -92,6 +96,76 @@ export async function prepareCachedSpeech(input: string, options?: { voice?: str
     outputFormat: request.outputFormat,
     voice: request.voice,
     cached: false
+  };
+}
+
+export async function prepareCaptionedSpeech(input: string, options?: { voice?: string; format?: string; speed?: number }): Promise<CaptionedSpeechResult> {
+  const config = getKokoroConfig();
+  let request: ReturnType<typeof resolveSynthesisRequest>;
+  try {
+    request = resolveSynthesisRequest(input, options, config);
+  } catch (error) {
+    if (error instanceof SynthesisValidationError) throw new KokoroRequestError(error.message, error.status);
+    throw error;
+  }
+  const audioId = createAudioId(request.text, request.voice, request.outputFormat, request.speed);
+
+  const cached = await getCachedSpeech(audioId);
+  if (cached) {
+    const metadata = await readMetadata(config.cacheDir, audioId);
+    if (metadata?.words?.length) {
+      return { ...cached, words: metadata.words, cached: true };
+    }
+    // Áudio em cache sem timestamps → re-sintetiza para obter os words.
+  }
+
+  const existing = captionedInFlight.get(audioId);
+  if (existing) return existing;
+
+  const task = synthesizeCaptionedSpeech(request, audioId);
+  captionedInFlight.set(audioId, task);
+  try {
+    return await task;
+  } finally {
+    captionedInFlight.delete(audioId);
+  }
+}
+
+async function synthesizeCaptionedSpeech(
+  request: { text: string; voice: string; outputFormat: string; speed: number },
+  audioId: string
+): Promise<CaptionedSpeechResult> {
+  const config = getKokoroConfig();
+  const result = await captionedSpeech(request.text, { voice: request.voice, format: request.outputFormat, speed: request.speed });
+  await mkdir(config.cacheDir, { recursive: true });
+  const metadata: CachedAudioMetadata = {
+    id: audioId,
+    fileName: `${audioId}.${extensionFor(result.outputFormat, result.contentType)}`,
+    contentType: result.contentType,
+    outputFormat: result.outputFormat,
+    voice: result.voice,
+    speed: request.speed,
+    createdAt: new Date().toISOString(),
+    bytes: result.audioBuffer.byteLength,
+    words: result.words
+  };
+  const filePath = path.join(config.cacheDir, metadata.fileName);
+  const metadataPath = path.join(config.cacheDir, `${audioId}.json`);
+  const suffix = `${process.pid}-${Date.now()}`;
+  await writeFile(`${filePath}.${suffix}.tmp`, result.audioBuffer);
+  await rename(`${filePath}.${suffix}.tmp`, filePath);
+  await writeFile(`${metadataPath}.${suffix}.tmp`, JSON.stringify(metadata));
+  await rename(`${metadataPath}.${suffix}.tmp`, metadataPath);
+  void pruneAudioCache(config.cacheDir, config.cacheMaxMb * 1024 * 1024, config.cacheMaxAgeDays).catch(() => undefined);
+
+  return {
+    audioId,
+    audioUrl: `/api/voice/${audioId}`,
+    contentType: metadata.contentType,
+    outputFormat: metadata.outputFormat,
+    voice: metadata.voice,
+    cached: false,
+    words: result.words
   };
 }
 

@@ -111,6 +111,97 @@ export async function synthesizeSpeech(input: string, options?: { voice?: string
   };
 }
 
+export type WordTimestamp = {
+  word: string;
+  start_time: number;
+  end_time: number;
+};
+
+export type CaptionedSpeech = {
+  ok: true;
+  contentType: string;
+  outputFormat: string;
+  voice: string;
+  audioBuffer: Buffer;
+  words: WordTimestamp[];
+};
+
+export async function captionedSpeech(input: string, options?: { voice?: string; format?: string; speed?: number }): Promise<CaptionedSpeech> {
+  const config = getKokoroConfig();
+
+  if (!config.baseUrl) throw new KokoroConfigError("KOKORO_BASE_URL is not configured.");
+  if (!config.apiKey) throw new KokoroConfigError("KOKORO_API_KEY is not configured.");
+
+  let request: ReturnType<typeof resolveSynthesisRequest>;
+  try {
+    request = resolveSynthesisRequest(input, options, config);
+  } catch (error) {
+    if (error instanceof SynthesisValidationError) throw new KokoroRequestError(error.message, error.status);
+    throw error;
+  }
+
+  const baseUrl = trimSlash(config.baseUrl);
+  const response = await fetch(`${baseUrl}/dev/captioned_speech`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: "kokoro",
+      voice: request.voice,
+      input: request.text,
+      response_format: request.outputFormat,
+      speed: request.speed,
+      return_timestamps: true
+    }),
+    cache: "no-store",
+    signal: AbortSignal.timeout(60_000)
+  });
+
+  const contentType = response.headers.get("content-type") ?? `audio/${request.outputFormat}`;
+
+  if (!response.ok) {
+    const body = contentType.includes("application/json") ? await response.json().catch(() => null) : await response.text();
+    throw new KokoroRequestError(`Kokoro captioned request failed: ${response.status}`, response.status, body);
+  }
+
+  const timestampsPath = response.headers.get("x-timestamps-path");
+  if (!timestampsPath) {
+    throw new KokoroRequestError("Kokoro captioned response is missing the timestamps path.", 502);
+  }
+
+  const [arrayBuffer, timestampsResponse] = await Promise.all([
+    response.arrayBuffer(),
+    fetch(`${baseUrl}/dev/timestamps/${encodeURIComponent(timestampsPath)}`, {
+      headers: { Authorization: `Bearer ${config.apiKey}` },
+      cache: "no-store",
+      signal: AbortSignal.timeout(30_000)
+    })
+  ]);
+
+  if (!timestampsResponse.ok) {
+    throw new KokoroRequestError(`Kokoro timestamps request failed: ${timestampsResponse.status}`, timestampsResponse.status);
+  }
+
+  const words = (await timestampsResponse.json()) as WordTimestamp[];
+  if (
+    !Array.isArray(words) ||
+    words.some((entry) => typeof entry?.word !== "string" || !Number.isFinite(entry.start_time) || !Number.isFinite(entry.end_time))
+  ) {
+    throw new KokoroRequestError("Kokoro captioned response has invalid timestamps.", 502);
+  }
+
+  return {
+    ok: true,
+    contentType,
+    outputFormat: request.outputFormat,
+    voice: request.voice,
+    audioBuffer: Buffer.from(arrayBuffer),
+    words
+  };
+}
+
 export async function streamSpeech(input: string, options?: { voice?: string; format?: string; speed?: number }) {
   const config = getKokoroConfig();
 
