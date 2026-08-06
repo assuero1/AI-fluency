@@ -3,6 +3,13 @@
 import { Loader2, Pause, Play, RotateCcw, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
+import {
+  claimActiveVoice,
+  playDeviceSpeech,
+  releaseActiveVoice,
+  reportDeviceFallback,
+  requestSpeech
+} from "./voice-shared";
 
 type VoiceButtonProps = {
   text: string;
@@ -16,9 +23,6 @@ type VoiceButtonProps = {
 };
 
 type VoiceStatus = "idle" | "loading" | "ready" | "playing" | "paused" | "ended" | "error";
-
-let activeVoice: { owner: symbol; stop: () => void } | null = null;
-const speechRequests = new Map<string, Promise<string>>();
 
 function Wave({ playing = false }: { playing?: boolean }) {
   return (
@@ -48,7 +52,7 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     audio.removeAttribute("src");
     audio.load();
     audioRef.current = null;
-    if (activeVoice?.owner === ownerRef.current) activeVoice = null;
+    releaseActiveVoice(ownerRef.current);
   }, []);
 
   const stopForAnotherVoice = useCallback(() => {
@@ -111,8 +115,7 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
   }, [createAudio]);
 
   const playExisting = useCallback(async (audio: HTMLAudioElement) => {
-    if (activeVoice?.owner !== ownerRef.current) activeVoice?.stop();
-    activeVoice = { owner: ownerRef.current, stop: stopForAnotherVoice };
+    claimActiveVoice(ownerRef.current, stopForAnotherVoice);
     audio.playbackRate = playbackRate;
     // iOS: se o microfone acabou de ser liberado, aguarda a AVAudioSession
     // restaurar a rota do alto-falante antes de tocar.
@@ -226,61 +229,6 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
       <span aria-live="polite">{voiceStatusText(status, label)}</span>
     </button>
   );
-}
-
-function reportDeviceFallback(text: string, languageCode: string | undefined) {
-  const body = JSON.stringify({
-    event_name: "voice_device_fallback",
-    payload: { language: languageCode ?? "", textLength: text.length }
-  });
-  if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
-    navigator.sendBeacon("/api/events", new Blob([body], { type: "application/json" }));
-    return;
-  }
-  void fetch("/api/events", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body,
-    keepalive: true
-  }).catch(() => undefined);
-}
-
-function playDeviceSpeech(text: string, languageCode: string | undefined, rate: number, onEnd: () => void) {
-  if (typeof window === "undefined" || !window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") return null;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = languageCode || "en";
-  utterance.rate = rate;
-  utterance.onend = onEnd;
-  utterance.onerror = onEnd;
-  window.speechSynthesis.speak(utterance);
-  return utterance;
-}
-
-function requestSpeech(text: string, languageCode: string | undefined) {
-  const key = `${languageCode ?? ""}\n${text}`;
-  const existing = speechRequests.get(key);
-  if (existing) return existing;
-
-  const request = fetch("/api/voice/synthesize", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, languageCode })
-  }).then(async (response) => {
-    const data = (await response.json()) as { ok?: boolean; audioUrl?: string; error?: string };
-    if (!response.ok || !data.ok || !data.audioUrl) throw new Error(data.error ?? "Audio unavailable.");
-    return data.audioUrl;
-  }).catch((error) => {
-    speechRequests.delete(key);
-    throw error;
-  });
-
-  if (speechRequests.size >= 100) {
-    const oldestKey = speechRequests.keys().next().value;
-    if (oldestKey) speechRequests.delete(oldestKey);
-  }
-  speechRequests.set(key, request);
-  return request;
 }
 
 function voiceLabel(status: VoiceStatus, label: string) {
