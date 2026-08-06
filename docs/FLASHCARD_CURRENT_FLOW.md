@@ -20,10 +20,12 @@ Este documento caracteriza a implementação existente antes da migração defin
 ## Interação e avaliação
 
 - O usuário precisa digitar, falar ou escolher “Não lembro” antes de revelar a resposta.
-- A comparação determinística sugere Não lembrei, Difícil, Lembrei ou Fácil, e o usuário pode alterar a sugestão.
-- Respostas digitadas e transcritas seguem o mesmo fluxo e são enviadas em lote ao finalizar o último card.
-- Cards avaliados como Não lembrei ou Difícil retornam dentro da sessão, no máximo três vezes.
-- A retomada persistente pertence aos PRs seguintes.
+- A avaliação é binária: dois botões, “Não lembrei” e “Lembrei”, sem escolha de nota pelo usuário.
+- A nota interna (`forgot`, `hard`, `good` ou `easy`) é inferida no servidor por acerto + tempo de resposta; um acerto que o usuário marcou como “Não lembrei” (ou erro de digitação marcado como “Lembrei”) conta como `hard`.
+- Os botões exibem os intervalos exatos da próxima revisão, calculados pelo endpoint `/api/practice/flashcards/preview` a partir do estado real da palavra, da nota inferida e do tempo de resposta.
+- Cada tentativa é persistida imediatamente com um snapshot da revisão; o usuário pode desfazer a última avaliação em até 5 segundos, restaurando o estado anterior da palavra.
+- Cards avaliados como “Não lembrei” (`forgot`) retornam dentro da sessão após três apresentações; os que contam como `hard`, após cinco; no máximo três apresentações por card.
+- Sessões ativas são retomadas a partir das tentativas persistidas (tentativas desfeitas são ignoradas).
 
 ## Atualização de familiaridade
 

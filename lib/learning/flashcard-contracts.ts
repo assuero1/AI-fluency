@@ -29,7 +29,6 @@ export type Flashcard = {
   audioText?: string;
   difficulty: number;
   generationSource?: "ai" | "deterministic" | "fallback";
-  intervalPreviewDays?: Partial<Record<RecallRating, number>>;
 };
 
 export type FlashcardAnswer = {

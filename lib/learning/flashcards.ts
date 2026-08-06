@@ -10,7 +10,7 @@ import { matchesLearningScope } from "./scope";
 import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, summarizeDailyQueue } from "./daily-queue";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
 import { isRatingCorrect, rebuildFlashcardQueue, inferRecallRating, resolveBinaryRating } from "./flashcard-queue";
-import { calculateAdaptiveReview, previewReviewIntervals, previewSingleInterval, reviewToWordFields, type ReviewAttempt } from "./spaced-repetition";
+import { calculateAdaptiveReview, previewSingleInterval, reviewToWordFields, type ReviewAttempt } from "./spaced-repetition";
 import { chooseCardTypes, countPlannedTypes, type CardTypeFlags } from "./flashcard-type-selection";
 import {
   flashcardCriteria,
@@ -301,11 +301,6 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
       const record = await client.createRecord<FlashcardFields>("flashcards", flashcardToRecord(provisional, session.id, index, now));
       cards.push({ ...provisional, id: record.id, sessionId: session.id });
     }
-    const previewNow = new Date();
-    cards = cards.map((card) => {
-      const cardWord = selected.find((item) => item.id === card.targetWordId);
-      return cardWord ? { ...card, intervalPreviewDays: previewReviewIntervals(cardWord.fields, previewNow, timeZone, cardWord.id, card.type) } : card;
-    });
     await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, {
       status: "active",
       unique_card_count: cards.length,
@@ -368,25 +363,18 @@ export async function getActiveFlashcardPractice() {
     .filter((item) => item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards" && item.fields.status === "active")
     .sort((a, b) => dateValue(b.fields.started_at || b.fields.created_at) - dateValue(a.fields.started_at || a.fields.created_at))[0];
   if (!session) return null;
-  const [cardRecords, attemptRecords, wordRecords] = await Promise.all([
+  const [cardRecords, attemptRecords] = await Promise.all([
     client.listRecords<FlashcardFields>("flashcards", 500),
-    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000),
-    client.listRecords<WordFields>("words", 500)
+    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000)
   ]);
   const cards = cardRecords.filter((record) => record.fields.practice_session_id === session.id).sort((a, b) => a.fields.initial_position - b.fields.initial_position).map(flashcardRecordToCard);
   const attempts = attemptRecords.filter((record) => record.fields.practice_session_id === session.id && !record.fields.undone_at).sort(compareAttemptRecords).map((record) => ({ id: record.id, ...attemptRecordToAnswer(record) }));
   if (!cards.length) throw new LearningStateError("A sessão ativa não possui cards persistidos.", 409);
-  const previewNow = new Date();
-  const wordsById = new Map(wordRecords.map((word) => [word.id, word]));
-  const cardsWithPreview = cards.map((card) => {
-    const word = wordsById.get(card.targetWordId);
-    return word ? { ...card, intervalPreviewDays: previewReviewIntervals(word.fields, previewNow, user.fields.timezone ?? "UTC", word.id, card.type) } : card;
-  });
-  const rebuilt = rebuildFlashcardQueue(cardsWithPreview, attempts);
+  const rebuilt = rebuildFlashcardQueue(cards, attempts);
   await client.createEvent(user.id, "flashcard_practice_resumed", { session_id: session.id, persisted_attempt_count: attempts.length });
   return {
     sessionId: session.id,
-    cards: cardsWithPreview,
+    cards,
     attempts,
     queue: rebuilt.queue,
     currentItem: rebuilt.currentItem,

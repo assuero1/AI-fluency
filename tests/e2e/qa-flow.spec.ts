@@ -65,7 +65,7 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
         languageCode: "es",
         languageName: "Espanhol",
         cards: [
-          { id: "card-a", sessionId: "session-e2e", type: "target_to_native", targetWordId: "word-a", supportingWordIds: [], prompt: "hola", expectedAnswer: "olá", acceptedAnswers: [], translation: "olá", difficulty: 1, intervalPreviewDays: { forgot: 1, hard: 2, good: 7, easy: 15 } },
+          { id: "card-a", sessionId: "session-e2e", type: "target_to_native", targetWordId: "word-a", supportingWordIds: [], prompt: "hola", expectedAnswer: "olá", acceptedAnswers: [], translation: "olá", difficulty: 1 },
           { id: "card-b", sessionId: "session-e2e", type: "native_to_target", targetWordId: "word-b", supportingWordIds: [], prompt: "bom dia", expectedAnswer: "buen día", acceptedAnswers: [], translation: "bom dia", difficulty: 2 }
         ]
       })
@@ -172,10 +172,13 @@ test("listening card plays audio prompt and shows interval hints", async ({ page
         languageCode: "es",
         languageName: "Espanhol",
         cards: [
-          { id: "card-listen", sessionId: "session-listen", type: "listening", targetWordId: "word-l", supportingWordIds: [], prompt: "", expectedAnswer: "hola", acceptedAnswers: [], translation: "olá", audioText: "hola", difficulty: 3, intervalPreviewDays: { forgot: 1, hard: 3, good: 7, easy: 16 } }
+          { id: "card-listen", sessionId: "session-listen", type: "listening", targetWordId: "word-l", supportingWordIds: [], prompt: "", expectedAnswer: "hola", acceptedAnswers: [], translation: "olá", audioText: "hola", difficulty: 3 }
         ]
       })
     });
+  });
+  await page.route("**/api/practice/flashcards/preview", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, match: "exact", inferredRating: "good", forgotDays: 1, rememberedDays: 7 }) });
   });
 
   await page.goto("/palavras/treino");
@@ -212,6 +215,9 @@ test("flashcard speech fills an editable attempt and never submits automatically
       { id: "speech-card", sessionId: "speech-session", type: "native_to_target", targetWordId: "word-a", supportingWordIds: [], prompt: "olá", expectedAnswer: "hola", acceptedAnswers: [], translation: "olá", difficulty: 2 }
     ] })
   }));
+  await page.route("**/api/practice/flashcards/preview", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, match: "exact", inferredRating: "good", forgotDays: 1, rememberedDays: 7 }) });
+  });
 
   await page.goto("/palavras/treino");
   await page.getByRole("button", { name: "Sessão custom" }).click();

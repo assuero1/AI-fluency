@@ -139,17 +139,6 @@ export function reviewToWordFields(review: AdaptiveReview) {
   };
 }
 
-// Per-rating preview of the next due distance in days (for the rating buttons' micro-feedback).
-// Mirrors the grade path's attempt shape (rating + cardType); response time stays out because it is unknowable in advance.
-export function previewReviewIntervals(current: ReviewFields, now = new Date(), timeZone = "UTC", fuzzSeed = "", cardType?: ReviewCardType): Record<RecallRating, number> {
-  const preview = {} as Record<RecallRating, number>;
-  for (const rating of ["forgot", "hard", "good", "easy"] as const) {
-    const review = calculateAdaptiveReview(current, [{ rating, cardType }], now, timeZone, fuzzSeed);
-    preview[rating] = Math.max(1, Math.round((Date.parse(review.reviewDueAt) - now.getTime()) / DAY_MS));
-  }
-  return preview;
-}
-
 // Exact due-distance preview for one hypothetical attempt (rating + response time known).
 export function previewSingleInterval(current: ReviewFields, attempt: ReviewAttempt, now = new Date(), timeZone = "UTC", fuzzSeed = ""): number {
   const review = calculateAdaptiveReview(current, [attempt], now, timeZone, fuzzSeed);
