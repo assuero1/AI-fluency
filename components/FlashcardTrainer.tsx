@@ -143,7 +143,6 @@ export function FlashcardTrainer() {
       const attemptData = await attemptResponse.json() as { ok?: boolean; error?: string; attempt?: FlashcardAnswer };
       if (!attemptResponse.ok || !attemptData.ok || !attemptData.attempt) throw new Error(attemptData.error ?? "Não foi possível salvar a tentativa.");
       persisted = attemptData.attempt;
-      setUndoState({ expiresAt: Date.now() + 5_000 });
     } catch (attemptError) {
       setError(attemptError instanceof Error ? attemptError.message : "Não foi possível salvar a tentativa."); setBusy(false); return;
     }
@@ -151,7 +150,7 @@ export function FlashcardTrainer() {
     const nextQueue = advanceFlashcardQueue(queue, currentItem, persisted.rating, nextAnswers.length);
     const nextItem = selectNextQueueItem(nextQueue, nextAnswers.length);
     if (nextItem) {
-      setAnswers(nextAnswers); setQueue(nextQueue); setCurrentItem(nextItem); setBusy(false); resetAttempt(); return;
+      setAnswers(nextAnswers); setQueue(nextQueue); setCurrentItem(nextItem); setUndoState({ expiresAt: Date.now() + 5_000 }); setBusy(false); resetAttempt(); return;
     }
     try {
       const response = await fetch("/api/practice/flashcards/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, clientCompletionId: completionId, answers: nextAnswers }) });
