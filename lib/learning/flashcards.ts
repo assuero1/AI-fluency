@@ -594,6 +594,34 @@ export async function previewFlashcardAttemptIntervals(input: { sessionId?: unkn
   };
 }
 
+export async function undoFlashcardAttempt(sessionId: string) {
+  if (!sessionId.trim()) throw new LearningStateError("Informe a sessão de treino.", 422);
+  const client = getTeableClient();
+  const user = await getOrCreatePersonalUser();
+  const profile = await getActiveLanguageProfile(user);
+  if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
+  const [sessions, attemptRecords, words] = await Promise.all([
+    client.listRecords<PracticeSessionFields>("practiceSessions", 300),
+    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000),
+    client.listRecords<WordFields>("words", 500)
+  ]);
+  const session = sessions.find((item) => item.id === sessionId && item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards" && item.fields.status === "active");
+  if (!session) throw new LearningStateError("Sessão ativa de treino não encontrada.", 404);
+  const liveAttempts = attemptRecords.filter((record) => record.fields.practice_session_id === session.id && !record.fields.undone_at).sort(compareAttemptRecords);
+  const last = liveAttempts.at(-1);
+  if (!last) throw new LearningStateError("Não há avaliação para desfazer.", 409);
+  const snapshot = parseJson(last.fields.review_snapshot ?? "") as Record<string, Record<string, unknown>>;
+  for (const [wordId, fields] of Object.entries(snapshot)) {
+    const word = words.find((item) => item.id === wordId && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
+    if (word) await client.updateRecord<WordFields>("words", wordId, fields as Partial<WordFields>);
+  }
+  const now = new Date().toISOString();
+  await client.updateRecord<FlashcardAttemptFields>("flashcardAttempts", last.id, { undone_at: now, review_applied: false });
+  await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, { presentation_count: liveAttempts.length - 1, updated_at: now });
+  await client.createEvent(user.id, "flashcard_attempt_undone", { session_id: session.id, flashcard_id: last.fields.flashcard_id, presentation_number: last.fields.presentation_number });
+  return { cardId: last.fields.flashcard_id, presentationNumber: last.fields.presentation_number };
+}
+
 export async function completeFlashcardPractice(sessionId: string, clientCompletionId: string, answers: Array<{ cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown }>) {
   if (!sessionId.trim()) throw new LearningStateError("Informe a sessão de treino.", 422);
   if (!isClientOperationId(clientCompletionId)) throw new LearningStateError("Identificador de conclusão inválido.", 422);

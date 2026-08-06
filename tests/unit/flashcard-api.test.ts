@@ -6,8 +6,9 @@ const getActiveFlashcardPractice = vi.fn();
 const persistFlashcardAttempt = vi.fn();
 const getDailyQueueSummary = vi.fn();
 const previewFlashcardAttemptIntervals = vi.fn();
+const undoFlashcardAttempt = vi.fn();
 
-vi.mock("../../lib/learning/flashcards", () => ({ createFlashcardPractice, completeFlashcardPractice, getActiveFlashcardPractice, persistFlashcardAttempt, getDailyQueueSummary, previewFlashcardAttemptIntervals }));
+vi.mock("../../lib/learning/flashcards", () => ({ createFlashcardPractice, completeFlashcardPractice, getActiveFlashcardPractice, persistFlashcardAttempt, getDailyQueueSummary, previewFlashcardAttemptIntervals, undoFlashcardAttempt }));
 
 describe("flashcard API contracts", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -66,5 +67,13 @@ describe("flashcard API contracts", () => {
     expect(response.status).toBe(200);
     expect(previewFlashcardAttemptIntervals).toHaveBeenCalledWith(body);
     expect(await response.json()).toMatchObject({ ok: true, forgotDays: 1, rememberedDays: 15 });
+  });
+
+  it("undoes the latest attempt of a session", async () => {
+    undoFlashcardAttempt.mockResolvedValue({ cardId: "card-a", presentationNumber: 3 });
+    const { POST } = await import("../../app/api/practice/flashcards/[sessionId]/undo/route");
+    const response = await POST(new Request("http://localhost/api/practice/flashcards/session-a/undo", { method: "POST" }), { params: Promise.resolve({ sessionId: "session-a" }) });
+    expect(response.status).toBe(200);
+    expect(undoFlashcardAttempt).toHaveBeenCalledWith("session-a");
   });
 });
