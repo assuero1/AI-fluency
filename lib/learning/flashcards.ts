@@ -90,6 +90,8 @@ export type FlashcardAttemptFields = {
   audio_failed?: boolean;
   review_applied?: boolean;
   resulting_review_state?: string;
+  review_snapshot?: string;
+  undone_at?: string;
   created_at: string;
 };
 
