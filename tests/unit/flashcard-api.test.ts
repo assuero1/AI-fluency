@@ -5,8 +5,9 @@ const completeFlashcardPractice = vi.fn();
 const getActiveFlashcardPractice = vi.fn();
 const persistFlashcardAttempt = vi.fn();
 const getDailyQueueSummary = vi.fn();
+const previewFlashcardAttemptIntervals = vi.fn();
 
-vi.mock("../../lib/learning/flashcards", () => ({ createFlashcardPractice, completeFlashcardPractice, getActiveFlashcardPractice, persistFlashcardAttempt, getDailyQueueSummary }));
+vi.mock("../../lib/learning/flashcards", () => ({ createFlashcardPractice, completeFlashcardPractice, getActiveFlashcardPractice, persistFlashcardAttempt, getDailyQueueSummary, previewFlashcardAttemptIntervals }));
 
 describe("flashcard API contracts", () => {
   beforeEach(() => vi.clearAllMocks());
@@ -55,5 +56,15 @@ describe("flashcard API contracts", () => {
     expect(response.status).toBe(200);
     expect(completeFlashcardPractice).toHaveBeenCalledWith("session-a", "completion-123", answers);
     expect(await response.json()).toMatchObject({ ok: true, score: 100 });
+  });
+
+  it("returns exact interval previews for the binary buttons", async () => {
+    previewFlashcardAttemptIntervals.mockResolvedValue({ match: "exact", inferredRating: "easy", forgotDays: 1, rememberedDays: 15 });
+    const { POST } = await import("../../app/api/practice/flashcards/preview/route");
+    const body = { sessionId: "session-a", cardId: "card-a", presentationNumber: 1, userAnswer: "hola", responseTimeMs: 1200 };
+    const response = await POST(new Request("http://localhost/api/practice/flashcards/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
+    expect(response.status).toBe(200);
+    expect(previewFlashcardAttemptIntervals).toHaveBeenCalledWith(body);
+    expect(await response.json()).toMatchObject({ ok: true, forgotDays: 1, rememberedDays: 15 });
   });
 });

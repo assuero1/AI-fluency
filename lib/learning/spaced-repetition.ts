@@ -150,6 +150,12 @@ export function previewReviewIntervals(current: ReviewFields, now = new Date(), 
   return preview;
 }
 
+// Exact due-distance preview for one hypothetical attempt (rating + response time known).
+export function previewSingleInterval(current: ReviewFields, attempt: ReviewAttempt, now = new Date(), timeZone = "UTC", fuzzSeed = ""): number {
+  const review = calculateAdaptiveReview(current, [attempt], now, timeZone, fuzzSeed);
+  return Math.max(1, Math.round((Date.parse(review.reviewDueAt) - now.getTime()) / DAY_MS));
+}
+
 function isGraduated(current: ReviewFields) {
   if (typeof current.learning_step === "number") return current.learning_step > LEARNING_STEPS_DAYS.length;
   // Legacy words (srs-v1) have no learning_step: infer from the persisted state.

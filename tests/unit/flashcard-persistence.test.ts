@@ -172,6 +172,29 @@ describe("flashcard attempt persistence and resume", () => {
     expect(snapshot["word-a"]).toMatchObject({ familiarity_score: 4, review_ease: 2.5 });
   });
 
+  it("previews exact intervals for both binary choices without persisting", async () => {
+    listRecords.mockImplementation(async (table: string) => {
+      if (table === "practiceSessions") return [session];
+      if (table === "flashcards") return [cardRecord];
+      if (table === "flashcardAttempts") return attempts;
+      if (table === "words") return [{ id: "word-a", fields: { user_id: user.id, language_profile_id: profile.id, familiarity_score: 4 } }];
+      return [];
+    });
+    const { previewFlashcardAttemptIntervals } = await import("../../lib/learning/flashcards");
+    const preview = await previewFlashcardAttemptIntervals({ sessionId: session.id, cardId: cardRecord.id, presentationNumber: 1, userAnswer: "hola", responseTimeMs: 1200 });
+    expect(preview.match).toBe("exact");
+    expect(preview.inferredRating).toBe("easy");
+    expect(preview.forgotDays).toBe(1);
+    expect(preview.rememberedDays).toBeGreaterThan(preview.forgotDays);
+    expect(createRecord).not.toHaveBeenCalled();
+    expect(updateRecord).not.toHaveBeenCalled();
+  });
+
+  it("rejects the preview when the card is not the current queue item", async () => {
+    const { previewFlashcardAttemptIntervals } = await import("../../lib/learning/flashcards");
+    await expect(previewFlashcardAttemptIntervals({ sessionId: session.id, cardId: cardRecord.id, presentationNumber: 2, userAnswer: "hola" })).rejects.toThrow("fila");
+  });
+
   it("ignores undone attempts when rebuilding the queue", async () => {
     attempts = [{ id: "attempt-0", fields: { practice_session_id: session.id, flashcard_id: cardRecord.id, word_id: "word-a", presentation_number: 1, client_attempt_id: "old-001", user_answer: "x", normalized_answer: "x", match_result: "incorrect", suggested_rating: "forgot", final_rating: "forgot", was_correct: false, response_time_ms: 1000, used_speech: false, audio_replay_count: 0, created_at: "2026-07-10T12:01:00.000Z", undone_at: "2026-07-10T12:02:00.000Z" } }];
     const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");

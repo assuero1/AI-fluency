@@ -10,7 +10,7 @@ import { matchesLearningScope } from "./scope";
 import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, summarizeDailyQueue } from "./daily-queue";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
 import { isRatingCorrect, rebuildFlashcardQueue, inferRecallRating, resolveBinaryRating } from "./flashcard-queue";
-import { calculateAdaptiveReview, previewReviewIntervals, reviewToWordFields, type ReviewAttempt } from "./spaced-repetition";
+import { calculateAdaptiveReview, previewReviewIntervals, previewSingleInterval, reviewToWordFields, type ReviewAttempt } from "./spaced-repetition";
 import { chooseCardTypes, countPlannedTypes, type CardTypeFlags } from "./flashcard-type-selection";
 import {
   flashcardCriteria,
@@ -550,6 +550,48 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
     }
   }
   return { id: record.id, ...attemptRecordToAnswer(record) };
+}
+
+export async function previewFlashcardAttemptIntervals(input: { sessionId?: unknown; cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; forgot?: unknown; responseTimeMs?: unknown }) {
+  const sessionId = typeof input.sessionId === "string" ? input.sessionId : "";
+  if (!sessionId) throw new LearningStateError("Informe a sessão de treino.", 422);
+  const client = getTeableClient();
+  const user = await getOrCreatePersonalUser();
+  const profile = await getActiveLanguageProfile(user);
+  if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
+  const [sessions, cardRecords, attemptRecords, words] = await Promise.all([
+    client.listRecords<PracticeSessionFields>("practiceSessions", 300),
+    client.listRecords<FlashcardFields>("flashcards", 500),
+    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000),
+    client.listRecords<WordFields>("words", 500)
+  ]);
+  const session = sessions.find((item) => item.id === sessionId && item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards" && item.fields.status === "active");
+  if (!session) throw new LearningStateError("Sessão ativa de treino não encontrada.", 404);
+  const cards = cardRecords.filter((record) => record.fields.practice_session_id === sessionId).sort((a, b) => a.fields.initial_position - b.fields.initial_position).map(flashcardRecordToCard);
+  const priorAttempts = attemptRecords.filter((record) => record.fields.practice_session_id === sessionId && !record.fields.undone_at).sort(compareAttemptRecords).map(attemptRecordToAnswer);
+  const current = rebuildFlashcardQueue(cards, priorAttempts).currentItem;
+  const cardId = typeof input.cardId === "string" ? input.cardId : "";
+  const presentationNumber = Number(input.presentationNumber);
+  if (!current || current.cardId !== cardId || current.presentationNumber !== presentationNumber) {
+    throw new LearningStateError("A tentativa não corresponde ao próximo item da fila.", 409);
+  }
+  const card = cards.find((candidate) => candidate.id === cardId)!;
+  const forgot = input.forgot === true;
+  const userAnswer = typeof input.userAnswer === "string" ? input.userAnswer.trim().slice(0, 300) : "";
+  if (!forgot && !userAnswer) throw new LearningStateError("Informe uma resposta ou marque que não lembra.", 422);
+  const match = forgot ? "incorrect" as const : compareAnswerForCard(card, userAnswer);
+  const responseTimeMs = Math.max(0, Math.min(300_000, Math.round(Number(input.responseTimeMs) || 0)));
+  const inferredRating = resolveBinaryRating({ remembered: true, match, forgot, responseTimeMs, cardType: card.type });
+  const word = words.find((item) => item.id === card.targetWordId && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
+  if (!word) throw new LearningStateError("Palavra do card não encontrada.", 404);
+  const now = new Date();
+  const timeZone = user.fields.timezone ?? "UTC";
+  return {
+    match,
+    inferredRating,
+    forgotDays: previewSingleInterval(word.fields, { rating: "forgot", responseTimeMs, cardType: card.type }, now, timeZone, word.id),
+    rememberedDays: previewSingleInterval(word.fields, { rating: inferredRating, responseTimeMs, cardType: card.type }, now, timeZone, word.id)
+  };
 }
 
 export async function completeFlashcardPractice(sessionId: string, clientCompletionId: string, answers: Array<{ cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown }>) {
