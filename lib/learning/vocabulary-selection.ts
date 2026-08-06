@@ -52,6 +52,7 @@ type VocabularyLinguisticData = { lemma: string; translation: string; partOfSpee
 
 const MAX_VOCABULARY_CANDIDATES = 80;
 const VOCABULARY_ANALYSIS_CHUNK_SIZE = 20;
+const VOCABULARY_TRANSLATION_FALLBACK_CHUNK_SIZE = 5;
 const VOCABULARY_ANALYSIS_CACHE_TTL_MS = 10 * 60_000;
 const MAX_VOCABULARY_ANALYSIS_CACHE_ENTRIES = 32;
 
@@ -651,6 +652,7 @@ async function analyzeVocabulary(candidates: VocabularyCandidate[], language: st
     const chunk = candidates.slice(index, index + VOCABULARY_ANALYSIS_CHUNK_SIZE);
     Object.assign(merged, await analyzeVocabularyChunk(chunk, language));
   }
+  await translateMissingTranslations(merged, candidates, language);
   return merged;
 }
 
@@ -692,6 +694,62 @@ async function analyzeVocabularyChunk(chunk: VocabularyCandidate[], language: st
     console.error(`Vocabulary analysis response could not be parsed for ${chunk.length} candidate(s) in ${language}; keeping fallback lemmas.`, error);
     return {} as Record<string, VocabularyLinguisticData>;
   }
+}
+
+/**
+ * Second chance for candidates whose chunked analysis came back without a
+ * translation (timeout, truncated JSON, etc.). Small batches with a simpler
+ * prompt keep the failure blast radius per-word instead of per-chunk. Words
+ * that stay untranslated after this pass are handled by the caller (new words
+ * are not persisted without a translation).
+ */
+async function translateMissingTranslations(
+  analyses: Record<string, VocabularyLinguisticData>,
+  candidates: VocabularyCandidate[],
+  language: string
+) {
+  const missing = candidates.filter((candidate) => !analyses[candidate.id]?.translation);
+  for (let index = 0; index < missing.length; index += VOCABULARY_TRANSLATION_FALLBACK_CHUNK_SIZE) {
+    const batch = missing.slice(index, index + VOCABULARY_TRANSLATION_FALLBACK_CHUNK_SIZE);
+    let content: string;
+    try {
+      const response = await createChatCompletion([
+        {
+          role: "system",
+          content: "Traduza cada item para português brasileiro. Responda somente JSON válido: um array com objetos {id, translation}. Preserve cada id exatamente."
+        },
+        { role: "user", content: `Idioma: ${language}\nItens: ${JSON.stringify(batch.map((candidate) => ({ id: candidate.id, text: candidate.text, context: candidate.context })))}` }
+      ], { temperature: 0, maxTokens: 800, timeoutMs: 15_000 });
+      content = response.content;
+    } catch (error) {
+      console.error(`Translation fallback failed for ${batch.length} candidate(s) in ${language}.`, error);
+      continue;
+    }
+    const allowedIds = new Set(batch.map((candidate) => candidate.id));
+    for (const [id, translation] of Object.entries(parseTranslationItems(content, allowedIds))) {
+      const analysis = analyses[id];
+      if (analysis && !analysis.translation) analysis.translation = translation;
+    }
+  }
+}
+
+function parseTranslationItems(content: string, allowedIds: Set<string>) {
+  const result: Record<string, string> = {};
+  try {
+    const match = content.match(/\[[\s\S]*\]/);
+    const parsed = JSON.parse(match?.[0] ?? "[]") as unknown;
+    if (!Array.isArray(parsed)) return result;
+    for (const value of parsed) {
+      if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+      const item = value as Record<string, unknown>;
+      if (typeof item.id !== "string" || !allowedIds.has(item.id)) continue;
+      const translation = typeof item.translation === "string" ? item.translation.trim() : "";
+      if (translation) result[item.id] = translation;
+    }
+  } catch (error) {
+    console.error("Translation fallback response could not be parsed.", error);
+  }
+  return result;
 }
 
 const IRREGULAR_LEMMAS = normalizeIrregularLemmas({

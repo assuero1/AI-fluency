@@ -207,6 +207,13 @@ describe("vocabulary candidate selection", () => {
     it("splits large candidate sets into chunks of at most 20", async () => {
       const { groupNewVocabularyCandidates } = await import("../../lib/learning/vocabulary-selection");
       const candidates = Array.from({ length: 45 }, (_, index) => buildCandidate(`user:w${index}`, "user", 1));
+      // Ids outside each chunk are ignored by the analysis parser, so one
+      // response covering every candidate keeps all chunks translated and the
+      // translation fallback out of this call count.
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify(candidates.map((candidate) => ({ id: candidate.id, lemma: candidate.normalized, translation: "x" }))),
+        tokensUsed: 1
+      });
 
       await groupNewVocabularyCandidates(candidates, [], "en");
 
@@ -237,6 +244,50 @@ describe("vocabulary candidate selection", () => {
       await groupNewVocabularyCandidates([buildCandidate("user:working", "user", 1)], [], "en");
 
       expect(error).toHaveBeenCalled();
+    });
+  });
+
+  describe("translation fallback", () => {
+    it("retries missing translations in small batches before grouping", async () => {
+      createChatCompletion
+        .mockResolvedValueOnce({
+          content: JSON.stringify([{ id: "user:biblioteca", lemma: "biblioteca", translation: "", part_of_speech: "noun" }]),
+          tokensUsed: 1
+        })
+        .mockResolvedValueOnce({
+          content: JSON.stringify([{ id: "user:biblioteca", translation: "biblioteca" }]),
+          tokensUsed: 1
+        });
+      const { groupNewVocabularyCandidates } = await import("../../lib/learning/vocabulary-selection");
+
+      const groups = await groupNewVocabularyCandidates([buildCandidate("user:biblioteca", "user", 1)], [], "en");
+
+      expect(createChatCompletion).toHaveBeenCalledTimes(2);
+      expect(createChatCompletion.mock.calls[1][1]).toMatchObject({ maxTokens: 800, timeoutMs: 15_000 });
+      expect(groups[0].translation).toBe("biblioteca");
+    });
+
+    it("keeps empty translations and logs an error when the fallback also fails", async () => {
+      const error = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      createChatCompletion.mockRejectedValue(new Error("provider down"));
+      const { groupNewVocabularyCandidates } = await import("../../lib/learning/vocabulary-selection");
+
+      const groups = await groupNewVocabularyCandidates([buildCandidate("user:working", "user", 1)], [], "en");
+
+      expect(error).toHaveBeenCalled();
+      expect(groups[0].translation).toBe("");
+    });
+
+    it("skips the fallback call when every candidate already has a translation", async () => {
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([{ id: "user:casa", lemma: "casa", translation: "house", part_of_speech: "noun" }]),
+        tokensUsed: 1
+      });
+      const { groupNewVocabularyCandidates } = await import("../../lib/learning/vocabulary-selection");
+
+      await groupNewVocabularyCandidates([buildCandidate("user:casa", "user", 1)], [], "en");
+
+      expect(createChatCompletion).toHaveBeenCalledTimes(1);
     });
   });
 
