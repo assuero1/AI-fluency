@@ -4,7 +4,7 @@ import { ArrowLeft, Brain, Check, Clock3, Layers3, Loader2, Mic, MicOff, RotateC
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { compareAnswerForCard } from "@/lib/learning/flashcard-answer";
-import { advanceFlashcardQueue, createFlashcardQueue, selectNextQueueItem, inferRecallRating } from "@/lib/learning/flashcard-queue";
+import { advanceFlashcardQueue, createFlashcardQueue, selectNextQueueItem, inferRecallRating, rebuildFlashcardQueue } from "@/lib/learning/flashcard-queue";
 import type { AnswerMatch, DailyQueueSummary, Flashcard, FlashcardAnswer, FlashcardCriterion, FlashcardPracticeResult, FlashcardQueueKind, QueueItem, RecallRating } from "@/lib/learning/flashcard-contracts";
 import { Pill } from "./Pill";
 import { VoiceButton } from "./VoiceButton";
@@ -33,7 +33,8 @@ export function FlashcardTrainer() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [currentItem, setCurrentItem] = useState<QueueItem | null>(null);
   const [input, setInput] = useState("");
-  const [revealed, setRevealed] = useState<{ match: AnswerMatch; forgot: boolean; responseTimeMs: number; suggestedRating: RecallRating } | null>(null);
+  const [revealed, setRevealed] = useState<{ match: AnswerMatch; forgot: boolean; responseTimeMs: number; inferredRating: RecallRating; forgotDays: number | null; rememberedDays: number | null } | null>(null);
+  const [undoState, setUndoState] = useState<{ expiresAt: number } | null>(null);
   const [presentationStartedAt, setPresentationStartedAt] = useState(0);
   const [adapted, setAdapted] = useState(false);
   const [currentAttemptId, setCurrentAttemptId] = useState("");
@@ -80,6 +81,12 @@ export function FlashcardTrainer() {
     if (cards.length && !revealed) inputRef.current?.focus();
   }, [cards.length, currentItem, revealed]);
 
+  useEffect(() => {
+    if (!undoState) return;
+    const timeout = setTimeout(() => setUndoState(null), Math.max(0, undoState.expiresAt - Date.now()));
+    return () => clearTimeout(timeout);
+  }, [undoState]);
+
   async function start(queueKind: FlashcardQueueKind) {
     setBusy(true); setError("");
     try {
@@ -105,34 +112,43 @@ export function FlashcardTrainer() {
     finally { setQuotaSaving(false); }
   }
 
-  function submitAttempt(event?: FormEvent, forgot = false) {
+  async function submitAttempt(event?: FormEvent, forgot = false) {
     event?.preventDefault();
     if (revealed || busy || (!forgot && !input.trim())) return;
     recognitionRef.current?.stop();
     const card = cards.find((candidate) => candidate.id === currentItem?.cardId);
-    if (!card) return;
-    const match = forgot ? "incorrect" : compareAnswerForCard(card, input);
+    if (!card || !currentItem) return;
+    const match = forgot ? "incorrect" as const : compareAnswerForCard(card, input);
     const responseTimeMs = Math.max(0, Date.now() - presentationStartedAt);
     setListening(false);
-    setRevealed({ match, forgot, responseTimeMs, suggestedRating: inferRecallRating({ match, forgot, responseTimeMs, cardType: card.type }) });
+    const fallback = { inferredRating: inferRecallRating({ match, forgot, responseTimeMs, cardType: card.type }), forgotDays: null, rememberedDays: null };
+    try {
+      const response = await fetch("/api/practice/flashcards/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, cardId: currentItem.cardId, presentationNumber: currentItem.presentationNumber, userAnswer: input.trim(), forgot, responseTimeMs }) });
+      const data = await response.json() as { ok?: boolean; inferredRating?: RecallRating; forgotDays?: number; rememberedDays?: number };
+      if (!response.ok || !data.ok || typeof data.forgotDays !== "number" || typeof data.rememberedDays !== "number") throw new Error("preview unavailable");
+      setRevealed({ match, forgot, responseTimeMs, inferredRating: data.inferredRating ?? fallback.inferredRating, forgotDays: data.forgotDays, rememberedDays: data.rememberedDays });
+    } catch {
+      setRevealed({ match, forgot, responseTimeMs, ...fallback });
+    }
   }
 
-  async function grade(rating: RecallRating) {
+  async function grade(remembered: boolean) {
     if (!revealed || busy || !currentItem) return;
     setBusy(true); setError("");
     const clientAttemptId = currentAttemptId || crypto.randomUUID();
     setCurrentAttemptId(clientAttemptId);
     let persisted: FlashcardAnswer;
     try {
-      const attemptResponse = await fetch("/api/practice/flashcards/attempt", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, clientAttemptId, cardId: currentItem.cardId, presentationNumber: currentItem.presentationNumber, userAnswer: input.trim(), rating, forgot: revealed.forgot, usedSpeech, responseTimeMs: revealed.responseTimeMs, audioReplayCount, usedSlowAudio, audioFailed }) });
+      const attemptResponse = await fetch("/api/practice/flashcards/attempt", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, clientAttemptId, cardId: currentItem.cardId, presentationNumber: currentItem.presentationNumber, userAnswer: input.trim(), remembered, forgot: revealed.forgot, usedSpeech, responseTimeMs: revealed.responseTimeMs, audioReplayCount, usedSlowAudio, audioFailed }) });
       const attemptData = await attemptResponse.json() as { ok?: boolean; error?: string; attempt?: FlashcardAnswer };
       if (!attemptResponse.ok || !attemptData.ok || !attemptData.attempt) throw new Error(attemptData.error ?? "Não foi possível salvar a tentativa.");
       persisted = attemptData.attempt;
+      setUndoState({ expiresAt: Date.now() + 5_000 });
     } catch (attemptError) {
       setError(attemptError instanceof Error ? attemptError.message : "Não foi possível salvar a tentativa."); setBusy(false); return;
     }
     const nextAnswers = [...answers, persisted];
-    const nextQueue = advanceFlashcardQueue(queue, currentItem, rating, nextAnswers.length);
+    const nextQueue = advanceFlashcardQueue(queue, currentItem, persisted.rating, nextAnswers.length);
     const nextItem = selectNextQueueItem(nextQueue, nextAnswers.length);
     if (nextItem) {
       setAnswers(nextAnswers); setQueue(nextQueue); setCurrentItem(nextItem); setBusy(false); resetAttempt(); return;
@@ -143,6 +159,20 @@ export function FlashcardTrainer() {
       if (!response.ok || !data.ok || typeof data.score !== "number") throw new Error(data.error ?? "Não foi possível concluir o treino.");
       setAnswers(nextAnswers); setResult(data as FlashcardPracticeResult); setResumable(null);
     } catch (finishError) { setError(finishError instanceof Error ? finishError.message : "Não foi possível concluir o treino."); }
+    finally { setBusy(false); }
+  }
+
+  async function undoLast() {
+    if (!undoState || busy) return;
+    setBusy(true); setError("");
+    try {
+      const response = await fetch(`/api/practice/flashcards/${sessionId}/undo`, { method: "POST" });
+      const data = await response.json() as { ok?: boolean; error?: string };
+      if (!response.ok || !data.ok) throw new Error(data.error ?? "Não foi possível desfazer.");
+      const remainingAnswers = answers.slice(0, -1);
+      const rebuilt = rebuildFlashcardQueue(cards, remainingAnswers);
+      setAnswers(remainingAnswers); setQueue(rebuilt.queue); setCurrentItem(rebuilt.currentItem); setUndoState(null); resetAttempt();
+    } catch (undoError) { setError(undoError instanceof Error ? undoError.message : "Não foi possível desfazer."); }
     finally { setBusy(false); }
   }
 
@@ -248,19 +278,18 @@ export function FlashcardTrainer() {
         <label htmlFor="flashcard-answer">Resposta esperada em {card.type === "target_to_native" || card.type === "listening" ? "português" : languageName}</label>
         <div className="flashcard-input-row"><input autoComplete="off" id="flashcard-answer" maxLength={300} onChange={(event) => setInput(event.target.value)} placeholder="Digite sua resposta" ref={inputRef} value={input} /><button aria-label={listening ? "Parar transcrição" : "Falar resposta"} className={listening ? "voice-icon-button listening" : "voice-icon-button"} disabled={!speechSupported} onClick={toggleSpeech} type="button">{listening ? <MicOff /> : <Mic />}</button></div>
         {usedSpeech ? <p className="speech-status">Transcrição pronta para revisar e editar.</p> : null}
-        <div className="flashcard-attempt-actions"><button className="outline-button" onClick={(event) => submitAttempt(event, true)} type="button">Não lembro</button><button className="green-button" disabled={!input.trim()} type="submit">Responder</button></div>
+        <div className="flashcard-attempt-actions"><button className="outline-button" onClick={(event) => void submitAttempt(event, true)} type="button">Não lembro</button><button className="green-button" disabled={!input.trim()} type="submit">Responder</button></div>
       </form> : <section className="flashcard-reveal" aria-live="polite">
         <div><span>Resposta esperada</span><strong>{card.expectedAnswer}</strong></div>
         <div><span>Sua tentativa</span><strong>{revealed.forgot ? "Não lembrei" : input}</strong></div>
         <p className={`answer-match ${revealed.match}`}>{matchLabel(revealed.match)}</p>
-        <p>Como foi lembrar? Você pode alterar a sugestão.</p>
+        <p>{ratingExplanation(revealed)}</p>
         <div className="recall-rating-grid">
-          <button className={revealed.suggestedRating === "forgot" ? "suggested" : ""} disabled={busy} onClick={() => grade("forgot")} type="button"><X /> Não lembrei{card.intervalPreviewDays?.forgot ? <span className="interval-hint">→ {formatIntervalDays(card.intervalPreviewDays.forgot)}</span> : null}</button>
-          <button className={revealed.suggestedRating === "hard" ? "suggested" : ""} disabled={busy} onClick={() => grade("hard")} type="button">Difícil{card.intervalPreviewDays?.hard ? <span className="interval-hint">→ {formatIntervalDays(card.intervalPreviewDays.hard)}</span> : null}</button>
-          <button className={revealed.suggestedRating === "good" ? "suggested" : ""} disabled={busy} onClick={() => grade("good")} type="button"><Check /> Lembrei{card.intervalPreviewDays?.good ? <span className="interval-hint">→ {formatIntervalDays(card.intervalPreviewDays.good)}</span> : null}</button>
-          <button className={revealed.suggestedRating === "easy" ? "suggested" : ""} disabled={busy} onClick={() => grade("easy")} type="button"><Sparkles /> Fácil{card.intervalPreviewDays?.easy ? <span className="interval-hint">→ {formatIntervalDays(card.intervalPreviewDays.easy)}</span> : null}</button>
+          <button disabled={busy} onClick={() => void grade(false)} type="button"><X /> Não lembrei{revealed.forgotDays ? <span className="interval-hint">→ {formatIntervalDays(revealed.forgotDays)}</span> : null}</button>
+          <button className="suggested" disabled={busy} onClick={() => void grade(true)} type="button"><Check /> Lembrei{revealed.rememberedDays ? <span className="interval-hint">→ {formatIntervalDays(revealed.rememberedDays)}</span> : null}</button>
         </div>
       </section>}
+      {undoState ? <p className="speech-status">Avaliação registrada. <button className="outline-button" disabled={busy} onClick={() => void undoLast()} type="button">Desfazer</button></p> : null}
       {busy ? <p className="speech-status"><Loader2 className="spin" /> Salvando resultado...</p> : null}{error ? <p className="inline-error" role="alert">{error}</p> : null}
       {exitConfirmationOpen ? <div className="modal-backdrop" role="presentation"><section aria-labelledby="leave-training-title" aria-modal="true" className="confirmation-modal" role="dialog"><h2 className="section-title" id="leave-training-title">Sair do treino?</h2><p className="row-meta">Você poderá continuar depois. Se abandonar, as tentativas já salvas ficam auditáveis, mas nenhuma palavra pendente terá o domínio alterado.</p><div className="modal-actions"><button className="outline-button" disabled={busy} onClick={() => setExitConfirmationOpen(false)} type="button">Continuar treinando</button><button className="danger-button" disabled={busy} onClick={() => void abandonSession(sessionId)} type="button">Abandonar treino</button></div></section></div> : null}
     </div>;
@@ -290,7 +319,7 @@ export function FlashcardTrainer() {
     {customOpen ? <>
       <section className="section"><h2 className="section-title">Quais palavras priorizar?</h2><p className="row-meta">Palavras com revisão vencida sempre entram primeiro; o critério ordena o restante.</p><div className="flashcard-choice-grid"><button className={criterion === "least_used" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("least_used")} type="button"><Layers3 /><div><strong>Menos usadas</strong><span>Reforça palavras com pouca prática</span></div></button><button className={criterion === "oldest" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("oldest")} type="button"><Clock3 /><div><strong>Há mais tempo sem usar</strong><span>Recupera vocabulário esquecido</span></div></button></div></section>
       <section className="section"><div className="top-row"><h2 className="section-title">Quantidade de palavras</h2><strong>{count}</strong></div><input aria-label="Quantidade de palavras" className="flashcard-range" min="2" max="30" onChange={(event) => setCount(Number(event.target.value))} step="1" type="range" value={count} /><div className="top-row row-meta"><span>2</span><span>30</span></div></section>
-      <div className="soft-card"><Sparkles /><div><strong>Como funciona</strong><p className="row-meta">Digite ou fale sua tentativa. A resposta só aparece depois, e você confirma a avaliação sugerida.</p></div></div>
+      <div className="soft-card"><Sparkles /><div><strong>Como funciona</strong><p className="row-meta">Digite ou fale sua tentativa. A resposta só aparece depois, e o treino agenda a próxima revisão pelo seu acerto e tempo de resposta.</p></div></div>
       <button className="green-button full-button" disabled={busy} onClick={() => void start("custom")} type="button">{busy ? <Loader2 className="spin" /> : <Brain />} Montar treino com {count} palavras</button>
     </> : null}
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
@@ -308,8 +337,15 @@ function matchLabel(match: AnswerMatch) {
   if (match === "exact") return "Resposta exata";
   if (match === "acceptable") return "Resposta aceita";
   if (match === "minor_error") return "Quase correta — confira acento ou artigo";
-  if (match === "unknown") return "Variação não reconhecida — avalie manualmente";
+  if (match === "unknown") return "Variação não reconhecida — conta como Difícil";
   return "Resposta diferente da esperada";
+}
+
+function ratingExplanation(revealed: { forgot: boolean; match: AnswerMatch; inferredRating: RecallRating }) {
+  if (revealed.forgot || revealed.match === "incorrect") return "Se você sabia e só errou na digitação, marque Lembrei — conta como Difícil.";
+  if (revealed.inferredRating === "easy") return "Resposta rápida — conta como Fácil.";
+  if (revealed.inferredRating === "hard") return "Quase lá — conta como Difícil.";
+  return "Resposta correta.";
 }
 
 function formatAccuracy(value: number | null | undefined) { return typeof value === "number" ? `${value}%` : "—"; }

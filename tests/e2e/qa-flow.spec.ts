@@ -71,9 +71,13 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
       })
     });
   });
+  await page.route("**/api/practice/flashcards/preview", async (route) => {
+    const body = route.request().postDataJSON() as { forgot?: boolean };
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, match: body.forgot ? "incorrect" : "exact", inferredRating: body.forgot ? "forgot" : "good", forgotDays: 1, rememberedDays: 7 }) });
+  });
   await page.route("**/api/practice/flashcards/attempt", async (route) => {
     const body = route.request().postDataJSON() as Record<string, unknown>;
-    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, attempt: { ...body, matchResult: body.forgot ? "incorrect" : "exact", suggestedRating: body.forgot ? "forgot" : "easy" } }) });
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, attempt: { ...body, matchResult: body.forgot ? "incorrect" : "exact", rating: body.forgot ? "forgot" : body.remembered ? "good" : "hard" } }) });
   });
   await page.route("**/api/practice/flashcards/complete", async (route) => {
     completionBodies.push(route.request().postDataJSON() as { clientCompletionId?: string; answers?: unknown[] });
@@ -97,11 +101,11 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
   await expect(page.getByText("buen día", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Não lembro" }).click();
   await expect(page.getByText("buen día", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Não lembrei", exact: true }).click();
+  await page.getByRole("button", { name: /^Não lembrei/ }).click();
   await expect(page.getByText("bom dia", { exact: true })).toBeVisible();
   await page.getByRole("textbox", { name: "Resposta esperada em Espanhol" }).fill("buen día");
   await page.getByRole("button", { name: "Responder" }).click();
-  await page.getByRole("button", { name: "Lembrei", exact: true }).click();
+  await page.getByRole("button", { name: /^Lembrei/ }).click();
 
   await expect(page.getByRole("heading", { name: "100% de acerto" })).toBeVisible();
   await expect(page.getByText("Produção")).toBeVisible();
