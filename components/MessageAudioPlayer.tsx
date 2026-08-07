@@ -26,6 +26,7 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
   const lines = useMemo(() => splitIntoSentences(text), [text]);
   const [status, setStatus] = useState<PlayerStatus>("idle");
   const [currentLine, setCurrentLine] = useState(0);
+  const [deviceFallback, setDeviceFallback] = useState(false);
 
   const statusRef = useRef<PlayerStatus>("idle");
   const currentLineRef = useRef(0);
@@ -67,6 +68,7 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
 
   const enableDeviceFallback = useCallback((reason?: string) => {
     if (reason) fallbackReasonRef.current = reason;
+    setDeviceFallback(true);
     if (!deviceFallbackRef.current) {
       deviceFallbackRef.current = true;
       if (!fallbackReportedRef.current) {
@@ -83,29 +85,33 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
    */
   const prepareTrack = useCallback(async (generation: number) => {
     if (audioRef.current) return true;
-    try {
-      const urls = await Promise.all(lines.map((line) => requestSpeech(line, languageCode)));
-      if (generationRef.current !== generation) return false;
-      const seamless = await buildSeamlessTrack(urls);
-      if (generationRef.current !== generation) {
-        seamless.dispose();
-        return false;
+    // Uma segunda tentativa com refresh cobre URLs de áudio que expiraram no
+    // servidor depois do POST original (ex.: cache podado ou restart).
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const urls = await Promise.all(lines.map((line) => requestSpeech(line, languageCode, attempt > 0)));
+        if (generationRef.current !== generation) return false;
+        const seamless = await buildSeamlessTrack(urls);
+        if (generationRef.current !== generation) {
+          seamless.dispose();
+          return false;
+        }
+        seamlessRef.current?.dispose();
+        seamlessRef.current = seamless;
+        const audio = new Audio(seamless.audioUrl);
+        audio.preload = "auto";
+        audio.onended = () => {
+          if (statusRef.current !== "playing") return;
+          cancelAnimationFrame(rafRef.current);
+          setStatusTracked("ended");
+        };
+        audioRef.current = audio;
+        return true;
+      } catch (error) {
+        fallbackReasonRef.current = error instanceof Error ? error.message : String(error);
       }
-      seamlessRef.current?.dispose();
-      seamlessRef.current = seamless;
-      const audio = new Audio(seamless.audioUrl);
-      audio.preload = "auto";
-      audio.onended = () => {
-        if (statusRef.current !== "playing") return;
-        cancelAnimationFrame(rafRef.current);
-        setStatusTracked("ended");
-      };
-      audioRef.current = audio;
-      return true;
-    } catch (error) {
-      fallbackReasonRef.current = error instanceof Error ? error.message : String(error);
-      return false;
     }
+    return false;
   }, [languageCode, lines, setStatusTracked]);
 
   const startLineLoop = useCallback((generation: number) => {
@@ -280,6 +286,7 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
     status === "paused" ? "Continuar áudio" :
     status === "ended" ? "Ouvir novamente" :
     status === "error" ? "Voz indisponível. Tentar novamente" :
+    deviceFallback ? "Ouvir com a voz do dispositivo (Kokoro indisponível)" :
     "Ouvir mensagem";
 
   return (

@@ -5,7 +5,7 @@ import { readEnv, recordsFrom, required, teableRequest } from "./qa-env.mjs";
 
 const TRANSLATION_BATCH_SIZE = 20;
 const TRANSLATION_FALLBACK_BATCH_SIZE = 5;
-const AI_TIMEOUT_MS = 15_000;
+const AI_TIMEOUT_MS = 90_000;
 
 export function wordsMissingTranslation(records) {
   return records.filter((record) => !String(record.fields?.translation ?? "").trim());
@@ -54,7 +54,8 @@ async function translateBatch(env, batch) {
         { role: "user", content: `${language ? `Idioma: ${language}\n` : ""}Itens: ${JSON.stringify(batch.map((item) => ({ id: item.id, text: item.text })))}` }
       ],
       temperature: 0,
-      max_tokens: 2_000
+      max_tokens: 2_000,
+      thinking: { type: "disabled" }
     }),
     signal: AbortSignal.timeout(AI_TIMEOUT_MS)
   });

@@ -28,8 +28,11 @@ export function releaseActiveVoice(owner: symbol) {
   if (activeVoice?.owner === owner) activeVoice = null;
 }
 
-export function requestSpeech(text: string, languageCode: string | undefined): Promise<string> {
+export function requestSpeech(text: string, languageCode: string | undefined, refresh = false): Promise<string> {
   const key = `${languageCode ?? ""}\n${text}`;
+  // refresh=true descarta uma URL resolvida antes (ex.: o áudio expirou no
+  // servidor) e força um novo POST, que re-sintetiza se o cache sumiu.
+  if (refresh) speechRequests.delete(key);
   const existing = speechRequests.get(key);
   if (existing) return existing;
 

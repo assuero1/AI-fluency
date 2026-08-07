@@ -142,7 +142,7 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     rafRef.current = requestAnimationFrame(step);
   }, [setActiveWord]);
 
-  const loadCaptioned = useCallback(async () => {
+  const loadCaptionedTask = useCallback(async () => {
     if (captionedFailedRef.current) return;
     setStatusTracked("loading");
     const generation = ++generationRef.current;
@@ -170,20 +170,28 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
         return;
       }
 
-      // Monta UM WAV contínuo com todos os segmentos: a bolha toca como um
-      // áudio único num <audio> nativo, sem gap entre as partes.
-      const seamless = await buildSeamlessTrack(segments.map((segment) => segment.audioUrl));
-      if (generationRef.current !== generation) {
-        seamless.dispose();
-        return;
+      let audioUrl: string;
+      if (segments.length === 1) {
+        // Caso comum (mensagens até 1200 chars): o MP3 único toca direto no
+        // <audio>, sem decodificar/reempacotar WAV — o primeiro som sai antes.
+        audioUrl = segments[0].audioUrl;
+      } else {
+        // Monta UM WAV contínuo com todos os segmentos: a bolha toca como um
+        // áudio único num <audio> nativo, sem gap entre as partes.
+        const seamless = await buildSeamlessTrack(segments.map((segment) => segment.audioUrl));
+        if (generationRef.current !== generation) {
+          seamless.dispose();
+          return;
+        }
+        seamless.partOffsets.forEach((offset, segmentIndex) => {
+          if (segments[segmentIndex]) segments[segmentIndex].offset = offset;
+        });
+        seamlessRef.current?.dispose();
+        seamlessRef.current = seamless;
+        audioUrl = seamless.audioUrl;
       }
-      seamless.partOffsets.forEach((offset, segmentIndex) => {
-        if (segments[segmentIndex]) segments[segmentIndex].offset = offset;
-      });
 
-      seamlessRef.current?.dispose();
-      seamlessRef.current = seamless;
-      const audio = new Audio(seamless.audioUrl);
+      const audio = new Audio(audioUrl);
       audio.preload = "auto";
       audio.onended = () => {
         if (statusRef.current !== "playing") return;
@@ -201,6 +209,19 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
       enterLegacyMode();
     }
   }, [enterLegacyMode, languageCode, setActiveWord, setSelectedIndex, setStatusTracked, setTrack, text]);
+
+  // Preload e o primeiro play podem disparar juntos; sem a promise
+  // compartilhada cada um montaria a faixa (downloads + decode) em duplicidade.
+  const loadPromiseRef = useRef<Promise<void> | null>(null);
+  const loadCaptioned = useCallback(() => {
+    const existing = loadPromiseRef.current;
+    if (existing) return existing;
+    const task = loadCaptionedTask().finally(() => {
+      if (loadPromiseRef.current === task) loadPromiseRef.current = null;
+    });
+    loadPromiseRef.current = task;
+    return task;
+  }, [loadCaptionedTask]);
 
   /** Toca a faixa a partir de `time` segundos (posição absoluta no WAV). */
   const playAt = useCallback(async (time: number, generation: number) => {
@@ -360,6 +381,10 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
             </span>
           ))}
         </div>
+      ) : showTranscript ? (
+        // Texto visível desde já: vira tokens destacáveis quando o áudio
+        // terminar de carregar, em vez de deixar a bolha vazia até lá.
+        <div className="chat-words">{text}</div>
       ) : null}
       <div className="line-player-controls word-player-controls">
         <button

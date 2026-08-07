@@ -3,6 +3,7 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { segmentMessage } from "@/lib/learning/captions";
 import { captionedSpeech, KokoroRequestError, streamSpeech, synthesizeSpeech, type WordTimestamp } from "./client";
 import { getKokoroConfig } from "./config";
 import { resolveSynthesisRequest, SynthesisValidationError } from "./validation";
@@ -45,6 +46,8 @@ const captionedInFlight = new Map<string, Promise<CaptionedSpeechResult>>();
 const pendingSpeech = new Map<string, PendingSpeech>();
 let lastPendingPruneAt = 0;
 
+const supportedSpeechLanguages = new Set(["en", "es", "fr", "it", "pt"]);
+
 export async function warmKokoroLanguage(languageCode: string | undefined) {
   const config = getKokoroConfig();
   if (!config.baseUrl || !config.apiKey) return;
@@ -62,6 +65,24 @@ export async function warmKokoroLanguage(languageCode: string | undefined) {
     format: config.outputFormat,
     speed: config.speed
   });
+}
+
+/**
+ * Pré-sintetiza os segmentos legendados de uma mensagem da IA assim que ela é
+ * criada. O preload do cliente encontra o cache quente (ou se junta à síntese
+ * em andamento via captionedInFlight) em vez de começar o Kokoro do zero.
+ */
+export async function warmCaptionedMessage(text: string, languageCode: string | undefined) {
+  const config = getKokoroConfig();
+  if (!config.baseUrl || !config.apiKey) return;
+  // Espelha a seleção de voz da rota /api/voice/captioned, senão o audioId
+  // aquecido não bate com o que o cliente vai pedir.
+  const requested = normalizeSpeechLanguage(languageCode);
+  const speechLanguage = supportedSpeechLanguages.has(requested) ? requested : "en";
+  const voice = selectKokoroVoice(speechLanguage, config.voicesByLanguage, config.defaultVoice);
+  await Promise.all(segmentMessage(text).map((segment) =>
+    prepareCaptionedSpeech(segment, { voice, format: config.outputFormat, speed: config.speed }).catch(() => undefined)
+  ));
 }
 
 export async function prepareCachedSpeech(input: string, options?: { voice?: string; format?: string; speed?: number }): Promise<CachedSpeech> {
