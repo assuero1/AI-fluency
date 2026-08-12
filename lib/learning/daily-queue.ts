@@ -48,6 +48,11 @@ export function normalizeNewCardsQuota(value: unknown, fallback = DEFAULT_NEW_CA
 // last_reviewed_at cache, so a NEW SENSE of an already-reviewed word does not
 // consume the daily new-card quota. Accepted in this phase; per-sense quota
 // rules are a future refinement.
+// NOTE (supporting words): reviews of supporting words (from AI cloze
+// phrases) update the word-level cache directly, bypassing the sense layer;
+// for a multi-sense word the next sense-targeted review re-aggregates the
+// cache from the senses and discards that review's SRS effect. Accepted
+// limitation of this phase — follow-up ticket candidate.
 export function isNewWord(word: TeableRecord<DailyQueueWordFields>) {
   return !dateValue(word.fields.last_reviewed_at);
 }

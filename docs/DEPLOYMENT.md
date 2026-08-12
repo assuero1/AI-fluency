@@ -123,3 +123,33 @@ The complete final gate is `npm run test:phase8`. It intentionally fails unless 
 ## Local Acceptance Status
 
 Phase 17 has passed the local production build, service connectivity, security-header, and mobile-viewport checks. The mobile installation and offline checks above remain required after the app is available through its final HTTPS VPS URL.
+
+## Word Senses Rollout (Production)
+
+The multiple-senses feature reads the `wordSenses` table from the chat save, flashcard session, word detail, and senses API paths. Until the production table and its env var exist, those reads degrade to the legacy word-level path with a warning instead of failing, but the feature stays inert. Roll out in this order:
+
+1. Create the table in the production Teable base:
+
+   ```bash
+   node scripts/ensure-word-senses-table.mjs --apply --env .env.production
+   ```
+
+2. Set `TEABLE_WORD_SENSES_TABLE_ID` to the new table id in the hosting environment.
+3. Deploy the code.
+4. Back up the learning data:
+
+   ```bash
+   npm run scope:backup -- --env .env.production --out backups/<file>.json
+   ```
+
+5. Backfill one primary sense per existing word, copying the word-level SRS state:
+
+   ```bash
+   node scripts/backfill-word-senses.mjs --apply --env .env.production --backup backups/<file>.json
+   ```
+
+6. Spot-check one polysemous word: its senses appear on the word detail page and flashcards exercise a specific sense.
+
+After the backfill, run `npm run vocabulary:audit -- --env .env.production` and inspect the 2 known colliding word pairs (same normalized lemma + translation within one profile), then re-run the backfill — it is idempotent — to close the legacy holes.
+
+Known limitation: reviews of supporting words (from AI cloze phrases) still update the word-level SRS cache directly, bypassing the sense layer; for a multi-sense word the next sense-targeted review re-aggregates the cache from the senses and discards that review's effect. Accepted for this rollout and tracked as a follow-up.

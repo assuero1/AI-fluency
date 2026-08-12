@@ -1,4 +1,5 @@
-import { getTeableClient, TeableRecord, TeableRequestError } from "@/lib/teable/client";
+import { getTeableClient, TeableConfigError, TeableRecord, TeableRequestError } from "@/lib/teable/client";
+import { getSchemaTable } from "@/lib/teable/schema";
 import { normalizeVocabularyToken } from "./vocabulary-selection";
 import type { WordFields, WordSenseFields } from "./conversations";
 
@@ -109,11 +110,30 @@ export function aggregateSenseReviewToWordFields(senses: TeableRecord<WordSenseF
   return result;
 }
 
+const WORD_SENSES_ENV_NAME = getSchemaTable("wordSenses")?.envName ?? "TEABLE_WORD_SENSES_TABLE_ID";
+
+// Deploy-ordering guard: only the "table not configured" error degrades.
+// Network, auth and server errors must keep propagating.
+function isUnconfiguredWordSensesTableError(error: unknown): boolean {
+  return error instanceof TeableConfigError && error.message.startsWith(`${WORD_SENSES_ENV_NAME} is not configured`);
+}
+
 export async function listSensesByWordIds(wordIds: string[]): Promise<Map<string, TeableRecord<WordSenseFields>[]>> {
   const byWord = new Map<string, TeableRecord<WordSenseFields>[]>();
   if (!wordIds.length) return byWord;
   const wanted = new Set(wordIds);
-  const senses = await getTeableClient().listAllRecords<WordSenseFields>("wordSenses");
+  let senses: TeableRecord<WordSenseFields>[];
+  try {
+    senses = await getTeableClient().listAllRecords<WordSenseFields>("wordSenses");
+  } catch (error) {
+    // While the wordSenses table/env var does not exist yet in an environment
+    // (deploy before the rollout in docs/DEPLOYMENT.md completes), degrade to
+    // "no senses" so every consumer falls back to the legacy word-level path
+    // instead of returning 503.
+    if (!isUnconfiguredWordSensesTableError(error)) throw error;
+    console.warn(`[word-senses] ${WORD_SENSES_ENV_NAME} is not configured; treating every word as sense-less (legacy path).`);
+    return byWord;
+  }
   for (const sense of senses) {
     const wordId = String(sense.fields.word_id ?? "");
     if (!wanted.has(wordId)) continue;

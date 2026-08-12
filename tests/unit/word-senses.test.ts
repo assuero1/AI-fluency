@@ -14,7 +14,7 @@ import {
   synthesizeLegacySense,
   updateWordSense
 } from "../../lib/learning/word-senses";
-import type { TeableRecord } from "../../lib/teable/client";
+import { TeableConfigError, type TeableRecord } from "../../lib/teable/client";
 import type { WordSenseFields } from "../../lib/learning/conversations";
 
 const root = path.resolve(import.meta.dirname, "../..");
@@ -282,6 +282,31 @@ describe("word senses access layer", () => {
     const byWord = await listSensesByWordIds([]);
     expect(byWord.size).toBe(0);
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("degrades to an empty map with one warning when the wordSenses table is not configured", async () => {
+    delete process.env.TEABLE_WORD_SENSES_TABLE_ID;
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const byWord = await listSensesByWordIds(["word-1", "word-2"]);
+
+    expect(byWord.size).toBe(0);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(String(warn.mock.calls[0][0])).toContain("TEABLE_WORD_SENSES_TABLE_ID");
+    warn.mockRestore();
+  });
+
+  it("propagates other Teable errors instead of degrading", async () => {
+    fetchMock.mockResolvedValue(jsonResponse({ message: "boom" }, 500));
+
+    await expect(listSensesByWordIds(["word-1"])).rejects.toMatchObject({ status: 500 });
+  });
+
+  it("propagates non-table config errors (e.g. missing base URL)", async () => {
+    delete process.env.TEABLE_BASE_URL;
+
+    await expect(listSensesByWordIds(["word-1"])).rejects.toBeInstanceOf(TeableConfigError);
   });
 
   it("finds a sense by key, matching legacy non-normalized stored keys", async () => {
