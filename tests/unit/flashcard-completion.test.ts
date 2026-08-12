@@ -12,6 +12,7 @@ let attemptRecords: Array<{ id: string; fields: Record<string, unknown>; created
 const updateRecord = vi.fn();
 const createEvent = vi.fn();
 const listRecords = vi.fn();
+const listAllRecords = vi.fn();
 
 vi.mock("../../lib/ai/client", () => ({ createChatCompletion: vi.fn() }));
 vi.mock("../../lib/learning/profile", () => ({
@@ -19,7 +20,7 @@ vi.mock("../../lib/learning/profile", () => ({
   getActiveLanguageProfile: vi.fn(async () => profile)
 }));
 vi.mock("../../lib/teable/client", () => ({
-  getTeableClient: () => ({ listRecords, updateRecord, createEvent })
+  getTeableClient: () => ({ listRecords, listAllRecords, updateRecord, createEvent })
 }));
 
 describe("flashcard completion persistence", () => {
@@ -49,6 +50,7 @@ describe("flashcard completion persistence", () => {
       return { id, fields };
     });
     createEvent.mockResolvedValue({ id: "event-a", fields: {} });
+    listAllRecords.mockResolvedValue([]);
   });
 
   it("persists the result and returns it for a retry with the same completion id", async () => {
@@ -143,6 +145,56 @@ describe("flashcard completion persistence", () => {
 
     expect(result.slowWords).toBe(1);
     expect(updateRecord.mock.calls.filter(([table]) => table === "words")).toHaveLength(0);
+  });
+
+  it("applies pending attempts of a sense-frozen card to the sense and re-aggregates the word", async () => {
+    const senseCard = { ...cards[0], targetSenseId: "sense-a" };
+    session.fields.focus = JSON.stringify({ wordIds: ["word-a"], cards: [senseCard] });
+    attemptRecords = [appliedAttempt("attempt-1", "card-a", "word-a", "client-001", false)];
+    const senses = [
+      { id: "sense-a", fields: { word_id: "word-a", translation: "olá", is_primary: true, review_state: "learning", learning_step: 1, review_streak: 1, lapse_count: 0, review_due_at: "2026-07-09T09:00:00.000Z", last_reviewed_at: "2026-07-08T09:00:00.000Z" } },
+      { id: "sense-b", fields: { word_id: "word-a", translation: "oi", review_state: "review", review_streak: 4, lapse_count: 0, review_due_at: "2026-07-20T09:00:00.000Z", last_reviewed_at: "2026-07-08T09:00:00.000Z" } }
+    ];
+    listAllRecords.mockImplementation(async (table: string) => table === "wordSenses" ? senses : []);
+    updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
+      if (table === "practiceSessions" && id === session.id) session.fields = { ...session.fields, ...fields };
+      if (table === "wordSenses") {
+        const target = senses.find((item) => item.id === id);
+        if (target) target.fields = { ...target.fields, ...fields };
+      }
+      return { id, fields };
+    });
+    const { completeFlashcardPractice } = await import("../../lib/learning/flashcards");
+    await completeFlashcardPractice("session-a", "completion-123", []);
+
+    const senseUpdates = updateRecord.mock.calls.filter(([table]) => table === "wordSenses");
+    expect(senseUpdates).toHaveLength(1);
+    expect(senseUpdates[0][1]).toBe("sense-a");
+    expect(senseUpdates[0][2]).toMatchObject({ review_version: "srs-v2", review_state: "learning", learning_step: 2, last_rating: "good" });
+    expect(senseUpdates[0][2]).not.toHaveProperty("familiarity_score");
+
+    const wordUpdates = updateRecord.mock.calls.filter(([table]) => table === "words");
+    expect(wordUpdates).toHaveLength(1);
+    expect(wordUpdates[0][1]).toBe("word-a");
+    expect(wordUpdates[0][2]).toMatchObject({
+      review_due_at: "2026-07-20T09:00:00.000Z",
+      review_state: "learning",
+      last_rating: "good",
+      translation: "olá"
+    });
+  });
+
+  it("keeps the completion word path for sessions whose cards have no targetSenseId", async () => {
+    session.fields.focus = JSON.stringify({ wordIds: ["word-a"], cards: [cards[0]] });
+    attemptRecords = [appliedAttempt("attempt-1", "card-a", "word-a", "client-001", false)];
+    const { completeFlashcardPractice } = await import("../../lib/learning/flashcards");
+    await completeFlashcardPractice("session-a", "completion-123", []);
+
+    expect(updateRecord.mock.calls.filter(([table]) => table === "wordSenses")).toHaveLength(0);
+    expect(listAllRecords).not.toHaveBeenCalled();
+    const wordUpdates = updateRecord.mock.calls.filter(([table]) => table === "words");
+    expect(wordUpdates).toHaveLength(1);
+    expect(wordUpdates[0][1]).toBe("word-a");
   });
 });
 

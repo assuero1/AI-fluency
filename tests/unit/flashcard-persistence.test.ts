@@ -6,6 +6,7 @@ const session = { id: "session-a", fields: { user_id: user.id, language_profile_
 const cardRecord = { id: "card-a", fields: { practice_session_id: session.id, target_word_id: "word-a", supporting_word_ids: "[]", card_type: "native_to_target", prompt: "olá", expected_answer: "hola", accepted_answers: "[]", translation: "olá", explanation: "", sentence: "", audio_text: "", difficulty: 2, initial_position: 0, generation_source: "deterministic", created_at: "2026-07-10T12:00:00.000Z" } };
 let attempts: Array<{ id: string; fields: Record<string, unknown>; createdTime?: string }> = [];
 const listRecords = vi.fn();
+const listAllRecords = vi.fn();
 const createRecord = vi.fn();
 const updateRecord = vi.fn();
 const createEvent = vi.fn();
@@ -16,7 +17,7 @@ vi.mock("../../lib/learning/profile", () => ({
   getActiveLanguageProfile: vi.fn(async () => profile)
 }));
 vi.mock("../../lib/teable/client", () => ({
-  getTeableClient: () => ({ listRecords, createRecord, updateRecord, createEvent })
+  getTeableClient: () => ({ listRecords, listAllRecords, createRecord, updateRecord, createEvent })
 }));
 
 describe("flashcard attempt persistence and resume", () => {
@@ -37,6 +38,7 @@ describe("flashcard attempt persistence and resume", () => {
     });
     updateRecord.mockResolvedValue(session);
     createEvent.mockResolvedValue({ id: "event-a", fields: {} });
+    listAllRecords.mockResolvedValue([]);
   });
 
   it("persists one normalized attempt and returns it idempotently", async () => {
@@ -259,5 +261,163 @@ describe("flashcard target sense round-trip", () => {
     delete (legacyRecord.fields as Record<string, unknown>).target_sense_id;
     const restored = flashcardRecordToCard(legacyRecord);
     expect(restored.targetSenseId).toBeUndefined();
+  });
+});
+
+describe("sense-aware review persistence", () => {
+  const senseCardRecord = { id: "card-a", fields: { ...cardRecord.fields, target_sense_id: "sense-a" } };
+  let senses: Array<{ id: string; fields: Record<string, unknown> }> = [];
+
+  function mockSenseEnvironment() {
+    listRecords.mockImplementation(async (table: string) => {
+      if (table === "practiceSessions") return [session];
+      if (table === "flashcards") return [senseCardRecord];
+      if (table === "flashcardAttempts") return attempts;
+      if (table === "words") return [{ id: "word-a", fields: { user_id: user.id, language_profile_id: profile.id, familiarity_score: 4, translation: "banco (assento)" } }];
+      return [];
+    });
+    listAllRecords.mockImplementation(async (table: string) => table === "wordSenses" ? senses : []);
+    updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
+      if (table === "wordSenses") {
+        const target = senses.find((item) => item.id === id);
+        if (target) target.fields = { ...target.fields, ...fields };
+        return target;
+      }
+      return session;
+    });
+  }
+
+  beforeEach(() => {
+    // This describe is a sibling of the one above, so it needs its own copies of
+    // the shared mock setup (the outer beforeEach does not apply here).
+    attempts = [];
+    vi.clearAllMocks();
+    senses = [
+      { id: "sense-a", fields: { word_id: "word-a", translation: "banco (instituição)", is_primary: true, review_state: "learning", learning_step: 1, review_streak: 1, lapse_count: 0, review_due_at: "2026-07-09T09:00:00.000Z", last_reviewed_at: "2026-07-08T09:00:00.000Z" } },
+      { id: "sense-b", fields: { word_id: "word-a", translation: "banco (assento)", review_state: "review", review_streak: 4, lapse_count: 0, review_due_at: "2026-07-20T09:00:00.000Z", last_reviewed_at: "2026-07-08T09:00:00.000Z" } }
+    ];
+    createRecord.mockImplementation(async (table: string, fields: Record<string, unknown>) => {
+      if (table !== "flashcardAttempts") throw new Error(`Unexpected table: ${table}`);
+      const record = { id: `attempt-${attempts.length + 1}`, fields, createdTime: fields.created_at as string };
+      attempts.push(record);
+      return record;
+    });
+    createEvent.mockResolvedValue({ id: "event-a", fields: {} });
+    listAllRecords.mockResolvedValue([]);
+  });
+
+  it("applies the incremental review to the target sense and re-aggregates the word cache", async () => {
+    mockSenseEnvironment();
+    const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "sense-001", cardId: senseCardRecord.id, presentationNumber: 1, userAnswer: "hola", rating: "good", responseTimeMs: 2400 });
+
+    const senseUpdates = updateRecord.mock.calls.filter(([table]) => table === "wordSenses");
+    expect(senseUpdates).toHaveLength(1);
+    expect(senseUpdates[0][1]).toBe("sense-a");
+    expect(senseUpdates[0][2]).toMatchObject({ review_version: "srs-v2", review_state: "learning", learning_step: 2, last_rating: "good" });
+    expect(senseUpdates[0][2]).not.toHaveProperty("familiarity_score");
+
+    const wordUpdates = updateRecord.mock.calls.filter(([table]) => table === "words");
+    expect(wordUpdates).toHaveLength(1);
+    expect(wordUpdates[0][1]).toBe("word-a");
+    // Aggregated from the refreshed senses: min due, worst state, latest rating.
+    expect(wordUpdates[0][2]).toMatchObject({
+      review_due_at: "2026-07-20T09:00:00.000Z",
+      review_state: "learning",
+      last_rating: "good",
+      translation: "banco (instituição)"
+    });
+
+    expect(attempts[0].fields.sense_id).toBe("sense-a");
+    const attemptUpdate = updateRecord.mock.calls.find(([table]) => table === "flashcardAttempts");
+    expect(attemptUpdate![2]).toMatchObject({ review_applied: true, resulting_review_state: "learning" });
+    const snapshot = JSON.parse((attemptUpdate![2] as { review_snapshot: string }).review_snapshot);
+    expect(snapshot["sense:sense-a"]).toMatchObject({ review_state: "learning", learning_step: 1, review_streak: 1 });
+    expect(snapshot["word-a"]).toMatchObject({ familiarity_score: 4 });
+  });
+
+  it("keeps the attempt applied when the word re-aggregation fails after the sense write", async () => {
+    mockSenseEnvironment();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const baseImplementation = updateRecord.getMockImplementation()!;
+    updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
+      if (table === "words") throw new Error("teable stale write");
+      return baseImplementation(table, id, fields);
+    });
+    const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    const result = await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "sense-002", cardId: senseCardRecord.id, presentationNumber: 1, userAnswer: "hola", rating: "good", responseTimeMs: 2400 });
+
+    expect(result.id).toBe("attempt-1");
+    expect(updateRecord.mock.calls.filter(([table]) => table === "wordSenses")).toHaveLength(1);
+    expect(warn).toHaveBeenCalled();
+    const attemptUpdate = updateRecord.mock.calls.find(([table]) => table === "flashcardAttempts");
+    expect(attemptUpdate![2]).toMatchObject({ review_applied: true });
+    expect(createEvent.mock.calls.filter(([, name]) => name === "flashcard_incremental_review_failed")).toHaveLength(0);
+    warn.mockRestore();
+  });
+
+  it("keeps legacy cards (no target_sense_id) on the word path without listing or writing senses", async () => {
+    listRecords.mockImplementation(async (table: string) => {
+      if (table === "practiceSessions") return [session];
+      if (table === "flashcards") return [cardRecord];
+      if (table === "flashcardAttempts") return attempts;
+      if (table === "words") return [{ id: "word-a", fields: { user_id: user.id, language_profile_id: profile.id, familiarity_score: 4 } }];
+      return [];
+    });
+    const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "sense-003", cardId: cardRecord.id, presentationNumber: 1, userAnswer: "hola", rating: "hard", responseTimeMs: 2400 });
+
+    expect(updateRecord.mock.calls.filter(([table]) => table === "wordSenses")).toHaveLength(0);
+    expect(listAllRecords).not.toHaveBeenCalled();
+    expect(updateRecord).toHaveBeenCalledWith("words", "word-a", expect.objectContaining({ review_version: "srs-v2" }));
+    expect(attempts[0].fields.sense_id).toBe("");
+  });
+
+  it("undoes a sense review: restores the sense:{id} entry and the word snapshot", async () => {
+    attempts = [{
+      id: "attempt-1",
+      fields: {
+        practice_session_id: session.id, flashcard_id: senseCardRecord.id, word_id: "word-a", sense_id: "sense-a",
+        presentation_number: 1, client_attempt_id: "u-sense-1", user_answer: "hola", normalized_answer: "hola",
+        match_result: "exact", suggested_rating: "good", final_rating: "good", was_correct: true,
+        response_time_ms: 1200, used_speech: false, audio_replay_count: 0, review_applied: true,
+        review_snapshot: JSON.stringify({
+          "word-a": { familiarity_score: 4, review_state: "learning", review_streak: 2 },
+          "sense:sense-a": { review_state: "new", learning_step: 0, review_streak: 0, review_due_at: "2026-07-09T09:00:00.000Z" }
+        }),
+        created_at: "2026-07-10T12:01:00.000Z"
+      }
+    }];
+    mockSenseEnvironment();
+    const { undoFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    const result = await undoFlashcardAttempt(session.id);
+
+    expect(result).toEqual({ cardId: senseCardRecord.id, presentationNumber: 1 });
+    expect(updateRecord).toHaveBeenCalledWith("wordSenses", "sense-a", expect.objectContaining({ review_state: "new", learning_step: 0, review_streak: 0 }));
+    expect(updateRecord).toHaveBeenCalledWith("words", "word-a", expect.objectContaining({ familiarity_score: 4, review_state: "learning" }));
+    expect(updateRecord).toHaveBeenCalledWith("flashcardAttempts", "attempt-1", expect.objectContaining({ undone_at: expect.any(String), review_applied: false }));
+  });
+
+  it("skips snapshot sense entries that no longer resolve to a sense of the learner's words", async () => {
+    attempts = [{
+      id: "attempt-1",
+      fields: {
+        practice_session_id: session.id, flashcard_id: senseCardRecord.id, word_id: "word-a", sense_id: "sense-foreign",
+        presentation_number: 1, client_attempt_id: "u-sense-2", user_answer: "hola", normalized_answer: "hola",
+        match_result: "exact", suggested_rating: "good", final_rating: "good", was_correct: true,
+        response_time_ms: 1200, used_speech: false, audio_replay_count: 0, review_applied: true,
+        review_snapshot: JSON.stringify({
+          "word-a": { familiarity_score: 4 },
+          "sense:sense-foreign": { review_state: "new" }
+        }),
+        created_at: "2026-07-10T12:01:00.000Z"
+      }
+    }];
+    mockSenseEnvironment();
+    const { undoFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    await undoFlashcardAttempt(session.id);
+
+    expect(updateRecord.mock.calls.filter(([table]) => table === "wordSenses")).toHaveLength(0);
+    expect(updateRecord).toHaveBeenCalledWith("words", "word-a", expect.objectContaining({ familiarity_score: 4 }));
   });
 });

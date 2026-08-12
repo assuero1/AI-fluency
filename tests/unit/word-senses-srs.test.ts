@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { getSchemaTable } from "../../lib/teable/schema";
 import { resolveDueSenses } from "../../lib/learning/word-senses";
+import { calculateAdaptiveReview, reviewToSenseFields, reviewToWordFields } from "../../lib/learning/spaced-repetition";
 import type { WordFields, WordSenseFields } from "../../lib/learning/conversations";
 import type { TeableRecord } from "../../lib/teable/client";
 
@@ -160,5 +161,44 @@ describe("resolveDueSenses", () => {
     expect(resolved.map((entry) => entry.word.id)).toEqual(["word-a", "word-b", "word-c"]);
     expect(resolved.map((entry) => entry.synthetic)).toEqual([true, false, true]);
     expect(resolved[1].sense.id).toBe("sense-b");
+  });
+});
+
+describe("reviewToSenseFields", () => {
+  it("mirrors reviewToWordFields minus familiarity_score (wordSenses has no such column)", () => {
+    const review = calculateAdaptiveReview(
+      { review_state: "review", learning_step: 3, review_interval_days: 7, review_ease: 2.3, review_streak: 2 },
+      [{ rating: "good", responseTimeMs: 2_000, cardType: "target_to_native" }],
+      new Date("2026-08-12T12:00:00.000Z"),
+      "UTC",
+      "sense-seed"
+    );
+
+    const wordFields = reviewToWordFields(review);
+    const senseFields = reviewToSenseFields(review);
+    const expected = Object.fromEntries(Object.entries(wordFields).filter(([key]) => key !== "familiarity_score"));
+
+    expect(senseFields).toEqual(expected);
+    expect(senseFields).not.toHaveProperty("familiarity_score");
+    expect(senseFields).toMatchObject({
+      review_due_at: review.reviewDueAt,
+      last_rating: "good",
+      review_state: "review",
+      review_version: "srs-v2"
+    });
+  });
+
+  it("omits leech_flagged_at unless the review flags a leech", () => {
+    const clean = reviewToSenseFields(calculateAdaptiveReview({ review_state: "new" }, [{ rating: "good", responseTimeMs: 1_000 }], new Date("2026-08-12T12:00:00.000Z"), "UTC", "seed-a"));
+    expect(clean).not.toHaveProperty("leech_flagged_at");
+
+    const leech = reviewToSenseFields(calculateAdaptiveReview(
+      { review_state: "review", learning_step: 3, lapse_count: 4, leech_flagged_at: "2026-08-01T09:00:00.000Z" },
+      [{ rating: "hard", responseTimeMs: 9_000 }],
+      new Date("2026-08-12T12:00:00.000Z"),
+      "UTC",
+      "seed-b"
+    ));
+    expect(leech.leech_flagged_at).toBe("2026-08-01T09:00:00.000Z");
   });
 });

@@ -139,6 +139,25 @@ export function reviewToWordFields(review: AdaptiveReview) {
   };
 }
 
+// Same projection for the `wordSenses` table, which has no familiarity_score
+// column (familiarity stays a word-level aggregate).
+export function reviewToSenseFields(review: AdaptiveReview) {
+  return {
+    review_due_at: review.reviewDueAt,
+    review_interval_days: review.reviewIntervalDays,
+    review_ease: review.reviewEase,
+    review_streak: review.reviewStreak,
+    lapse_count: review.lapseCount,
+    learning_step: review.learningStep,
+    last_reviewed_at: review.lastReviewedAt,
+    last_rating: review.lastRating,
+    average_response_time_ms: review.averageResponseTimeMs,
+    review_state: review.reviewState,
+    review_version: review.reviewVersion,
+    ...(review.leechFlaggedAt ? { leech_flagged_at: review.leechFlaggedAt } : {})
+  };
+}
+
 // Exact due-distance preview for one hypothetical attempt (rating + response time known).
 export function previewSingleInterval(current: ReviewFields, attempt: ReviewAttempt, now = new Date(), timeZone = "UTC", fuzzSeed = ""): number {
   const review = calculateAdaptiveReview(current, [attempt], now, timeZone, fuzzSeed);

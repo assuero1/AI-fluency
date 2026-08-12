@@ -10,9 +10,9 @@ import { matchesLearningScope } from "./scope";
 import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, summarizeDailyQueue } from "./daily-queue";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
 import { isRatingCorrect, rebuildFlashcardQueue, inferRecallRating, resolveBinaryRating } from "./flashcard-queue";
-import { calculateAdaptiveReview, previewSingleInterval, reviewToWordFields, type ReviewAttempt } from "./spaced-repetition";
+import { calculateAdaptiveReview, previewSingleInterval, reviewToSenseFields, reviewToWordFields, type ReviewAttempt } from "./spaced-repetition";
 import { chooseCardTypes, countPlannedTypes, type CardTypeFlags } from "./flashcard-type-selection";
-import { listSensesByWordIds, resolveDueSenses } from "./word-senses";
+import { aggregateSenseReviewToWordFields, listSensesByWordIds, resolveDueSenses } from "./word-senses";
 import {
   flashcardCriteria,
   flashcardQueueKinds,
@@ -495,6 +495,8 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
     practice_session_id: sessionId,
     flashcard_id: card.id,
     word_id: card.targetWordId,
+    // Blank on legacy word-level attempts.
+    sense_id: card.targetSenseId ?? "",
     presentation_number: presentationNumber,
     client_attempt_id: clientAttemptId,
     user_answer: userAnswer,
@@ -517,7 +519,10 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
   const attemptWordIds = [card.targetWordId, ...card.supportingWordIds];
   const reviewableWords = words.filter((item) => attemptWordIds.includes(item.id) && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
   if (reviewableWords.length && !(card.type === "listening" && input.audioFailed === true)) {
-    const reviewSnapshot = Object.fromEntries(reviewableWords.map((word) => [word.id, {
+    // A card frozen with target_sense_id reviews that sense (and re-aggregates the
+    // word cache); legacy cards without it keep updating the word directly.
+    const sensesByWord = card.targetSenseId ? await listSensesByWordIds(attemptWordIds) : new Map<string, TeableRecord<WordSenseFields>[]>();
+    const reviewSnapshot: Record<string, Record<string, unknown>> = Object.fromEntries(reviewableWords.map((word) => [word.id, {
       familiarity_score: word.fields.familiarity_score ?? null,
       review_due_at: word.fields.review_due_at ?? null,
       review_interval_days: word.fields.review_interval_days ?? null,
@@ -535,9 +540,33 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
     try {
       let resultingState = "";
       for (const word of reviewableWords) {
-        const review = calculateAdaptiveReview(word.fields, [{ rating, responseTimeMs, cardType: card.type }], new Date(now), user.fields.timezone ?? "UTC", word.id);
-        await client.updateRecord<WordFields>("words", word.id, reviewToWordFields(review));
-        if (word.id === card.targetWordId) resultingState = review.reviewState;
+        const sense = word.id === card.targetWordId && card.targetSenseId
+          ? (sensesByWord.get(word.id) ?? []).find((item) => item.id === card.targetSenseId)
+          : undefined;
+        if (sense) {
+          // Snapshot the sense (key `sense:{id}`) before applying, so undo can
+          // restore sense and word consistently.
+          reviewSnapshot[`sense:${sense.id}`] = {
+            review_due_at: sense.fields.review_due_at ?? null,
+            review_interval_days: sense.fields.review_interval_days ?? null,
+            review_ease: sense.fields.review_ease ?? null,
+            review_streak: sense.fields.review_streak ?? null,
+            lapse_count: sense.fields.lapse_count ?? null,
+            learning_step: sense.fields.learning_step ?? null,
+            last_reviewed_at: sense.fields.last_reviewed_at ?? null,
+            last_rating: sense.fields.last_rating ?? null,
+            average_response_time_ms: sense.fields.average_response_time_ms ?? null,
+            review_state: sense.fields.review_state ?? null,
+            review_version: sense.fields.review_version ?? null,
+            leech_flagged_at: sense.fields.leech_flagged_at ?? null
+          };
+          const review = await applyReviewToSense(client, word, sense, [{ rating, responseTimeMs, cardType: card.type }], new Date(now), user.fields.timezone ?? "UTC");
+          resultingState = review.reviewState;
+        } else {
+          const review = calculateAdaptiveReview(word.fields, [{ rating, responseTimeMs, cardType: card.type }], new Date(now), user.fields.timezone ?? "UTC", word.id);
+          await client.updateRecord<WordFields>("words", word.id, reviewToWordFields(review));
+          if (word.id === card.targetWordId) resultingState = review.reviewState;
+        }
       }
       await client.updateRecord<FlashcardAttemptFields>("flashcardAttempts", record.id, { review_applied: true, resulting_review_state: resultingState, review_snapshot: JSON.stringify(reviewSnapshot) });
     } catch (error) {
@@ -549,6 +578,31 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
     }
   }
   return { id: record.id, ...attemptRecordToAnswer(record) };
+}
+
+// Applies the review to the card's target sense, then re-aggregates the word-level
+// SRS cache from the fresh senses (compat reads keep working). The double write is
+// not transactional in Teable: if the re-aggregation fails the word cache stays
+// stale until the next review — accepted, so we warn-log instead of failing.
+async function applyReviewToSense(
+  client: ReturnType<typeof getTeableClient>,
+  word: TeableRecord<WordFields>,
+  sense: TeableRecord<WordSenseFields>,
+  attempts: ReviewAttempt[],
+  now: Date,
+  timeZone: string
+) {
+  const review = calculateAdaptiveReview(sense.fields, attempts, now, timeZone, sense.id);
+  await client.updateRecord<WordSenseFields>("wordSenses", sense.id, reviewToSenseFields(review));
+  try {
+    const refreshedSenses = (await listSensesByWordIds([word.id])).get(word.id) ?? [];
+    if (refreshedSenses.length) {
+      await client.updateRecord<WordFields>("words", word.id, aggregateSenseReviewToWordFields(refreshedSenses));
+    }
+  } catch (error) {
+    console.warn(`flashcard review: word re-aggregation failed for word ${word.id}`, error);
+  }
+  return review;
 }
 
 export async function previewFlashcardAttemptIntervals(input: { sessionId?: unknown; cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; forgot?: unknown; responseTimeMs?: unknown }) {
@@ -611,8 +665,21 @@ export async function undoFlashcardAttempt(sessionId: string) {
   if (!last) throw new LearningStateError("Não há avaliação para desfazer.", 409);
   const snapshot = parseJson(last.fields.review_snapshot ?? "") as Record<string, Record<string, unknown>>;
   for (const [wordId, fields] of Object.entries(snapshot)) {
+    if (wordId.startsWith("sense:")) continue;
     const word = words.find((item) => item.id === wordId && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
     if (word) await client.updateRecord<WordFields>("words", wordId, fields as Partial<WordFields>);
+  }
+  // Sense entries (key `sense:{id}`, written by sense-frozen cards) restore the
+  // per-sense SRS fields, keeping sense and word consistent with the pre-attempt
+  // state. Legacy snapshots have no sense entries and restore words only.
+  const senseEntries = Object.entries(snapshot).filter(([key]) => key.startsWith("sense:"));
+  if (senseEntries.length) {
+    const scopedWordIds = words.filter((item) => matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id })).map((item) => item.id);
+    const knownSenseIds = new Set([...(await listSensesByWordIds(scopedWordIds)).values()].flat().map((sense) => sense.id));
+    for (const [key, fields] of senseEntries) {
+      const senseId = key.slice("sense:".length);
+      if (knownSenseIds.has(senseId)) await client.updateRecord<WordSenseFields>("wordSenses", senseId, fields as Partial<WordSenseFields>);
+    }
   }
   const now = new Date().toISOString();
   await client.updateRecord<FlashcardAttemptFields>("flashcardAttempts", last.id, { undone_at: now, review_applied: false });
@@ -686,11 +753,26 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
     }
   }
   const now = new Date();
+  // Words exercised via a sense-frozen card apply their pending attempts to that
+  // sense (then re-aggregate the word cache); words without a sense card in this
+  // session — including all cards of legacy sessions — keep the word-level path.
+  const senseIdByWordId = new Map<string, string>();
+  for (const deckCard of cards) {
+    if (deckCard.targetSenseId) senseIdByWordId.set(deckCard.targetWordId, deckCard.targetSenseId);
+  }
+  const sensesByWord = senseIdByWordId.size ? await listSensesByWordIds([...senseIdByWordId.keys()]) : new Map<string, TeableRecord<WordSenseFields>[]>();
   for (const wordId of reviewAttemptsByWord.keys()) {
     const word = words.find((item) => item.id === wordId && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
     if (!word) continue;
-    const review = calculateAdaptiveReview(word.fields, reviewAttemptsByWord.get(wordId) ?? [], now, user.fields.timezone ?? "UTC", word.id);
-    await client.updateRecord<WordFields>("words", word.id, reviewToWordFields(review));
+    const wordAttempts = reviewAttemptsByWord.get(wordId) ?? [];
+    const senseId = senseIdByWordId.get(wordId);
+    const sense = senseId ? (sensesByWord.get(wordId) ?? []).find((item) => item.id === senseId) : undefined;
+    if (sense) {
+      await applyReviewToSense(client, word, sense, wordAttempts, now, user.fields.timezone ?? "UTC");
+    } else {
+      const review = calculateAdaptiveReview(word.fields, wordAttempts, now, user.fields.timezone ?? "UTC", word.id);
+      await client.updateRecord<WordFields>("words", word.id, reviewToWordFields(review));
+    }
   }
   const attemptsByCard = new Map<string, typeof validatedAnswers>();
   for (const answer of validatedAnswers) attemptsByCard.set(answer.cardId, [...(attemptsByCard.get(answer.cardId) ?? []), answer]);
