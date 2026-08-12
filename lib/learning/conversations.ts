@@ -99,6 +99,7 @@ export type WordSenseFields = {
   source?: "chat" | "manual" | "backfill";
   is_primary?: boolean;
   sense_order?: number;
+  total_uses?: number;
   review_due_at?: string;
   review_interval_days?: number;
   review_ease?: number;

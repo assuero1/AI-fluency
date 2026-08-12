@@ -29,6 +29,7 @@ const WORD_SENSE_FIELDS: Array<[string, string]> = [
   ["source", "singleSelect"],
   ["is_primary", "checkbox"],
   ["sense_order", "number"],
+  ["total_uses", "number"],
   ["review_due_at", "date"],
   ["review_interval_days", "number"],
   ["review_ease", "number"],

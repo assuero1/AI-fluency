@@ -214,6 +214,7 @@ export const teableSchema: TeableTableDefinition[] = [
       { name: "source", type: "singleSelect", note: "chat | manual | backfill" },
       { name: "is_primary", type: "checkbox" },
       { name: "sense_order", type: "number", note: "1-based display order; primary is 1." },
+      { name: "total_uses", type: "number", note: "Correct conversation uses attributed to this sense." },
       { name: "review_due_at", type: "date" },
       { name: "review_interval_days", type: "number" },
       { name: "review_ease", type: "number" },

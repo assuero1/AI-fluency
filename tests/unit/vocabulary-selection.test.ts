@@ -786,6 +786,105 @@ describe("vocabulary candidate selection", () => {
     });
   });
 
+  describe("per-sense usage counting", () => {
+    it("creates the primary sense of a new word already carrying the session usage count", async () => {
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([{ id: "user:solar", lemma: "solar", translation: "solar", part_of_speech: "adjective" }]),
+        tokensUsed: 1
+      });
+      messages = [buildMessage("m-1", "user", "Solar panels"), buildMessage("m-2", "user", "Solar energy")];
+      const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+
+      await saveSelectedVocabulary("conversation-sense-count-new", ["user:solar"]);
+
+      expect(senses).toHaveLength(1);
+      expect(senses[0].fields.total_uses).toBe(2);
+    });
+
+    it("increments the matching existing sense instead of creating a duplicate", async () => {
+      words.push({
+        id: "word-1",
+        fields: {
+          user_id: "user-1",
+          language_profile_id: "profile-1",
+          lemma: "bank",
+          display_text: "bank",
+          canonical_key: JSON.stringify(["user-1", "profile-1", "bank"]),
+          forms_json: "[]",
+          translation: "banco",
+          total_uses: 3
+        }
+      });
+      senses.push({
+        id: "sense-1",
+        fields: {
+          word_id: "word-1",
+          sense_key: JSON.stringify(["user-1", "profile-1", "bank", "banco"]),
+          translation: "banco",
+          is_primary: true,
+          sense_order: 1,
+          total_uses: 3
+        }
+      });
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([{ id: "user:bank", lemma: "bank", translation: "banco", part_of_speech: "noun" }]),
+        tokensUsed: 1
+      });
+      messages = [buildMessage("m-bank", "user", "I went to the bank")];
+      const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+
+      await saveSelectedVocabulary("conversation-sense-count-existing", ["user:bank"]);
+
+      expect(senses).toHaveLength(1);
+      expect(senses[0].fields.total_uses).toBe(4);
+    });
+
+    it("still saves the word when the sense usage increment fails", async () => {
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+      words.push({
+        id: "word-1",
+        fields: {
+          user_id: "user-1",
+          language_profile_id: "profile-1",
+          lemma: "bank",
+          display_text: "bank",
+          canonical_key: JSON.stringify(["user-1", "profile-1", "bank"]),
+          forms_json: "[]",
+          translation: "banco",
+          total_uses: 1
+        }
+      });
+      senses.push({
+        id: "sense-1",
+        fields: {
+          word_id: "word-1",
+          sense_key: JSON.stringify(["user-1", "profile-1", "bank", "banco"]),
+          translation: "banco",
+          is_primary: true,
+          sense_order: 1,
+          total_uses: 1
+        }
+      });
+      updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
+        if (table === "wordSenses") throw new Error("teable down");
+        const record = words.find((item) => item.id === id)!;
+        record.fields = { ...record.fields, ...fields };
+        return record;
+      });
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([{ id: "user:bank", lemma: "bank", translation: "banco", part_of_speech: "noun" }]),
+        tokensUsed: 1
+      });
+      messages = [buildMessage("m-bank", "user", "I went to the bank")];
+      const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+
+      const result = await saveSelectedVocabulary("conversation-sense-count-failure", ["user:bank"]);
+
+      expect(result.updatedWordCount).toBe(1);
+      expect(warn).toHaveBeenCalled();
+    });
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });

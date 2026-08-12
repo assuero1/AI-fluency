@@ -42,6 +42,7 @@
     "chat:schema-fields:apply": "node scripts/ensure-chat-fields.mjs --apply",
     "senses:ensure-table": "node scripts/ensure-word-senses-table.mjs",
     "senses:flashcard-fields": "node scripts/ensure-word-senses-flashcard-fields.mjs",
+    "senses:usage-fields": "node scripts/ensure-word-senses-usage-fields.mjs",
     "senses:verify-live": "node scripts/verify-sense-srs-live.mjs",
     "senses:verify-ui-live": "node scripts/verify-sense-ui-live.mjs",
     "senses:backfill": "node scripts/backfill-word-senses.mjs",

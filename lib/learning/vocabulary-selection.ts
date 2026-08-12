@@ -14,7 +14,8 @@ import {
   listSensesByWordIds,
   matchesCanonicalSenseKey,
   nextSenseOrderFromList,
-  synthesizeLegacySense
+  synthesizeLegacySense,
+  updateWordSense
 } from "./word-senses";
 import type { UserFields } from "./profile";
 
@@ -643,7 +644,8 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
         sense_key: canonicalSenseKey(scope.userId, scope.profileId, family.lemma, family.translation),
         translation: family.translation,
         is_primary: true,
-        sense_order: 1
+        sense_order: 1,
+        total_uses: correctUseCount
       };
     } else if (!wordSenses.length && filledTranslation) {
       // Buraco do backfill: a palavra não tinha sentido nem tradução; a
@@ -653,7 +655,8 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
         sense_key: canonicalSenseKey(scope.userId, scope.profileId, family.lemma, filledTranslation),
         translation: filledTranslation,
         is_primary: true,
-        sense_order: 1
+        sense_order: 1,
+        total_uses: correctUseCount
       };
     } else if (family.translation && family.candidateIds.some((id) => linguisticData[id]?.isNewSense)) {
       const senseKey = canonicalSenseKey(scope.userId, scope.profileId, family.lemma, family.translation);
@@ -669,7 +672,8 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
           sense_key: senseKey,
           translation: family.translation,
           is_primary: false,
-          sense_order: nextSenseOrderFromList(wordSenses)
+          sense_order: nextSenseOrderFromList(wordSenses),
+          total_uses: correctUseCount
         };
       }
     }
@@ -699,6 +703,24 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
       // primário não muda). Sem sentidos pré-existentes não há o que agregar.
       if (wordSenses.length) {
         await client.updateRecord<WordFields>("words", resolvedWord.id, aggregateSenseReviewToWordFields(allSenses));
+      }
+    }
+    // Sentido existente reutilizado: incrementa o contador do sentido cuja
+    // tradução corresponde à usada. Palavras legadas sem sentidos não têm onde
+    // contar (seguem só com words.total_uses). Falha aqui não aborta o save.
+    if (!createdSense && correctUseCount > 0 && family.translation) {
+      const familySenseKey = canonicalSenseKey(scope.userId, scope.profileId, family.lemma, family.translation);
+      const matched = wordSenses.find((sense) =>
+        matchesCanonicalSenseKey(sense.fields.sense_key, familySenseKey) ||
+        normalizeVocabularyToken(sense.fields.translation ?? "") === normalizeVocabularyToken(family.translation)
+      );
+      if (matched) {
+        try {
+          const updated = await updateWordSense(matched.id, { total_uses: Number(matched.fields.total_uses ?? 0) + correctUseCount });
+          Object.assign(matched, updated);
+        } catch (error) {
+          console.warn(`sense total_uses increment failed for sense ${matched.id}`, error);
+        }
       }
     }
     if (!existingUsage) usageSummaries.push(persisted);

@@ -21,6 +21,7 @@ const FIELD_PLAN = [
   ] } },
   { type: "checkbox", name: "is_primary" },
   { type: "number", name: "sense_order", description: "1-based display order; primary is 1." },
+  { type: "number", name: "total_uses", description: "Correct conversation uses attributed to this sense." },
   { type: "date", name: "review_due_at" },
   { type: "number", name: "review_interval_days" },
   { type: "number", name: "review_ease" },
