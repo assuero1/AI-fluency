@@ -839,6 +839,47 @@ describe("vocabulary candidate selection", () => {
       expect(senses[0].fields.total_uses).toBe(4);
     });
 
+    it("does not double-count the sense when the same conversation is saved twice", async () => {
+      words.push({
+        id: "word-1",
+        fields: {
+          user_id: "user-1",
+          language_profile_id: "profile-1",
+          lemma: "bank",
+          display_text: "bank",
+          canonical_key: JSON.stringify(["user-1", "profile-1", "bank"]),
+          forms_json: "[]",
+          translation: "banco",
+          total_uses: 1
+        }
+      });
+      senses.push({
+        id: "sense-1",
+        fields: {
+          word_id: "word-1",
+          sense_key: JSON.stringify(["user-1", "profile-1", "bank", "banco"]),
+          translation: "banco",
+          is_primary: true,
+          sense_order: 1,
+          total_uses: 1
+        }
+      });
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([{ id: "user:bank", lemma: "bank", translation: "banco", part_of_speech: "noun" }]),
+        tokensUsed: 1
+      });
+      messages = [buildMessage("m-bank", "user", "I went to the bank")];
+      const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+
+      const first = await saveSelectedVocabulary("conversation-sense-count-retry", ["user:bank"]);
+      const second = await saveSelectedVocabulary("conversation-sense-count-retry", ["user:bank"]);
+
+      expect(first.savedCount).toBe(1);
+      expect(second.savedCount).toBe(0);
+      expect(senses).toHaveLength(1);
+      expect(senses[0].fields.total_uses).toBe(2);
+    });
+
     it("still saves the word when the sense usage increment fails", async () => {
       const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
       words.push({

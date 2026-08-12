@@ -708,7 +708,10 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
     // Sentido existente reutilizado: incrementa o contador do sentido cuja
     // tradução corresponde à usada. Palavras legadas sem sentidos não têm onde
     // contar (seguem só com words.total_uses). Falha aqui não aborta o save.
-    if (!createdSense && correctUseCount > 0 && family.translation) {
+    // O delta usa o resumo desta conversa ANTES do upsert: num retry do save
+    // (idempotente no nível da palavra) o delta é 0 e o sentido não dobra.
+    const senseUseDelta = Math.max(0, correctUseCount - Number(existingUsage?.fields.correct_use_count ?? 0));
+    if (!createdSense && senseUseDelta > 0 && family.translation) {
       const familySenseKey = canonicalSenseKey(scope.userId, scope.profileId, family.lemma, family.translation);
       const matched = wordSenses.find((sense) =>
         matchesCanonicalSenseKey(sense.fields.sense_key, familySenseKey) ||
@@ -716,7 +719,7 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
       );
       if (matched) {
         try {
-          const updated = await updateWordSense(matched.id, { total_uses: Number(matched.fields.total_uses ?? 0) + correctUseCount });
+          const updated = await updateWordSense(matched.id, { total_uses: Number(matched.fields.total_uses ?? 0) + senseUseDelta });
           Object.assign(matched, updated);
         } catch (error) {
           console.warn(`sense total_uses increment failed for sense ${matched.id}`, error);
