@@ -1,8 +1,17 @@
 import { startConversation } from "./conversations";
-import type { WordFields, WordUsageSummaryFields } from "./conversations";
+import type { WordFields, WordSenseFields, WordUsageSummaryFields } from "./conversations";
 import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUser } from "./profile";
 import { createTopic } from "./topics";
 import { matchesLearningScope } from "./scope";
+import { LearningStateError } from "./access";
+import {
+  aggregateSenseReviewToWordFields,
+  canonicalSenseKey,
+  createWordSense,
+  listSensesByWordIds,
+  matchesCanonicalSenseKey
+} from "./word-senses";
+import { normalizeVocabularyToken } from "./vocabulary-selection";
 import { getTeableClient, TeableRecord } from "@/lib/teable/client";
 import { summarizeDailyQueue, type DailyQueueSessionFields } from "./daily-queue";
 
@@ -39,6 +48,20 @@ export type WordListItem = {
 };
 
 export type WordStrengthLevel = "new" | "learning" | "consolidating" | "strong";
+
+export type WordSenseListItem = {
+  id: string;
+  translation: string;
+  partOfSpeech: string;
+  exampleSentence: string;
+  isPrimary: boolean;
+  source: "chat" | "manual" | "backfill";
+  reviewState: "new" | "learning" | "review" | "difficult" | "suspended";
+  reviewDueAt: string;
+  reviewStreak: number;
+  lapseCount: number;
+  needsReview: boolean;
+};
 
 export const wordStrengthLabels: Record<WordStrengthLevel, string> = {
   new: "Nova",
@@ -166,10 +189,74 @@ export async function getWordDetail(wordId: string) {
   );
   if (!word) return null;
 
+  const now = Date.now();
+  const item = toWordListItem(word, records.usageSummaries, now);
+  const senseRecords = ((await listSensesByWordIds([word.id])).get(word.id) ?? [])
+    .sort((left, right) => Number(left.fields.sense_order ?? 1) - Number(right.fields.sense_order ?? 1));
+  // Legacy words without senses render through a synthetic item built from the
+  // word-level cache, so the section never shows a broken empty list.
+  const senses = senseRecords.length ? senseRecords.map((sense) => toWordSenseListItem(sense, now)) : [legacyWordSenseListItem(item)];
+
   return {
     languageCode: scope.languageCode,
-    word: toWordListItem(word, records.usageSummaries, Date.now())
+    word: item,
+    senses
   };
+}
+
+export async function addManualWordSense(wordId: string, input: { translation: string; partOfSpeech?: string; exampleSentence?: string }): Promise<WordSenseListItem> {
+  const translation = input.translation.trim().slice(0, 200);
+  if (!translation) throw new LearningStateError("Informe a tradução do significado.", 422);
+  const [scope, records] = await Promise.all([getWordScope(), getWordRecords()]);
+  const word = records.words.find((record) => record.id === wordId && matchesScope(record, scope));
+  if (!word || !scope.profileId) throw new LearningStateError("Palavra não encontrada no seu vocabulário ativo.", 404);
+
+  const lemma = word.fields.lemma || word.fields.display_text || "";
+  const senseKey = canonicalSenseKey(scope.userId, scope.profileId, lemma, translation);
+  const existingSenses = (await listSensesByWordIds([word.id])).get(word.id) ?? [];
+  // Duplicate = same normalized translation on this word, whether detected via
+  // the stored sense_key (chat/backfill senses) or compared directly (senses
+  // whose key is missing or predates the current normalization).
+  const normalizedTranslation = normalizeVocabularyToken(translation);
+  const duplicate = existingSenses.some((sense) => {
+    if (matchesCanonicalSenseKey(sense.fields.sense_key, senseKey)) return true;
+    const stored = sense.fields.translation;
+    return typeof stored === "string" && stored.trim() !== "" && normalizeVocabularyToken(stored) === normalizedTranslation;
+  });
+  if (duplicate) {
+    throw new LearningStateError("Este significado já existe para esta palavra.", 409);
+  }
+
+  const now = new Date().toISOString();
+  const senseOrder = existingSenses.reduce((order, sense) => Math.max(order, Number(sense.fields.sense_order ?? 0) || 0), 0) + 1;
+  const created = await createWordSense({
+    Name: lemma,
+    word_id: word.id,
+    sense_key: senseKey,
+    translation,
+    part_of_speech: input.partOfSpeech?.trim().slice(0, 60) || undefined,
+    example_sentence: input.exampleSentence?.trim().slice(0, 300) || undefined,
+    source: "manual",
+    is_primary: false,
+    sense_order: senseOrder,
+    review_state: "new",
+    review_due_at: now,
+    created_at: now
+  });
+
+  // Re-aggregate the word-level SRS cache from the fresh senses so the manual
+  // sense becomes schedulable in the queue. A stale cache self-heals on the
+  // next review, so a failed re-aggregation only warns.
+  try {
+    const refreshed = (await listSensesByWordIds([word.id])).get(word.id) ?? [];
+    if (refreshed.length) {
+      await getTeableClient().updateRecord<WordFields>("words", word.id, aggregateSenseReviewToWordFields(refreshed));
+    }
+  } catch (error) {
+    console.warn(`manual sense: word re-aggregation failed for word ${word.id}`, error);
+  }
+
+  return toWordSenseListItem(created, Date.now());
 }
 
 export async function startWordPractice(wordId: string) {
@@ -304,6 +391,40 @@ function toWordListItem(
     conversationCount,
     strengthScore: strength.score,
     strengthLevel: strength.level
+  };
+}
+
+function toWordSenseListItem(sense: TeableRecord<WordSenseFields>, now: number): WordSenseListItem {
+  const reviewDueAt = sense.fields.review_due_at || "";
+  const reviewState = sense.fields.review_state ?? "new";
+  return {
+    id: sense.id,
+    translation: sense.fields.translation || "Tradução a adicionar",
+    partOfSpeech: sense.fields.part_of_speech || "",
+    exampleSentence: sense.fields.example_sentence || "",
+    isPrimary: sense.fields.is_primary === true,
+    source: sense.fields.source ?? "chat",
+    reviewState,
+    reviewDueAt,
+    reviewStreak: Number(sense.fields.review_streak ?? 0),
+    lapseCount: Number(sense.fields.lapse_count ?? 0),
+    needsReview: reviewState !== "suspended" && isPastOrToday(reviewDueAt, now)
+  };
+}
+
+function legacyWordSenseListItem(word: WordListItem): WordSenseListItem {
+  return {
+    id: "",
+    translation: word.translation,
+    partOfSpeech: word.partOfSpeech,
+    exampleSentence: "",
+    isPrimary: true,
+    source: "chat",
+    reviewState: word.reviewState,
+    reviewDueAt: word.reviewDueAt,
+    reviewStreak: word.reviewStreak,
+    lapseCount: word.lapseCount,
+    needsReview: word.needsReview
   };
 }
 
