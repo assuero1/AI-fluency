@@ -32,12 +32,19 @@ const tableNames = [
 ];
 const tables = {};
 
+const PAGE_SIZE = 1000;
 for (const tableName of tableNames) {
-  const result = await teableRequest(
-    env,
-    `/api/table/${tableId(tableName)}/record?take=1000&fieldKeyType=name`
-  );
-  tables[tableName] = recordsFrom(result);
+  const all = [];
+  for (let skip = 0; ; skip += PAGE_SIZE) {
+    const result = await teableRequest(
+      env,
+      `/api/table/${tableId(tableName)}/record?take=${PAGE_SIZE}&skip=${skip}&fieldKeyType=name`
+    );
+    const page = recordsFrom(result);
+    all.push(...page);
+    if (page.length < PAGE_SIZE) break;
+  }
+  tables[tableName] = all;
 }
 
 const backup = {
