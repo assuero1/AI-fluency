@@ -1,4 +1,5 @@
-import { assertQaEnvironment, readEnv, recordsFrom, required, teableRequest } from "./qa-env.mjs";
+import { assertQaEnvironment, readEnv } from "./qa-env.mjs";
+import { dbDelete, dbInsert, dbList } from "./lib/supabase-admin.mjs";
 import { createFixture, readFixture, recoverFixture, startQaServer, stopQaServer } from "./qa-test-runtime.mjs";
 
 // Live QA verification of the Fase 3 done criterion (sense UI):
@@ -6,13 +7,12 @@ import { createFixture, readFixture, recoverFixture, startQaServer, stopQaServer
 //   sense added via POST /api/words/:wordId/senses appears on the page and
 //   becomes schedulable (word cache re-aggregated to a due date in the past);
 //   a duplicate manual sense is rejected with 409.
-// Runs a real round-trip (HTTP against a QA server + Teable REST reads), unlike
+// Runs a real round-trip (HTTP against a QA server + Supabase reads), unlike
 // the mocked unit/e2e coverage. QA only — asserts APP_ENV=qa up front.
 
 const envPath = ".env.qa.local";
 const env = readEnv(envPath);
 assertQaEnvironment(env);
-const tableId = (name) => required(env, name);
 
 const now = () => new Date();
 const iso = (date) => date.toISOString();
@@ -25,22 +25,19 @@ const normalize = (value) => value.normalize("NFKC").trim().toLowerCase().normal
 const senseKey = (userId, profileId, lemma, translation) => JSON.stringify([userId, profileId, normalize(lemma), normalize(translation)]);
 
 async function createRecord(tableEnvName, fields) {
-  const result = await teableRequest(env, `/api/table/${tableId(tableEnvName)}/record?fieldKeyType=name`, {
-    method: "POST",
-    body: JSON.stringify({ records: [{ fields }] })
-  });
-  const record = recordsFrom(result)[0] ?? result;
+  const record = await dbInsert(env, tableEnvName, fields);
   if (!record?.id) throw new Error(`Record was not returned for ${tableEnvName}.`);
   return record;
 }
 
 async function getRecord(tableEnvName, id) {
-  const result = await teableRequest(env, `/api/table/${tableId(tableEnvName)}/record/${id}?fieldKeyType=name`);
-  return recordsFrom(result)[0] ?? result;
+  const record = (await dbList(env, tableEnvName)).find((row) => row.id === id);
+  if (!record) throw new Error(`Record not found in ${tableEnvName}: ${id}`);
+  return record;
 }
 
 async function deleteRecord(tableEnvName, id) {
-  await teableRequest(env, `/api/table/${tableId(tableEnvName)}/record/${id}?fieldKeyType=name`, { method: "DELETE" });
+  await dbDelete(env, tableEnvName, id);
 }
 
 const assertions = [];
@@ -141,7 +138,7 @@ try {
   assert(addBody.sense?.isPrimary === false, "created sense is not primary", addBody.sense?.isPrimary);
   assert(addBody.sense?.reviewState === "new", "created sense starts in review state new", addBody.sense?.reviewState);
 
-  // Verify against the live QA Teable: the sense row and the re-aggregated word cache.
+  // Verify against the live QA Supabase project: the sense row and the re-aggregated word cache.
   const createdSense = await getRecord("TEABLE_WORD_SENSES_TABLE_ID", createdSenseId);
   assert(createdSense.fields?.translation === "fixture manual sense", "sense row persisted with the translation", createdSense.fields?.translation);
   assert(Number(createdSense.fields?.sense_order) === 3, "sense gets the next sense_order (3)", createdSense.fields?.sense_order);

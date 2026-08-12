@@ -1,4 +1,5 @@
-import { readEnv, recordsFrom, required, teableRequest } from "./qa-env.mjs";
+import { readEnv } from "./qa-env.mjs";
+import { dbDelete, dbList } from "./lib/supabase-admin.mjs";
 
 function option(name) {
   const index = process.argv.indexOf(name);
@@ -16,10 +17,7 @@ if (confirmation !== "RESET_PERSONAL_TEST_DATA") {
 
 const env = readEnv(envPath);
 if (env.APP_ENV === "production") throw new Error("This reset tool refuses APP_ENV=production.");
-const tableId = (name) => required(env, name);
-const list = async (name, take = 1000) => recordsFrom(
-  await teableRequest(env, `/api/table/${tableId(name)}/record?take=${take}&fieldKeyType=name`)
-);
+const list = async (name, take = 1000) => dbList(env, name, { limit: take });
 
 const [users, profiles] = await Promise.all([
   list("TEABLE_USERS_TABLE_ID", 100),
@@ -49,32 +47,20 @@ const deleted = {};
 for (const tableName of deletionOrder) {
   const records = await list(tableName);
   for (const record of records) {
-    await teableRequest(
-      env,
-      `/api/table/${tableId(tableName)}/record/${record.id}?fieldKeyType=name`,
-      { method: "DELETE" }
-    );
+    await dbDelete(env, tableName, record.id);
   }
   deleted[tableName] = records.length;
 }
 
 const orphanProfiles = profiles.filter((record) => record.id !== profileId);
 for (const record of orphanProfiles) {
-  await teableRequest(
-    env,
-    `/api/table/${tableId("TEABLE_LANGUAGE_PROFILES_TABLE_ID")}/record/${record.id}?fieldKeyType=name`,
-    { method: "DELETE" }
-  );
+  await dbDelete(env, "TEABLE_LANGUAGE_PROFILES_TABLE_ID", record.id);
 }
 deleted.TEABLE_LANGUAGE_PROFILES_TABLE_ID = orphanProfiles.length;
 
 const extraUsers = users.filter((record) => record.id !== userId && (record.fields?.Name || record.fields?.created_at));
 for (const record of extraUsers) {
-  await teableRequest(
-    env,
-    `/api/table/${tableId("TEABLE_USERS_TABLE_ID")}/record/${record.id}?fieldKeyType=name`,
-    { method: "DELETE" }
-  );
+  await dbDelete(env, "TEABLE_USERS_TABLE_ID", record.id);
 }
 deleted.TEABLE_USERS_TABLE_ID = extraUsers.length;
 

@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
-import { assertQaEnvironment, readEnv, required, recordsFrom, teableRequest } from "./qa-env.mjs";
+import { assertQaEnvironment, readEnv } from "./qa-env.mjs";
+import { dbInsert, getSupabaseAdmin } from "./lib/supabase-admin.mjs";
+import tablesJson from "../lib/supabase/tables.json" with { type: "json" };
 
 const envIndex = process.argv.indexOf("--env");
 const envPath = envIndex >= 0 ? process.argv[envIndex + 1] : ".env.qa.local";
@@ -9,7 +11,6 @@ const env = readEnv(envPath);
 assertQaEnvironment(env);
 
 const runId = `qa-${Date.now()}`;
-const tableId = (name) => required(env, name);
 const created = {};
 const fixtureDir = ".qa-fixtures";
 const manifestPath = path.join(fixtureDir, `${runId}.json`);
@@ -27,11 +28,7 @@ function saveManifest() {
 saveManifest();
 
 async function create(tableEnvName, fields) {
-  const result = await teableRequest(env, `/api/table/${tableId(tableEnvName)}/record?fieldKeyType=name`, {
-    method: "POST",
-    body: JSON.stringify({ records: [{ fields }] })
-  });
-  const record = recordsFrom(result)[0] ?? result;
+  const record = await dbInsert(env, tableEnvName, fields);
   if (!record?.id) throw new Error(`QA fixture record was not returned for ${tableEnvName}.`);
   (created[tableEnvName] ??= []).push(record.id);
   saveManifest();
@@ -42,7 +39,7 @@ const past = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 const user = await create("TEABLE_USERS_TABLE_ID", {
   Name: `QA User ${runId}`,
   avatar_url: "",
-  active_language_id: "",
+  active_language_id: null,
   timezone: "America/Sao_Paulo",
   created_at: now
 });
@@ -61,10 +58,12 @@ const profile = await create("TEABLE_LANGUAGE_PROFILES_TABLE_ID", {
   created_at: now,
   updated_at: now
 });
-await teableRequest(env, `/api/table/${tableId("TEABLE_USERS_TABLE_ID")}/record/${user.id}?fieldKeyType=name`, {
-  method: "PATCH",
-  body: JSON.stringify({ record: { fields: { active_language_id: profile.id } } })
-});
+const usersTable = tablesJson.tables.find((table) => table.key === "users").tableName;
+const { error: linkError } = await getSupabaseAdmin(env)
+  .from(usersTable)
+  .update({ active_language_id: profile.id })
+  .eq("id", user.id);
+if (linkError) throw new Error(`update ${usersTable}.active_language_id: ${linkError.message}`);
 const topic = await create("TEABLE_TOPICS_TABLE_ID", {
   Name: `QA Topic ${runId}`,
   user_id: user.id,
@@ -72,7 +71,7 @@ const topic = await create("TEABLE_TOPICS_TABLE_ID", {
   title: `QA Topic ${runId}`,
   source: "user_custom",
   reason: "Fixture used only for automated QA.",
-  related_feedback_id: "",
+  related_feedback_id: null,
   related_words: "",
   difficulty: "B1",
   created_at: now
@@ -87,7 +86,7 @@ const activeConversation = await create("TEABLE_CONVERSATIONS_TABLE_ID", {
   target_user_message_count: 2,
   status: "active",
   started_at: now,
-  ended_at: "",
+  ended_at: null,
   duration_seconds: 0,
   ai_model_used: "qa-fixture",
   summary: ""
@@ -189,11 +188,11 @@ await create("TEABLE_DAILY_FEEDBACKS_TABLE_ID", {
   strengths: "QA fixture strength",
   weaknesses: "QA fixture weakness",
   recommended_focus: "QA fixture focus",
-  recurring_errors: "[\"tense\"]",
+  recurring_errors: ["tense"],
   new_words_count: 1,
   correction_score: 8,
   fluency_score: 7,
-  suggested_topics: "[]",
+  suggested_topics: [],
   created_at: now
 });
 await create("TEABLE_PRACTICE_SESSIONS_TABLE_ID", {
@@ -203,14 +202,14 @@ await create("TEABLE_PRACTICE_SESSIONS_TABLE_ID", {
   conversation_id: activeConversation.id,
   type: "conversation",
   focus: "QA fixture",
-  configuration_json: JSON.stringify({ interactionMode: "simulation", targetUserMessageCount: 2 }),
+  configuration_json: { interactionMode: "simulation", targetUserMessageCount: 2 },
   created_at: now
 });
 await create("TEABLE_APP_EVENTS_TABLE_ID", {
   Name: `QA Fixture ${runId}`,
   user_id: user.id,
   event_name: "qa_fixture_created",
-  payload: JSON.stringify({ runId, namespace: env.QA_RUN_NAMESPACE }),
+  payload: { runId, namespace: env.QA_RUN_NAMESPACE },
   created_at: now
 });
 

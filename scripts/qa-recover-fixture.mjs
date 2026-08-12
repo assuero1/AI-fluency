@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { assertQaEnvironment, readEnv, recordsFrom, required, teableRequest } from "./qa-env.mjs";
+import { assertQaEnvironment, readEnv } from "./qa-env.mjs";
+import { dbDelete, dbList } from "./lib/supabase-admin.mjs";
 
 const envIndex = process.argv.indexOf("--env");
 const runIndex = process.argv.indexOf("--run");
@@ -11,8 +12,10 @@ if (!runId?.startsWith("qa-")) throw new Error("--run must be a QA fixture id.")
 
 const env = readEnv(envPath);
 assertQaEnvironment(env);
-const tableId = (name) => required(env, name);
-const list = async (name) => recordsFrom(await teableRequest(env, `/api/table/${tableId(name)}/record?take=100&fieldKeyType=name`));
+// Scans whole tables (limit 1000) because QA fixtures share the Supabase
+// project with production data; every delete below is filtered to records
+// linked to the fixture's own user ids, so personal data is never touched.
+const list = async (name) => dbList(env, name);
 const manifestPath = path.join(".qa-fixtures", `${runId}.json`);
 const manifest = fs.existsSync(manifestPath) ? JSON.parse(fs.readFileSync(manifestPath, "utf8")) : null;
 const records = {};
@@ -52,7 +55,7 @@ const selected = {
 };
 
 for (const [name, rows] of Object.entries(selected)) {
-  for (const record of rows) await teableRequest(env, `/api/table/${tableId(name)}/record/${record.id}?fieldKeyType=name`, { method: "DELETE" });
+  for (const record of rows) await dbDelete(env, name, record.id);
 }
 
 if (fs.existsSync(manifestPath)) fs.rmSync(manifestPath);

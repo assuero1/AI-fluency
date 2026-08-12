@@ -1,4 +1,5 @@
-import { readEnv, recordsFrom, required, teableRequest } from "./qa-env.mjs";
+import { readEnv } from "./qa-env.mjs";
+import { dbList } from "./lib/supabase-admin.mjs";
 
 function option(name) {
   const index = process.argv.indexOf(name);
@@ -7,10 +8,7 @@ function option(name) {
 
 const envPath = option("--env") ?? ".env.local";
 const env = readEnv(envPath);
-const tableId = (name) => required(env, name);
-const list = async (name, take = 500) => recordsFrom(
-  await teableRequest(env, `/api/table/${tableId(name)}/record?take=${take}&fieldKeyType=name`)
-);
+const list = async (name, take = 500) => dbList(env, name, { limit: take });
 
 const [users, profiles] = await Promise.all([
   list("TEABLE_USERS_TABLE_ID", 100),

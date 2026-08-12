@@ -1,17 +1,17 @@
-import { assertQaEnvironment, readEnv, recordsFrom, required, teableRequest } from "./qa-env.mjs";
+import { assertQaEnvironment, readEnv } from "./qa-env.mjs";
+import { dbDelete, dbInsert, dbList } from "./lib/supabase-admin.mjs";
 import { createFixture, readFixture, recoverFixture, startQaServer, stopQaServer } from "./qa-test-runtime.mjs";
 
 // Live QA verification of the Fase 2 done criterion (multiple senses):
 //   card for a specific sense uses the SENSE translation; after rating, the
 //   word_senses row's SRS fields advance AND words.review_due_at equals the min
 //   over the word's non-suspended senses.
-// Runs a real round-trip (HTTP against a QA server + Teable REST reads), unlike
+// Runs a real round-trip (HTTP against a QA server + Supabase reads), unlike
 // the mocked unit/e2e coverage. QA only — asserts APP_ENV=qa up front.
 
 const envPath = ".env.qa.local";
 const env = readEnv(envPath);
 assertQaEnvironment(env);
-const tableId = (name) => required(env, name);
 
 const DAY_MS = 86_400_000;
 const now = () => new Date();
@@ -25,22 +25,19 @@ const normalize = (value) => value.normalize("NFKC").trim().toLowerCase().normal
 const senseKey = (userId, profileId, lemma, translation) => JSON.stringify([userId, profileId, normalize(lemma), normalize(translation)]);
 
 async function createRecord(tableEnvName, fields) {
-  const result = await teableRequest(env, `/api/table/${tableId(tableEnvName)}/record?fieldKeyType=name`, {
-    method: "POST",
-    body: JSON.stringify({ records: [{ fields }] })
-  });
-  const record = recordsFrom(result)[0] ?? result;
+  const record = await dbInsert(env, tableEnvName, fields);
   if (!record?.id) throw new Error(`Record was not returned for ${tableEnvName}.`);
   return record;
 }
 
 async function getRecord(tableEnvName, id) {
-  const result = await teableRequest(env, `/api/table/${tableId(tableEnvName)}/record/${id}?fieldKeyType=name`);
-  return recordsFrom(result)[0] ?? result;
+  const record = (await dbList(env, tableEnvName)).find((row) => row.id === id);
+  if (!record) throw new Error(`Record not found in ${tableEnvName}: ${id}`);
+  return record;
 }
 
 async function deleteRecord(tableEnvName, id) {
-  await teableRequest(env, `/api/table/${tableId(tableEnvName)}/record/${id}?fieldKeyType=name`, { method: "DELETE" });
+  await dbDelete(env, tableEnvName, id);
 }
 
 const assertions = [];
@@ -147,7 +144,7 @@ try {
   const attemptBody = await attemptResponse.json();
   assert(attemptResponse.status === 201, "attempt accepted via real API", { status: attemptResponse.status, body: attemptBody });
 
-  // Verify against the live QA Teable.
+  // Verify against the live QA Supabase project.
   const [afterSenseA, afterSenseB, afterWord] = await Promise.all([
     getRecord("TEABLE_WORD_SENSES_TABLE_ID", senseA.id),
     getRecord("TEABLE_WORD_SENSES_TABLE_ID", senseB.id),
@@ -177,7 +174,8 @@ try {
   assert(senseADueMs > Date.parse(past), "sense: review_due_at moved forward", afterSenseA.fields.review_due_at);
   assert(daysAhead > 2 && daysAhead < 3.6, "sense: due ≈ +3 days at 09:00 learner tz (learning step 2)", { due: afterSenseA.fields.review_due_at, daysAhead });
 
-  assert(afterSenseB.fields.review_due_at === senseBDue, "sense-b (not exercised) is untouched", afterSenseB.fields.review_due_at);
+  // Postgres normalizes timestamptz on write, so compare instants, not strings.
+  assert(Date.parse(afterSenseB.fields.review_due_at ?? "") === Date.parse(senseBDue), "sense-b (not exercised) is untouched", afterSenseB.fields.review_due_at);
   assert(afterSenseB.fields.review_state === "review", "sense-b keeps its review state", afterSenseB.fields.review_state);
 
   const activeDues = [afterSenseA, afterSenseB]
@@ -191,7 +189,7 @@ try {
   assert(afterWord.fields.translation === "fixture primary sense", "word: translation re-aggregated from the primary sense", afterWord.fields.translation);
   assert(afterWord.fields.last_rating === "good", "word: last_rating re-aggregated", afterWord.fields.last_rating);
 
-  const attempts = recordsFrom(await teableRequest(env, `/api/table/${tableId("TEABLE_FLASHCARD_ATTEMPTS_TABLE_ID")}/record?take=100&fieldKeyType=name`));
+  const attempts = await dbList(env, "TEABLE_FLASHCARD_ATTEMPTS_TABLE_ID");
   const live = attempts.find((record) => record.fields?.practice_session_id === createBody.sessionId);
   assert(live?.fields?.sense_id === senseA.id, "attempt row carries sense_id", live?.fields?.sense_id);
   assert(live?.fields?.review_applied === true, "attempt marked review_applied", live?.fields?.review_applied);

@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
-import { assertQaEnvironment, readEnv, required, teableRequest } from "./qa-env.mjs";
+import { assertQaEnvironment, readEnv } from "./qa-env.mjs";
+import { dbDelete } from "./lib/supabase-admin.mjs";
 
 const envIndex = process.argv.indexOf("--env");
 const runIndex = process.argv.indexOf("--run");
@@ -37,7 +38,7 @@ const deletionOrder = [
 
 for (const tableEnvName of deletionOrder) {
   for (const recordId of manifest.records[tableEnvName] ?? []) {
-    await teableRequest(env, `/api/table/${required(env, tableEnvName)}/record/${recordId}?fieldKeyType=name`, { method: "DELETE" });
+    await dbDelete(env, tableEnvName, recordId);
   }
 }
 
