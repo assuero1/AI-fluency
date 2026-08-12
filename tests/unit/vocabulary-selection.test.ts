@@ -50,6 +50,7 @@ let messages: TestMessage[] = [];
 let corrections: Array<{ id: string; fields: Record<string, unknown> }> = [];
 let profile = { id: "profile-1", fields: { language_code: "en" } };
 const words: Array<{ id: string; fields: Record<string, unknown> }> = [];
+const senses: Array<{ id: string; fields: Record<string, unknown> }> = [];
 const usageSummaries: Array<{ id: string; fields: Record<string, unknown> }> = [];
 const createRecord = vi.fn();
 const updateRecord = vi.fn();
@@ -93,23 +94,27 @@ describe("vocabulary candidate selection", () => {
     corrections = [];
     profile = { id: "profile-1", fields: { language_code: "en" } };
     words.splice(0);
+    senses.splice(0);
     usageSummaries.splice(0);
     vi.clearAllMocks();
     addSavedWordsToDailyFeedback.mockResolvedValue(undefined);
     createChatCompletion.mockResolvedValue({ content: "[]", tokensUsed: 1 });
     listRecords.mockImplementation(async (table: string) => table === "words"
       ? [...words]
-      : table === "wordUsageSummaries"
-        ? [...usageSummaries]
-        : []);
+      : table === "wordSenses"
+        ? [...senses]
+        : table === "wordUsageSummaries"
+          ? [...usageSummaries]
+          : []);
     createRecord.mockImplementation(async (table: string, fields: Record<string, unknown>) => {
-      const target = table === "words" ? words : usageSummaries;
+      const target = table === "words" ? words : table === "wordSenses" ? senses : usageSummaries;
       const record = { id: `${table}-${target.length + 1}`, fields: { ...fields } };
       target.push(record);
       return record;
     });
     updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
-      const record = (table === "wordUsageSummaries" ? usageSummaries : words).find((item) => item.id === id)!;
+      const source = table === "words" ? words : table === "wordSenses" ? senses : usageSummaries;
+      const record = source.find((item) => item.id === id)!;
       record.fields = { ...record.fields, ...fields };
       return record;
     });
@@ -515,6 +520,140 @@ describe("vocabulary candidate selection", () => {
       expect(payload.review_interval_days as number).toBeGreaterThanOrEqual(67);
       expect(payload.review_interval_days as number).toBeLessThanOrEqual(83);
       expect(new Date(payload.review_due_at as string).getTime()).toBeGreaterThan(Date.now());
+    });
+  });
+
+  describe("new sense of an existing word", () => {
+    const BANK_FAMILY = {
+      id: "word-1",
+      lemma: "bank",
+      displayText: "bank",
+      formsJson: "[]",
+      senses: ["banco (instituição)"]
+    };
+
+    it("keeps a group flagged as a new sense with the existing word reference", async () => {
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([
+          { id: "user:bank", lemma: "bank", translation: "margem (do rio)", part_of_speech: "noun", sense_status: "new_sense" }
+        ]),
+        tokensUsed: 1
+      });
+      const { groupNewVocabularyCandidates } = await import("../../lib/learning/vocabulary-selection");
+
+      const groups = await groupNewVocabularyCandidates([buildCandidate("user:bank", "user", 1)], [BANK_FAMILY], "en");
+
+      expect(groups).toHaveLength(1);
+      expect(groups[0]).toMatchObject({
+        kind: "new_sense_of_existing",
+        existingWordId: "word-1",
+        existingTranslation: "banco (instituição)"
+      });
+    });
+
+    it("discards a new_sense flag when the normalized translation already exists as a sense", async () => {
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([
+          { id: "user:bank", lemma: "bank", translation: "Banco (Instituição)", part_of_speech: "noun", sense_status: "new_sense" }
+        ]),
+        tokensUsed: 1
+      });
+      const { groupNewVocabularyCandidates } = await import("../../lib/learning/vocabulary-selection");
+
+      const groups = await groupNewVocabularyCandidates([buildCandidate("user:bank", "user", 1)], [BANK_FAMILY], "en");
+
+      expect(groups).toHaveLength(0);
+    });
+
+    it("keeps discarding known words that the analysis does not flag as a new sense", async () => {
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([
+          { id: "user:bank", lemma: "bank", translation: "banco (instituição)", part_of_speech: "noun", sense_status: "known_sense" }
+        ]),
+        tokensUsed: 1
+      });
+      const { groupNewVocabularyCandidates } = await import("../../lib/learning/vocabulary-selection");
+
+      const groups = await groupNewVocabularyCandidates([buildCandidate("user:bank", "user", 1)], [BANK_FAMILY], "en");
+
+      expect(groups).toHaveLength(0);
+    });
+
+    it("surfaces a new sense through the conversation groups using the stored word_senses", async () => {
+      profile = { id: "profile-1", fields: { language_code: "en" } };
+      words.push({
+        id: "word-1",
+        fields: {
+          user_id: "user-1",
+          language_profile_id: "profile-1",
+          lemma: "bank",
+          display_text: "bank",
+          canonical_key: JSON.stringify(["user-1", "profile-1", "bank"]),
+          forms_json: "[]",
+          translation: "banco (instituição)",
+          total_uses: 3
+        }
+      });
+      senses.push({
+        id: "sense-1",
+        fields: {
+          word_id: "word-1",
+          translation: "banco (instituição)",
+          is_primary: true,
+          sense_order: 1
+        }
+      });
+      messages = [buildMessage("m-bank", "user", "I sat on the bank of the river")];
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([
+          { id: "user:bank", lemma: "bank", translation: "margem (do rio)", part_of_speech: "noun", sense_status: "new_sense" }
+        ]),
+        tokensUsed: 1
+      });
+      const { getConversationVocabularyGroups } = await import("../../lib/learning/vocabulary-selection");
+
+      const groups = await getConversationVocabularyGroups("conversation-new-sense-stored");
+      const bank = groups.find((group) => group.lemma === "bank");
+
+      expect(bank).toMatchObject({
+        kind: "new_sense_of_existing",
+        existingWordId: "word-1",
+        existingTranslation: "banco (instituição)"
+      });
+    });
+
+    it("falls back to the word translation as the known sense when the word has no word_senses rows", async () => {
+      profile = { id: "profile-1", fields: { language_code: "en" } };
+      words.push({
+        id: "word-1",
+        fields: {
+          user_id: "user-1",
+          language_profile_id: "profile-1",
+          lemma: "bank",
+          display_text: "bank",
+          canonical_key: JSON.stringify(["user-1", "profile-1", "bank"]),
+          forms_json: "[]",
+          translation: "banco (instituição)",
+          total_uses: 3
+        }
+      });
+      messages = [buildMessage("m-bank", "user", "I sat on the bank of the river")];
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([
+          { id: "user:bank", lemma: "bank", translation: "margem (do rio)", part_of_speech: "noun", sense_status: "new_sense" }
+        ]),
+        tokensUsed: 1
+      });
+      const { getConversationVocabularyGroups } = await import("../../lib/learning/vocabulary-selection");
+
+      const groups = await getConversationVocabularyGroups("conversation-new-sense-legacy");
+      const bank = groups.find((group) => group.lemma === "bank");
+
+      expect(bank).toMatchObject({
+        kind: "new_sense_of_existing",
+        existingWordId: "word-1",
+        existingTranslation: "banco (instituição)"
+      });
     });
   });
 

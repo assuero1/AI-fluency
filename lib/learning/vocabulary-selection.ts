@@ -3,10 +3,11 @@ import "server-only";
 import { createChatCompletion } from "@/lib/ai/client";
 import { getTeableClient, TeableRecord, TeableRequestError } from "@/lib/teable/client";
 import { LearningStateError } from "./access";
-import { CorrectionFields, getConversation, MessageFields, WordFields, WordUsageSummaryFields } from "./conversations";
+import { CorrectionFields, getConversation, MessageFields, WordFields, WordSenseFields, WordUsageSummaryFields } from "./conversations";
 import { matchesLearningScope } from "./scope";
 import { addSavedWordsToDailyFeedback } from "./feedback";
 import { calculateAdaptiveReview, reviewToWordFields } from "./spaced-repetition";
+import { listSensesByWordIds, synthesizeLegacySense } from "./word-senses";
 import type { UserFields } from "./profile";
 
 export type VocabularyCandidate = {
@@ -362,16 +363,39 @@ export async function getConversationVocabularyGroups(conversationId: string) {
     userId: context.conversation.fields.user_id,
     profileId: context.conversation.fields.language_profile_id
   };
+  const scopedWords = words.filter((word) => matchesLearningScope(word.fields, scope));
+  const sensesByWord = await listSensesByWordIds(scopedWords.map((word) => word.id));
   return groupNewVocabularyCandidates(
     extractVocabularyCandidates(context.messages, context.corrections, language),
-    words.filter((word) => matchesLearningScope(word.fields, scope)).map((word) => ({
+    scopedWords.map((word) => ({
+      id: word.id,
       lemma: word.fields.lemma,
       displayText: word.fields.display_text,
-      formsJson: word.fields.forms_json
+      formsJson: word.fields.forms_json,
+      senses: knownSenseTranslations(word, sensesByWord.get(word.id))
     })),
     language,
     conversationId
   );
+}
+
+/**
+ * Traduções dos sentidos conhecidos da palavra, primário primeiro. Palavras ainda
+ * não migradas para word_senses caem no sentido legado sintetizado de
+ * words.translation, para que a análise continue com contexto durante a transição.
+ */
+function knownSenseTranslations(word: TeableRecord<WordFields>, senses: TeableRecord<WordSenseFields>[] | undefined) {
+  if (senses?.length) {
+    return [...senses]
+      .sort((left, right) =>
+        Number(Boolean(right.fields.is_primary)) - Number(Boolean(left.fields.is_primary)) ||
+        Number(left.fields.sense_order ?? 1) - Number(right.fields.sense_order ?? 1)
+      )
+      .map((sense) => (sense.fields.translation ?? "").trim())
+      .filter(Boolean);
+  }
+  const legacy = synthesizeLegacySense(word).translation.trim();
+  return legacy ? [legacy] : [];
 }
 
 function groupCandidatesByLemma(
