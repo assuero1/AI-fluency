@@ -153,3 +153,14 @@ The multiple-senses feature reads the `wordSenses` table from the chat save, fla
 After the backfill, run `npm run vocabulary:audit -- --env .env.production` and inspect the 2 known colliding word pairs (same normalized lemma + translation within one profile), then re-run the backfill — it is idempotent — to close the legacy holes.
 
 Known limitation: reviews of supporting words (from AI cloze phrases) still update the word-level SRS cache directly, bypassing the sense layer; for a multi-sense word the next sense-targeted review re-aggregates the cache from the senses and discards that review's effect. Accepted for this rollout and tracked as a follow-up.
+
+## WordSenses `total_uses` Field (Production)
+
+The per-sense usage counter (`total_uses`, number) is written by the end-of-chat vocabulary save and read by the summary/words screens. It must exist in Teable before the first deploy that writes it — otherwise sense creation fails the save. It is additive and safe to apply with the current code running:
+
+```bash
+node scripts/ensure-word-senses-usage-fields.mjs --env .env.production
+node scripts/ensure-word-senses-usage-fields.mjs --apply --env .env.production
+```
+
+Repeat the dry-run and confirm `action: "none"` before deploying. Rollback: revert only the code; keep the field (older code ignores it). Historical senses stay at 0 — there is no backfill by design.
