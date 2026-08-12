@@ -41,6 +41,10 @@ export class SupabaseTeableClient {
     if (!config.serviceRoleKey) throw new TeableConfigError("SUPABASE_SERVICE_ROLE_KEY is not configured.");
     this.db = createClient(config.url, config.serviceRoleKey, {
       auth: { persistSession: false, autoRefreshToken: false },
+      // postgrest-js 2.112 retries GET/HEAD/OPTIONS internally by default (up to
+      // 3 retries, including HTTP 503/520). Disable it: the adapter already does
+      // its own single retry on transient failures, mirroring TeableClient.
+      db: { retry: false },
       global: {
         fetch: (url, init) => fetch(url, { ...init, signal: withTimeoutSignal(init?.signal ?? null) })
       }

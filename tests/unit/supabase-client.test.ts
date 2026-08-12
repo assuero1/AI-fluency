@@ -122,4 +122,11 @@ describe("SupabaseTeableClient", () => {
     const client = createSupabaseTeableClient();
     await expect(client.listRecords("users")).rejects.toThrow(/permission denied/);
   });
+
+  it("disables postgrest-js internal retries so the adapter's single retry is exact", () => {
+    createSupabaseTeableClient();
+    expect(mocks.createClient).toHaveBeenCalledTimes(1);
+    const options = mocks.createClient.mock.calls[0][2] as Record<string, unknown>;
+    expect(options).toMatchObject({ db: { retry: false } });
+  });
 });
