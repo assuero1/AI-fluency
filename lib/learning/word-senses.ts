@@ -118,29 +118,48 @@ function isUnconfiguredWordSensesTableError(error: unknown): boolean {
   return error instanceof TeableConfigError && error.message.startsWith(`${WORD_SENSES_ENV_NAME} is not configured`);
 }
 
+async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(limit, items.length) }, async () => {
+      while (cursor < items.length) {
+        const index = cursor;
+        cursor += 1;
+        results[index] = await fn(items[index]);
+      }
+    })
+  );
+  return results;
+}
+
+const SENSE_LOOKUP_CONCURRENCY = 8;
+
 export async function listSensesByWordIds(wordIds: string[]): Promise<Map<string, TeableRecord<WordSenseFields>[]>> {
   const byWord = new Map<string, TeableRecord<WordSenseFields>[]>();
   if (!wordIds.length) return byWord;
-  const wanted = new Set(wordIds);
-  let senses: TeableRecord<WordSenseFields>[];
-  try {
-    senses = await getTeableClient().listAllRecords<WordSenseFields>("wordSenses");
-  } catch (error) {
-    // While the wordSenses table/env var does not exist yet in an environment
-    // (deploy before the rollout in docs/DEPLOYMENT.md completes), degrade to
-    // "no senses" so every consumer falls back to the legacy word-level path
-    // instead of returning 503.
-    if (!isUnconfiguredWordSensesTableError(error)) throw error;
-    console.warn(`[word-senses] ${WORD_SENSES_ENV_NAME} is not configured; treating every word as sense-less (legacy path).`);
-    return byWord;
-  }
-  for (const sense of senses) {
-    const wordId = String(sense.fields.word_id ?? "");
-    if (!wanted.has(wordId)) continue;
-    const group = byWord.get(wordId) ?? [];
-    group.push(sense);
-    byWord.set(wordId, group);
-  }
+  const client = getTeableClient();
+  // Deploy-ordering guard: se a tabela ainda não existe neste ambiente, degrada
+  // para "sem sentidos" (caminho legado) em vez de 503 — mesmo comportamento de
+  // antes, agora detectado na primeira query filtrada.
+  let unconfigured = false;
+  const groups = await mapWithConcurrency(wordIds, SENSE_LOOKUP_CONCURRENCY, async (wordId) => {
+    if (unconfigured) return [] as TeableRecord<WordSenseFields>[];
+    try {
+      return await client.listRecordsWhere<WordSenseFields>("wordSenses", "word_id", wordId);
+    } catch (error) {
+      if (!isUnconfiguredWordSensesTableError(error)) throw error;
+      // Aviso único mesmo quando várias buscas concorrentes degradam juntas.
+      if (!unconfigured) {
+        unconfigured = true;
+        console.warn(`[word-senses] ${WORD_SENSES_ENV_NAME} is not configured; treating every word as sense-less (legacy path).`);
+      }
+      return [] as TeableRecord<WordSenseFields>[];
+    }
+  });
+  wordIds.forEach((wordId, index) => {
+    if (groups[index].length) byWord.set(wordId, groups[index]);
+  });
   return byWord;
 }
 
@@ -156,10 +175,15 @@ export async function getPrimarySense(wordId: string): Promise<TeableRecord<Word
   return senses.filter((sense) => sense.fields.is_primary).sort(byOrder)[0] ?? [...senses].sort(byOrder)[0];
 }
 
+/** Próximo sense_order a partir de sentidos já carregados (sem nova leitura). */
+export function nextSenseOrderFromList(senses: Array<{ fields: Pick<WordSenseFields, "sense_order"> }>): number {
+  return senses.reduce((order, sense) => Math.max(order, Number(sense.fields.sense_order ?? 0) || 0), 0) + 1;
+}
+
 /** Próximo sense_order da palavra (maior existente + 1; 1 quando não há sentidos). */
 export async function nextSenseOrder(wordId: string): Promise<number> {
   const senses = (await listSensesByWordIds([wordId])).get(wordId) ?? [];
-  return senses.reduce((order, sense) => Math.max(order, Number(sense.fields.sense_order ?? 0) || 0), 0) + 1;
+  return nextSenseOrderFromList(senses);
 }
 
 export async function createWordSense(fields: WordSenseFields): Promise<TeableRecord<WordSenseFields>> {

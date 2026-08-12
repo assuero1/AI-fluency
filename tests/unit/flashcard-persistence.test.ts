@@ -7,6 +7,7 @@ const cardRecord = { id: "card-a", fields: { practice_session_id: session.id, ta
 let attempts: Array<{ id: string; fields: Record<string, unknown>; createdTime?: string }> = [];
 const listRecords = vi.fn();
 const listAllRecords = vi.fn();
+const listRecordsWhere = vi.fn();
 const createRecord = vi.fn();
 const updateRecord = vi.fn();
 const createEvent = vi.fn();
@@ -17,7 +18,7 @@ vi.mock("../../lib/learning/profile", () => ({
   getActiveLanguageProfile: vi.fn(async () => profile)
 }));
 vi.mock("../../lib/teable/client", () => ({
-  getTeableClient: () => ({ listRecords, listAllRecords, createRecord, updateRecord, createEvent })
+  getTeableClient: () => ({ listRecords, listAllRecords, listRecordsWhere, createRecord, updateRecord, createEvent })
 }));
 
 describe("flashcard attempt persistence and resume", () => {
@@ -39,6 +40,7 @@ describe("flashcard attempt persistence and resume", () => {
     updateRecord.mockResolvedValue(session);
     createEvent.mockResolvedValue({ id: "event-a", fields: {} });
     listAllRecords.mockResolvedValue([]);
+    listRecordsWhere.mockResolvedValue([]);
   });
 
   it("persists one normalized attempt and returns it idempotently", async () => {
@@ -290,6 +292,9 @@ describe("sense-aware review persistence", () => {
       return [];
     });
     listAllRecords.mockImplementation(async (table: string) => table === "wordSenses" ? senses : []);
+    listRecordsWhere.mockImplementation(async (table: string, field: string, value: string) =>
+      table === "wordSenses" ? senses.filter((sense) => String(sense.fields[field] ?? "") === value) : []
+    );
     updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
       if (table === "wordSenses") {
         const target = senses.find((item) => item.id === id);
@@ -317,6 +322,7 @@ describe("sense-aware review persistence", () => {
     });
     createEvent.mockResolvedValue({ id: "event-a", fields: {} });
     listAllRecords.mockResolvedValue([]);
+    listRecordsWhere.mockResolvedValue([]);
   });
 
   it("applies the incremental review to the target sense and re-aggregates the word cache", async () => {
@@ -448,7 +454,7 @@ describe("sense-aware review persistence", () => {
     // The word-level cache has no SRS fields (a new-card schedule would hint a
     // few days); a long graduated interval can only come from the sense's row.
     expect(preview.rememberedDays).toBeGreaterThanOrEqual(40);
-    expect(listAllRecords).toHaveBeenCalledWith("wordSenses");
+    expect(listRecordsWhere).toHaveBeenCalledWith("wordSenses", "word_id", "word-a");
     expect(createRecord).not.toHaveBeenCalled();
     expect(updateRecord).not.toHaveBeenCalled();
   });
@@ -461,6 +467,6 @@ describe("sense-aware review persistence", () => {
 
     expect(preview.match).toBe("exact");
     expect(preview.rememberedDays).toBeLessThan(40);
-    expect(listAllRecords).toHaveBeenCalledWith("wordSenses");
+    expect(listRecordsWhere).toHaveBeenCalledWith("wordSenses", "word_id", "word-a");
   });
 });

@@ -229,6 +229,16 @@ describe("aggregateSenseReviewToWordFields", () => {
   });
 });
 
+describe("nextSenseOrderFromList", () => {
+  it("computes the next sense_order from an in-memory list", async () => {
+    const { nextSenseOrderFromList } = await import("../../lib/learning/word-senses");
+
+    expect(nextSenseOrderFromList([])).toBe(1);
+    expect(nextSenseOrderFromList([{ fields: { sense_order: 1 } }, { fields: { sense_order: 3 } }])).toBe(4);
+    expect(nextSenseOrderFromList([{ fields: {} }])).toBe(1);
+  });
+});
+
 describe("word senses access layer", () => {
   const ENV_KEYS = ["TEABLE_BASE_URL", "TEABLE_API_KEY", "TEABLE_WORD_SENSES_TABLE_ID"];
   const originalEnv = new Map(ENV_KEYS.map((key) => [key, process.env[key]]));
@@ -260,7 +270,11 @@ describe("word senses access layer", () => {
   });
 
   it("groups senses by parent word id", async () => {
-    fetchMock.mockResolvedValue(
+    // mockImplementation (not mockResolvedValue): each call needs a fresh
+    // Response because listSensesByWordIds fans out concurrent filtered
+    // queries whose #3041 fallback may re-fetch, and a shared Response body
+    // can only be consumed once.
+    fetchMock.mockImplementation(async () =>
       jsonResponse({
         records: [
           senseRecord("s1", { word_id: "word-1", is_primary: true }),

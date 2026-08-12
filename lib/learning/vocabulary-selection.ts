@@ -13,7 +13,7 @@ import {
   createWordSense,
   listSensesByWordIds,
   matchesCanonicalSenseKey,
-  nextSenseOrder,
+  nextSenseOrderFromList,
   synthesizeLegacySense
 } from "./word-senses";
 import type { UserFields } from "./profile";
@@ -615,14 +615,14 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
     const implicitReview = correctUseCount > 0 && resolvedWord.fields.review_state === "review" && dueTime > 0 && dueTime <= Date.now()
       ? calculateAdaptiveReview(resolvedWord.fields, [{ rating: "good" }], new Date(now), timeZone, resolvedWord.id)
       : null;
-    word = await client.updateRecord<WordFields>("words", resolvedWord.id, {
+    const wordUpdate: Partial<WordFields> = {
       forms_json: JSON.stringify(mergedForms),
       total_uses: otherUses + correctUseCount,
       last_used_at: correctUseCount > 0 ? now : resolvedWord.fields.last_used_at,
       ...(!resolvedWord.fields.translation && family.translation ? { translation: family.translation } : {}),
       ...(!resolvedWord.fields.part_of_speech && family.partOfSpeech ? { part_of_speech: family.partOfSpeech } : {}),
       ...(implicitReview ? { ...reviewToWordFields(implicitReview), implicit_review_at: now } : {})
-    });
+    };
     // Captura de sentidos: palavra nova ganha o sentido primário; palavra
     // existente com significado novo ganha um sentido não-primário, sem tocar
     // em words.translation (cache do primário).
@@ -636,26 +636,25 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
       review_state: "new" as const,
       created_at: now
     };
+    let senseToCreate: WordSenseFields | null = null;
     if (createdWord) {
-      const created = await createWordSense({
+      senseToCreate = {
         ...senseBase,
         sense_key: canonicalSenseKey(scope.userId, scope.profileId, family.lemma, family.translation),
         translation: family.translation,
         is_primary: true,
         sense_order: 1
-      });
-      sensesByWord.set(resolvedWord.id, [created]);
+      };
     } else if (!wordSenses.length && filledTranslation) {
       // Buraco do backfill: a palavra não tinha sentido nem tradução; a
       // tradução que acabou de preencher words.translation vira o primário.
-      const created = await createWordSense({
+      senseToCreate = {
         ...senseBase,
         sense_key: canonicalSenseKey(scope.userId, scope.profileId, family.lemma, filledTranslation),
         translation: filledTranslation,
         is_primary: true,
         sense_order: 1
-      });
-      sensesByWord.set(resolvedWord.id, [created]);
+      };
     } else if (family.translation && family.candidateIds.some((id) => linguisticData[id]?.isNewSense)) {
       const senseKey = canonicalSenseKey(scope.userId, scope.profileId, family.lemma, family.translation);
       // Dedupe por sense_key/tradução normalizada: falso positivo da IA vira
@@ -665,20 +664,13 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
         normalizeVocabularyToken(sense.fields.translation ?? "") === normalizeVocabularyToken(family.translation)
       );
       if (!alreadyKnown) {
-        const created = await createWordSense({
+        senseToCreate = {
           ...senseBase,
           sense_key: senseKey,
           translation: family.translation,
           is_primary: false,
-          sense_order: await nextSenseOrder(resolvedWord.id)
-        });
-        const allSenses = [...wordSenses, created];
-        sensesByWord.set(resolvedWord.id, allSenses);
-        // O cache da word reflete o agregado dos sentidos (a tradução do
-        // primário não muda). Sem sentidos pré-existentes não há o que agregar.
-        if (wordSenses.length) {
-          await client.updateRecord<WordFields>("words", resolvedWord.id, aggregateSenseReviewToWordFields(allSenses));
-        }
+          sense_order: nextSenseOrderFromList(wordSenses)
+        };
       }
     }
     const summaryFields: WordUsageSummaryFields = {
@@ -693,7 +685,22 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
       first_used_at: existingUsage?.fields.first_used_at || now,
       last_used_at: now
     };
-    const persisted = await upsertWordUsageSummary(client, usageSummaries, existingUsage, summaryFields);
+    word = await client.updateRecord<WordFields>("words", resolvedWord.id, wordUpdate);
+    // Gravações independentes da família em paralelo: o sentido novo e o resumo
+    // de uso não dependem um do outro.
+    const [createdSense, persisted] = await Promise.all([
+      senseToCreate ? createWordSense(senseToCreate) : Promise.resolve(null),
+      upsertWordUsageSummary(client, usageSummaries, existingUsage, summaryFields)
+    ]);
+    if (createdSense) {
+      const allSenses = [...wordSenses, createdSense];
+      sensesByWord.set(resolvedWord.id, allSenses);
+      // O cache da word reflete o agregado dos sentidos (a tradução do
+      // primário não muda). Sem sentidos pré-existentes não há o que agregar.
+      if (wordSenses.length) {
+        await client.updateRecord<WordFields>("words", resolvedWord.id, aggregateSenseReviewToWordFields(allSenses));
+      }
+    }
     if (!existingUsage) usageSummaries.push(persisted);
     savedCount += Math.max(0, relevant.length - previousObservedCount);
     if (createdWord) newWordCount += 1;

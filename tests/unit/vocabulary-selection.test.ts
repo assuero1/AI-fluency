@@ -746,6 +746,44 @@ describe("vocabulary candidate selection", () => {
       // A palavra de outro usuário não foi tocada.
       expect(words.find((word) => word.id === "word-other-user")?.fields.total_uses).toBe(9);
     });
+
+    it("never full-scans wordSenses, even when creating a new sense", async () => {
+      words.push({
+        id: "word-1",
+        fields: {
+          user_id: "user-1",
+          language_profile_id: "profile-1",
+          lemma: "bank",
+          display_text: "bank",
+          canonical_key: JSON.stringify(["user-1", "profile-1", "bank"]),
+          forms_json: "[]",
+          translation: "banco",
+          total_uses: 2
+        }
+      });
+      senses.push({
+        id: "sense-1",
+        fields: {
+          word_id: "word-1",
+          sense_key: JSON.stringify(["user-1", "profile-1", "bank", "banco"]),
+          translation: "banco",
+          is_primary: true,
+          sense_order: 1
+        }
+      });
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([{ id: "user:bank", lemma: "bank", translation: "margem", part_of_speech: "noun", sense_status: "new_sense" }]),
+        tokensUsed: 1
+      });
+      messages = [buildMessage("m-bank", "user", "The bank of the river")];
+      const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+
+      await saveSelectedVocabulary("conversation-new-sense-no-scan", ["user:bank"]);
+
+      expect(listRecords.mock.calls.filter(([table]) => table === "wordSenses")).toHaveLength(0);
+      const created = senses.find((sense) => sense.fields.translation === "margem");
+      expect(created?.fields.sense_order).toBe(2);
+    });
   });
 
   afterEach(() => {

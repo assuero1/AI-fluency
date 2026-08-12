@@ -13,6 +13,7 @@ const updateRecord = vi.fn();
 const createEvent = vi.fn();
 const listRecords = vi.fn();
 const listAllRecords = vi.fn();
+const listRecordsWhere = vi.fn();
 
 vi.mock("../../lib/ai/client", () => ({ createChatCompletion: vi.fn() }));
 vi.mock("../../lib/learning/profile", () => ({
@@ -20,7 +21,7 @@ vi.mock("../../lib/learning/profile", () => ({
   getActiveLanguageProfile: vi.fn(async () => profile)
 }));
 vi.mock("../../lib/teable/client", () => ({
-  getTeableClient: () => ({ listRecords, listAllRecords, updateRecord, createEvent })
+  getTeableClient: () => ({ listRecords, listAllRecords, listRecordsWhere, updateRecord, createEvent })
 }));
 
 describe("flashcard completion persistence", () => {
@@ -51,6 +52,7 @@ describe("flashcard completion persistence", () => {
     });
     createEvent.mockResolvedValue({ id: "event-a", fields: {} });
     listAllRecords.mockResolvedValue([]);
+    listRecordsWhere.mockResolvedValue([]);
   });
 
   it("persists the result and returns it for a retry with the same completion id", async () => {
@@ -156,6 +158,9 @@ describe("flashcard completion persistence", () => {
       { id: "sense-b", fields: { word_id: "word-a", translation: "oi", review_state: "review", review_streak: 4, lapse_count: 0, review_due_at: "2026-07-20T09:00:00.000Z", last_reviewed_at: "2026-07-08T09:00:00.000Z" } }
     ];
     listAllRecords.mockImplementation(async (table: string) => table === "wordSenses" ? senses : []);
+    listRecordsWhere.mockImplementation(async (table: string, field: string, value: string) =>
+      table === "wordSenses" ? senses.filter((sense) => String((sense.fields as Record<string, unknown>)[field] ?? "") === value) : []
+    );
     updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
       if (table === "practiceSessions" && id === session.id) session.fields = { ...session.fields, ...fields };
       if (table === "wordSenses") {

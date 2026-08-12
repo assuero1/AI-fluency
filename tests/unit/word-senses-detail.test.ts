@@ -9,6 +9,7 @@ const profile = { id: "profile-a", fields: { language_code: "es", language_name:
 
 const listRecords = vi.fn();
 const listAllRecords = vi.fn();
+const listRecordsWhere = vi.fn();
 const createRecord = vi.fn();
 const updateRecord = vi.fn();
 const createEvent = vi.fn();
@@ -19,7 +20,7 @@ vi.mock("../../lib/learning/profile", () => ({
   getDailyNewCardsQuota: vi.fn(() => 10)
 }));
 vi.mock("../../lib/teable/client", () => ({
-  getTeableClient: () => ({ listRecords, listAllRecords, createRecord, updateRecord, createEvent }),
+  getTeableClient: () => ({ listRecords, listAllRecords, listRecordsWhere, createRecord, updateRecord, createEvent }),
   TeableRequestError: class TeableRequestError extends Error {
     constructor(public status: number, message: string) {
       super(message);
@@ -98,12 +99,16 @@ const bancoSenses: TeableRecord<WordSenseFields>[] = [
 ];
 
 function mockWordEnvironment(words: TeableRecord<WordFields>[], senses: TeableRecord<WordSenseFields>[]) {
-  listAllRecords.mockImplementation(async (table: string) => {
-    if (table === "words") return words;
-    if (table === "wordUsageSummaries") return [bancoUsage];
-    if (table === "wordSenses") return senses;
-    return [];
-  });
+  const tableData = (table: string) => {
+    if (table === "words") return words as TeableRecord<Record<string, unknown>>[];
+    if (table === "wordUsageSummaries") return [bancoUsage] as TeableRecord<Record<string, unknown>>[];
+    if (table === "wordSenses") return senses as TeableRecord<Record<string, unknown>>[];
+    return [] as TeableRecord<Record<string, unknown>>[];
+  };
+  listAllRecords.mockImplementation(async (table: string) => tableData(table));
+  listRecordsWhere.mockImplementation(async (table: string, field: string, value: string) =>
+    tableData(table).filter((record) => String(record.fields[field] ?? "") === value)
+  );
 }
 
 describe("getWordDetail with senses", () => {
