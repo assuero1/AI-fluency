@@ -261,7 +261,10 @@ export function FlashcardTrainer() {
       <div className="top-row"><button className="back-link button-reset" onClick={() => setExitConfirmationOpen(true)} type="button"><ArrowLeft /> Sair</button><Pill>{uniqueCompleted}/{cards.length} cards · apresentação {answers.length + 1}</Pill></div>
       <div className="progress-line"><span style={{ width: `${((uniqueCompleted + (currentItem.presentationNumber === 1 && revealed ? 1 : 0)) / cards.length) * 100}%` }} /></div>
       {adapted ? <p className="flashcard-adapted">O treino foi adaptado porque algumas frases contextuais não passaram na validação.</p> : null}
-      <div className="flashcard-kind"><Pill tone={card.type === "cloze" ? "info" : "primary"}>{cardTypeLabel(card.type)}</Pill></div>
+      <div className="flashcard-kind">
+        <Pill tone={card.type === "cloze" ? "info" : "primary"}>{cardTypeLabel(card.type)}</Pill>
+        {card.targetSenseId && card.senseOrder && card.senseCount && card.senseCount > 1 ? <Pill tone="info">significado {card.senseOrder} de {card.senseCount}</Pill> : null}
+      </div>
       <section className="active-recall-card" aria-label={card.type === "listening" ? "Card de escuta" : "Card de recuperação ativa"}>
         <span>{card.type === "listening" ? "Ouça antes de responder" : card.type === "cloze" ? "Complete a frase" : "Lembre antes de responder"}</span>
         {card.type === "listening" ? <div className="flashcard-listening-controls">

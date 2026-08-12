@@ -197,6 +197,19 @@ describe("flashcard attempt persistence and resume", () => {
     await expect(previewFlashcardAttemptIntervals({ sessionId: session.id, cardId: cardRecord.id, presentationNumber: 2, userAnswer: "hola" })).rejects.toThrow("fila");
   });
 
+  it("does not list senses when previewing a legacy card without target_sense_id", async () => {
+    listRecords.mockImplementation(async (table: string) => {
+      if (table === "practiceSessions") return [session];
+      if (table === "flashcards") return [cardRecord];
+      if (table === "flashcardAttempts") return attempts;
+      if (table === "words") return [{ id: "word-a", fields: { user_id: user.id, language_profile_id: profile.id, familiarity_score: 4 } }];
+      return [];
+    });
+    const { previewFlashcardAttemptIntervals } = await import("../../lib/learning/flashcards");
+    await previewFlashcardAttemptIntervals({ sessionId: session.id, cardId: cardRecord.id, presentationNumber: 1, userAnswer: "hola", responseTimeMs: 1200 });
+    expect(listAllRecords).not.toHaveBeenCalled();
+  });
+
   it("undoes the latest attempt: restores the snapshot and marks it undone", async () => {
     attempts = [{ id: "attempt-1", fields: { practice_session_id: session.id, flashcard_id: cardRecord.id, word_id: "word-a", presentation_number: 1, client_attempt_id: "u-001", user_answer: "hola", normalized_answer: "hola", match_result: "exact", suggested_rating: "easy", final_rating: "easy", was_correct: true, response_time_ms: 1200, used_speech: false, audio_replay_count: 0, review_applied: true, review_snapshot: JSON.stringify({ "word-a": { familiarity_score: 4, review_ease: 2.5, review_state: "learning" } }), created_at: "2026-07-10T12:01:00.000Z" } }];
     listRecords.mockImplementation(async (table: string) => {
@@ -419,5 +432,35 @@ describe("sense-aware review persistence", () => {
 
     expect(updateRecord.mock.calls.filter(([table]) => table === "wordSenses")).toHaveLength(0);
     expect(updateRecord).toHaveBeenCalledWith("words", "word-a", expect.objectContaining({ familiarity_score: 4 }));
+  });
+
+  it("previews intervals from the target sense schedule instead of the word cache", async () => {
+    senses = [{
+      id: "sense-a",
+      fields: { word_id: "word-a", translation: "banco (instituição)", review_state: "review", learning_step: 10, review_interval_days: 45, review_ease: 2.8, review_streak: 9, lapse_count: 0, review_due_at: "2026-07-09T09:00:00.000Z" }
+    }];
+    mockSenseEnvironment();
+    const { previewFlashcardAttemptIntervals } = await import("../../lib/learning/flashcards");
+    const preview = await previewFlashcardAttemptIntervals({ sessionId: session.id, cardId: senseCardRecord.id, presentationNumber: 1, userAnswer: "hola", responseTimeMs: 1200 });
+
+    expect(preview.match).toBe("exact");
+    expect(preview.forgotDays).toBe(1);
+    // The word-level cache has no SRS fields (a new-card schedule would hint a
+    // few days); a long graduated interval can only come from the sense's row.
+    expect(preview.rememberedDays).toBeGreaterThanOrEqual(40);
+    expect(listAllRecords).toHaveBeenCalledWith("wordSenses");
+    expect(createRecord).not.toHaveBeenCalled();
+    expect(updateRecord).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the word schedule in the preview when the card's sense no longer exists", async () => {
+    senses = [];
+    mockSenseEnvironment();
+    const { previewFlashcardAttemptIntervals } = await import("../../lib/learning/flashcards");
+    const preview = await previewFlashcardAttemptIntervals({ sessionId: session.id, cardId: senseCardRecord.id, presentationNumber: 1, userAnswer: "hola", responseTimeMs: 1200 });
+
+    expect(preview.match).toBe("exact");
+    expect(preview.rememberedDays).toBeLessThan(40);
+    expect(listAllRecords).toHaveBeenCalledWith("wordSenses");
   });
 });

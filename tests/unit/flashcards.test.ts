@@ -228,6 +228,51 @@ describe("buildDeck with word senses", () => {
     });
     expect(deck.cards[0].targetSenseId).toBeUndefined();
   }, 15_000);
+
+  it("accepts the translations of the word's other senses on comprehension and listening cards", async () => {
+    const comprehension = await buildDeck([banco()], "Espanhol", "Intermediário (B1)", "seed-senses-accept", ["target_to_native"], bancoSenses());
+
+    expect(comprehension.cards[0].type).toBe("target_to_native");
+    expect(comprehension.cards[0].expectedAnswer).toBe("banco (instituição)");
+    expect(comprehension.cards[0].acceptedAnswers).toEqual(["banco (assento)"]);
+
+    const listening = await buildDeck([banco()], "Espanhol", "Intermediário (B1)", "seed-senses-listen", ["listening"], bancoSenses());
+    expect(listening.cards[0].type).toBe("listening");
+    expect(listening.cards[0].acceptedAnswers).toEqual(["banco (assento)"]);
+  }, 15_000);
+
+  it("does not leak other senses into production card accepted answers", async () => {
+    const deck = await buildDeck([banco()], "Espanhol", "Intermediário (B1)", "seed-senses-prod", ["native_to_target"], bancoSenses());
+
+    expect(deck.cards[0].type).toBe("native_to_target");
+    expect(deck.cards[0].acceptedAnswers).toEqual([]);
+  }, 15_000);
+
+  it("marks multi-sense cards with the exercised sense position ordered by sense_order", async () => {
+    const senses = new Map([["word-banco", [
+      { id: "sense-bank", fields: { word_id: "word-banco", translation: "banco (instituição)", sense_order: 2, review_due_at: "2026-08-01T09:00:00.000Z" } },
+      { id: "sense-seat", fields: { word_id: "word-banco", translation: "banco (assento)", sense_order: 1, review_due_at: "2026-08-20T09:00:00.000Z" } },
+      { id: "sense-park", fields: { word_id: "word-banco", translation: "banco (praça)", sense_order: 3, review_due_at: "2026-08-25T09:00:00.000Z" } }
+    ] as never[]]]);
+    const deck = await buildDeck([banco()], "Espanhol", "Intermediário (B1)", "seed-senses-pos", ["target_to_native"], senses);
+
+    expect(deck.cards[0]).toMatchObject({ targetSenseId: "sense-bank", senseOrder: 2, senseCount: 3 });
+  }, 15_000);
+
+  it("omits the sense position on single-sense and legacy cards", async () => {
+    const oneSense = new Map([["word-banco", [
+      { id: "sense-seat", fields: { word_id: "word-banco", translation: "banco (assento)", sense_order: 1, review_due_at: "2026-08-01T09:00:00.000Z" } }
+    ] as never[]]]);
+    const single = await buildDeck([banco()], "Espanhol", "Intermediário (B1)", "seed-single-sense", ["target_to_native"], oneSense);
+    expect(single.cards[0].targetSenseId).toBe("sense-seat");
+    expect(single.cards[0].senseOrder).toBeUndefined();
+    expect(single.cards[0].senseCount).toBeUndefined();
+
+    const legacy = await buildDeck([banco()], "Espanhol", "Intermediário (B1)", "seed-legacy-pos", ["target_to_native"]);
+    expect(legacy.cards[0].targetSenseId).toBeUndefined();
+    expect(legacy.cards[0].senseOrder).toBeUndefined();
+    expect(legacy.cards[0].senseCount).toBeUndefined();
+  }, 15_000);
 });
 
 function activeCard(id: string, targetWordId: string, prompt: string, expectedAnswer: string) {

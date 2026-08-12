@@ -88,6 +88,8 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
   await page.getByRole("button", { name: "Sessão custom" }).click();
   await page.getByRole("button", { name: /Montar treino/ }).click();
   await expect(page.getByText("hola", { exact: true })).toBeVisible();
+  // Legacy cards without targetSenseId show no sense indicator.
+  await expect(page.getByText(/significado \d+ de \d+/)).toHaveCount(0);
   await expect(page.getByText("olá", { exact: true })).toHaveCount(0);
   const answer = page.getByRole("textbox", { name: "Resposta esperada em português" });
   await expect(answer).toBeFocused();
@@ -134,7 +136,7 @@ test("sense-targeted flashcard presents the exercised meaning and completes", as
         languageCode: "es",
         languageName: "Espanhol",
         cards: [
-          { id: "card-sense", sessionId: "session-sense", type: "native_to_target", targetWordId: "word-banco", targetSenseId: "sense-bank", supportingWordIds: [], prompt: "banco (instituição)", expectedAnswer: "banco", acceptedAnswers: [], translation: "banco (instituição)", difficulty: 2 }
+          { id: "card-sense", sessionId: "session-sense", type: "native_to_target", targetWordId: "word-banco", targetSenseId: "sense-bank", senseOrder: 2, senseCount: 3, supportingWordIds: [], prompt: "banco (instituição)", expectedAnswer: "banco", acceptedAnswers: [], translation: "banco (instituição)", difficulty: 2 }
         ]
       })
     });
@@ -156,6 +158,8 @@ test("sense-targeted flashcard presents the exercised meaning and completes", as
   await page.getByRole("button", { name: /Montar treino/ }).click();
   // The card presents the specific sense being exercised, not another meaning of the word.
   await expect(page.getByText("banco (instituição)", { exact: true })).toBeVisible();
+  // Multi-sense cards show which meaning is being exercised.
+  await expect(page.getByText("significado 2 de 3", { exact: true })).toBeVisible();
   const answer = page.getByRole("textbox", { name: "Resposta esperada em Espanhol" });
   await expect(answer).toBeFocused();
   await answer.fill("banco");

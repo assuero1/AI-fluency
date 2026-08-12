@@ -10,7 +10,7 @@ import { matchesLearningScope } from "./scope";
 import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, summarizeDailyQueue } from "./daily-queue";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
 import { isRatingCorrect, rebuildFlashcardQueue, inferRecallRating, resolveBinaryRating } from "./flashcard-queue";
-import { calculateAdaptiveReview, previewSingleInterval, reviewToSenseFields, reviewToWordFields, type ReviewAttempt } from "./spaced-repetition";
+import { calculateAdaptiveReview, previewSingleInterval, reviewToSenseFields, reviewToWordFields, type ReviewAttempt, type ReviewFields } from "./spaced-repetition";
 import { chooseCardTypes, countPlannedTypes, type CardTypeFlags } from "./flashcard-type-selection";
 import { aggregateSenseReviewToWordFields, listSensesByWordIds, resolveDueSenses } from "./word-senses";
 import {
@@ -637,13 +637,21 @@ export async function previewFlashcardAttemptIntervals(input: { sessionId?: unkn
   const inferredRating = resolveBinaryRating({ remembered: true, match, forgot, responseTimeMs, cardType: card.type });
   const word = words.find((item) => item.id === card.targetWordId && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
   if (!word) throw new LearningStateError("Palavra do card não encontrada.", 404);
+  // Sense-frozen cards project the hints from the sense's own schedule, matching
+  // what the review will actually write; legacy cards keep the word-level cache.
+  let schedule: { id: string; fields: ReviewFields } = word;
+  if (card.targetSenseId) {
+    const senses = (await listSensesByWordIds([word.id])).get(word.id) ?? [];
+    const sense = senses.find((item) => item.id === card.targetSenseId);
+    if (sense) schedule = sense;
+  }
   const now = new Date();
   const timeZone = user.fields.timezone ?? "UTC";
   return {
     match,
     inferredRating,
-    forgotDays: previewSingleInterval(word.fields, { rating: "forgot", responseTimeMs, cardType: card.type }, now, timeZone, word.id),
-    rememberedDays: previewSingleInterval(word.fields, { rating: inferredRating, responseTimeMs, cardType: card.type }, now, timeZone, word.id)
+    forgotDays: previewSingleInterval(schedule.fields, { rating: "forgot", responseTimeMs, cardType: card.type }, now, timeZone, schedule.id),
+    rememberedDays: previewSingleInterval(schedule.fields, { rating: inferredRating, responseTimeMs, cardType: card.type }, now, timeZone, schedule.id)
   };
 }
 
@@ -817,7 +825,7 @@ export async function buildDeck(words: TeableRecord<WordFields>[], language: str
   const planned = countPlannedTypes(desiredTypes);
   const phrases = await generatePhrases(words, language, level);
   const resolved = resolveDueSenses(words, sensesByWord ?? new Map());
-  const cards = resolved.map(({ word, sense }, index) => buildActiveRecallCard(word, sense, desiredTypes[index] ?? "target_to_native", phrases.get(word.id), index));
+  const cards = resolved.map(({ word, sense }, index) => buildActiveRecallCard(word, sense, desiredTypes[index] ?? "target_to_native", phrases.get(word.id), index, sensesByWord?.get(word.id) ?? []));
   return { cards: seededShuffle(cards, seed), planned, adapted: cards.filter((card) => card.type === "cloze").length < planned.cloze };
 }
 
@@ -862,11 +870,11 @@ async function generatePhrases(words: TeableRecord<WordFields>[], language: stri
   return new Map();
 }
 
-function buildActiveRecallCard(word: TeableRecord<WordFields>, sense: TeableRecord<WordSenseFields>, desiredType: "target_to_native" | "native_to_target" | "cloze" | "listening", phrase: GeneratedPhrase | undefined, index: number): Flashcard {
+function buildActiveRecallCard(word: TeableRecord<WordFields>, sense: TeableRecord<WordSenseFields>, desiredType: "target_to_native" | "native_to_target" | "cloze" | "listening", phrase: GeneratedPhrase | undefined, index: number, wordSenses: TeableRecord<WordSenseFields>[] = []): Flashcard {
   const target = targetText(word);
   // The card exercises one sense: prompts/answers come from the SENSE translation.
-  // acceptedAnswers stays lemma/display_text; answers matching the translation of
-  // ANOTHER sense of the same word are resolved by the existing manual rating flow.
+  // On comprehension/listening cards the OTHER senses of the same word count as
+  // accepted synonyms; production cards keep lemma/display_text as alternatives.
   const translation = sense.fields.translation?.trim() || "";
   let type = desiredType;
   if (type === "native_to_target" && !translation) type = phrase ? "cloze" : "target_to_native";
@@ -874,8 +882,15 @@ function buildActiveRecallCard(word: TeableRecord<WordFields>, sense: TeableReco
   const prompt = type === "listening" ? "" : type === "native_to_target" ? translation : type === "cloze" && phrase ? replaceTargetWithBlank(phrase.text, target) : target;
   const expectedAnswer = type === "target_to_native" || type === "listening" ? translation || target : target;
   const acceptedAnswers = type === "target_to_native" || type === "listening"
-    ? []
+    ? wordSenses
+      .map((item) => item.fields.translation?.trim() ?? "")
+      .filter((value, position, values) => Boolean(value) && value !== translation && value !== expectedAnswer && values.indexOf(value) === position)
     : [word.fields.lemma, word.fields.display_text].filter((value, position, values): value is string => Boolean(value) && value !== expectedAnswer && values.indexOf(value) === position);
+  // Multi-sense words mark the card with the exercised sense position (1-based,
+  // by sense_order); synthetic legacy senses (empty id) stay unmarked.
+  const orderedSenses = [...wordSenses].sort((left, right) => Number(left.fields.sense_order ?? 1) - Number(right.fields.sense_order ?? 1));
+  const senseIndex = sense.id ? orderedSenses.findIndex((item) => item.id === sense.id) : -1;
+  const sensePosition = sense.id && orderedSenses.length > 1 && senseIndex >= 0 ? { senseOrder: senseIndex + 1, senseCount: orderedSenses.length } : {};
   return {
     id: `recall-${word.id}-${index}`,
     sessionId: "",
@@ -883,6 +898,7 @@ function buildActiveRecallCard(word: TeableRecord<WordFields>, sense: TeableReco
     targetWordId: word.id,
     // Synthetic legacy senses have an empty id: the card stays on the legacy path.
     targetSenseId: sense.id || undefined,
+    ...sensePosition,
     supportingWordIds: phrase?.supportingWordIds ?? [],
     prompt,
     expectedAnswer,

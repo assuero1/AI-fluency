@@ -41,4 +41,19 @@ describe("word senses UI contracts", () => {
     // Focus management: the translation input is focused when the form opens.
     expect(form).toContain(".focus()");
   });
+
+  it("carries the exercised sense position in the flashcard contract", () => {
+    const contracts = read("lib/learning/flashcard-contracts.ts");
+    expect(contracts).toContain("targetSenseId?:");
+    expect(contracts).toContain("senseOrder?:");
+    expect(contracts).toContain("senseCount?:");
+  });
+
+  it("shows 'significado N de M' next to multi-sense cards and nothing for legacy cards", () => {
+    const trainer = read("components/FlashcardTrainer.tsx");
+    expect(trainer).toContain("card.targetSenseId");
+    expect(trainer).toContain("card.senseOrder");
+    expect(trainer).toContain("card.senseCount");
+    expect(trainer).toMatch(/significado \{card\.senseOrder\} de \{card\.senseCount\}/);
+  });
 });

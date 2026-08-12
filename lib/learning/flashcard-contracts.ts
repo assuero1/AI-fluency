@@ -20,6 +20,8 @@ export type Flashcard = {
   type: FlashcardType;
   targetWordId: string;
   targetSenseId?: string;
+  senseOrder?: number;
+  senseCount?: number;
   supportingWordIds: string[];
   prompt: string;
   expectedAnswer: string;
