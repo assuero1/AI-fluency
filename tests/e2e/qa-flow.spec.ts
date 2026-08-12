@@ -118,6 +118,57 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
   expect(completionBodies[0].answers?.[2]).toMatchObject({ presentationNumber: 2, rating: "good" });
 });
 
+test("sense-targeted flashcard presents the exercised meaning and completes", async ({ page }) => {
+  const attemptBodies: Array<Record<string, unknown>> = [];
+  await page.route("**/api/practice/flashcards", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, activeSession: null }) });
+      return;
+    }
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        sessionId: "session-sense",
+        languageCode: "es",
+        languageName: "Espanhol",
+        cards: [
+          { id: "card-sense", sessionId: "session-sense", type: "native_to_target", targetWordId: "word-banco", targetSenseId: "sense-bank", supportingWordIds: [], prompt: "banco (instituição)", expectedAnswer: "banco", acceptedAnswers: [], translation: "banco (instituição)", difficulty: 2 }
+        ]
+      })
+    });
+  });
+  await page.route("**/api/practice/flashcards/preview", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, match: "exact", inferredRating: "good", forgotDays: 1, rememberedDays: 7 }) });
+  });
+  await page.route("**/api/practice/flashcards/attempt", async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    attemptBodies.push(body);
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, attempt: { ...body, matchResult: "exact", rating: "good" } }) });
+  });
+  await page.route("**/api/practice/flashcards/complete", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, score: 100, correctCards: 1, wrongCards: 0, totalCards: 1, reviewedWords: 1, uniqueCardCount: 1, presentationCount: 1, firstAttemptCorrect: 1, recoveredCards: 0, productionAccuracy: 100, listeningAccuracy: null }) });
+  });
+
+  await page.goto("/palavras/treino");
+  await page.getByRole("button", { name: "Sessão custom" }).click();
+  await page.getByRole("button", { name: /Montar treino/ }).click();
+  // The card presents the specific sense being exercised, not another meaning of the word.
+  await expect(page.getByText("banco (instituição)", { exact: true })).toBeVisible();
+  const answer = page.getByRole("textbox", { name: "Resposta esperada em Espanhol" });
+  await expect(answer).toBeFocused();
+  await answer.fill("banco");
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Resposta exata")).toBeVisible();
+  await expect(page.getByText("→ 7 dias")).toBeVisible();
+  await page.getByRole("button", { name: /^Lembrei/ }).click();
+
+  await expect(page.getByRole("heading", { name: "100% de acerto" })).toBeVisible();
+  expect(attemptBodies).toHaveLength(1);
+  expect(attemptBodies[0]).toMatchObject({ cardId: "card-sense", presentationNumber: 1, userAnswer: "banco" });
+});
+
 test("daily review queue intro starts a daily session", async ({ page }) => {
   const createBodies: Array<Record<string, unknown>> = [];
   await page.route("**/api/practice/flashcards", async (route) => {
