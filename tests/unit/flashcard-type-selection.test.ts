@@ -88,6 +88,19 @@ describe("chooseCardTypes", () => {
     expect(counts.listening).toBeGreaterThan(5);
     expect(counts.targetToNative).toBeGreaterThan(5);
   });
+
+  it("follows the review_state of the sense passed for each word, not a word-level cache", () => {
+    // The flashcard session passes per-sense entries ({ id: wordId, fields: { review_state: senseState } });
+    // the roll stays keyed by word id, but the weights must come from the sense state.
+    const ids = Array.from({ length: 60 }, (_, index) => `w${index}`);
+    const options = { seed: "sense-mix", audioEnabled: true, flags: FLAGS_ON };
+    const asNew = chooseCardTypes(ids.map((id) => ({ id, fields: { review_state: "new" } })), options);
+    expect(asNew).not.toContain("native_to_target");
+    expect(asNew).not.toContain("listening");
+    const asReview = chooseCardTypes(ids.map((id) => ({ id, fields: { review_state: "review" } })), options);
+    expect(asReview).toContain("native_to_target");
+    expect(asReview).toContain("listening");
+  });
 });
 
 describe("countPlannedTypes", () => {

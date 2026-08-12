@@ -19,7 +19,9 @@ import type { TeableRecord } from "../../lib/teable/client";
 vi.mock("../../lib/ai/client", () => ({ createChatCompletion: vi.fn(async () => { throw new Error("AI unavailable"); }) }));
 
 function word(id: string, fields: Partial<WordFields>): TeableRecord<WordFields> {
-  return { id, fields: fields as WordFields };
+  // Sense resolution (resolveDueSenses → synthesizeLegacySense) needs the scoping
+  // fields and a lemma to build the synthetic sense key; production words always have them.
+  return { id, fields: { user_id: "user-a", language_profile_id: "profile-a", lemma: id, ...fields } as WordFields };
 }
 
 describe("current flashcard behavior", () => {
@@ -177,6 +179,54 @@ describe("buildDeck with mixed types", () => {
     ], "Espanhol", "Intermediário (B1)", "seed-2", ["cloze"]);
     expect(["native_to_target", "target_to_native"]).toContain(deck.cards[0].type);
     expect(deck.adapted).toBe(true);
+  }, 15_000);
+});
+
+describe("buildDeck with word senses", () => {
+  const banco = () => word("word-banco", { display_text: "banco", lemma: "banco", translation: "banco (assento)", review_state: "review" });
+  const bancoSenses = () => new Map([["word-banco", [
+    { id: "sense-seat", fields: { word_id: "word-banco", translation: "banco (assento)", review_due_at: "2026-08-20T09:00:00.000Z" } },
+    { id: "sense-bank", fields: { word_id: "word-banco", translation: "banco (instituição)", review_due_at: "2026-08-01T09:00:00.000Z" } }
+  ] as never[]]]);
+
+  it("freezes the card for the most-due sense: its translation and targetSenseId", async () => {
+    const deck = await buildDeck([banco()], "Espanhol", "Intermediário (B1)", "seed-senses", ["native_to_target"], bancoSenses());
+
+    expect(deck.cards).toHaveLength(1);
+    expect(deck.cards[0]).toMatchObject({
+      targetWordId: "word-banco",
+      targetSenseId: "sense-bank",
+      type: "native_to_target",
+      prompt: "banco (instituição)",
+      expectedAnswer: "banco",
+      translation: "banco (instituição)"
+    });
+    expect(deck.cards[0].acceptedAnswers).toEqual([]);
+  }, 15_000);
+
+  it("uses the sense translation for comprehension cards and keeps lemma/display_text as accepted answers", async () => {
+    const deck = await buildDeck([
+      word("word-banco", { display_text: "banco", lemma: "banco", translation: "banco (assento)", review_state: "review" })
+    ], "Espanhol", "Intermediário (B1)", "seed-senses-2", ["target_to_native"], bancoSenses());
+
+    expect(deck.cards[0]).toMatchObject({
+      targetSenseId: "sense-bank",
+      type: "target_to_native",
+      prompt: "banco",
+      expectedAnswer: "banco (instituição)"
+    });
+  }, 15_000);
+
+  it("keeps the legacy path for words without senses: word translation and no targetSenseId", async () => {
+    const deck = await buildDeck([banco()], "Espanhol", "Intermediário (B1)", "seed-legacy", ["native_to_target"]);
+
+    expect(deck.cards[0]).toMatchObject({
+      targetWordId: "word-banco",
+      type: "native_to_target",
+      prompt: "banco (assento)",
+      translation: "banco (assento)"
+    });
+    expect(deck.cards[0].targetSenseId).toBeUndefined();
   }, 15_000);
 });
 
