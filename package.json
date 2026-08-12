@@ -43,6 +43,7 @@
     "senses:ensure-table": "node scripts/ensure-word-senses-table.mjs",
     "senses:flashcard-fields": "node scripts/ensure-word-senses-flashcard-fields.mjs",
     "senses:verify-live": "node scripts/verify-sense-srs-live.mjs",
+    "senses:verify-ui-live": "node scripts/verify-sense-ui-live.mjs",
     "senses:backfill": "node scripts/backfill-word-senses.mjs",
     "senses:backfill:apply": "node scripts/backfill-word-senses.mjs --apply",
     "scope:reset-test-data": "node scripts/reset-personal-test-data.mjs",
