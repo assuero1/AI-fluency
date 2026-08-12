@@ -189,7 +189,7 @@ describe("vocabulary integrity", () => {
     expect(usageSummaries[0].fields.observed_count).toBe(3);
   });
 
-  it("records assistant vocabulary without counting it as learner usage", async () => {
+  it("does not save assistant vocabulary, only learner usage", async () => {
     createChatCompletion.mockResolvedValue({
       content: JSON.stringify([
         { id: "user:work", lemma: "work", translation: "trabalhar" },
@@ -201,12 +201,12 @@ describe("vocabulary integrity", () => {
 
     const result = await saveSelectedVocabulary("conversation-1", ["user:work", "assistant:work"]);
 
-    expect(result.savedCount).toBe(4);
+    expect(result.savedCount).toBe(3);
     expect(result.newWordCount).toBe(1);
     expect(words).toHaveLength(1);
     expect(words[0].fields.total_uses).toBe(3);
     expect(occurrences).toHaveLength(0);
-    expect(usageSummaries[0].fields.observed_count).toBe(4);
+    expect(usageSummaries[0].fields.observed_count).toBe(3);
   });
 
   it("marks only changed correction tokens as ineligible", async () => {
