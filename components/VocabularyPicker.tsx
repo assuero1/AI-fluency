@@ -4,6 +4,8 @@ import { BookOpen, Check, Loader2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { VocabularyCandidateGroup } from "@/lib/learning/vocabulary-selection";
+import { getVocabularyGroupBadge, getVocabularyGroupSubtitle } from "@/lib/learning/vocabulary-picker-ui";
+import { Pill } from "./Pill";
 
 export function VocabularyPicker({ conversationId }: {
   conversationId: string;
@@ -88,7 +90,9 @@ export function VocabularyPicker({ conversationId }: {
             <input checked={selected.has(item.id)} disabled={!item.eligible} onChange={() => toggle(item.id)} type="checkbox" />
             <span>
               {item.displayText}{item.occurrenceCount > 1 ? ` (${item.occurrenceCount}×)` : ""}
+              {getVocabularyGroupBadge(item) ? <>{" "}<Pill tone="info">{getVocabularyGroupBadge(item)}</Pill></> : null}
               <small>{formatRelatedForms(item)}{getCandidateStatus(item)}</small>
+              {getVocabularyGroupSubtitle(item) ? <small>{getVocabularyGroupSubtitle(item)}</small> : null}
             </span>{selected.has(item.id) ? <Check size={16} /> : null}
           </label>)}
         </div>

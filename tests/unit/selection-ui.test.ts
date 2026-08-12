@@ -65,3 +65,26 @@ describe("resolveSelectionState", () => {
     expect(resolve({ commonAncestor: explainerButton as unknown as Node })).toEqual({ action: "none" });
   });
 });
+
+describe("vocabulary picker new-sense presentation", () => {
+  it("shows the 'novo significado' badge only for new senses of existing words", async () => {
+    const { getVocabularyGroupBadge } = await import("../../lib/learning/vocabulary-picker-ui");
+
+    expect(getVocabularyGroupBadge({ kind: "new_sense_of_existing" })).toBe("novo significado");
+    expect(getVocabularyGroupBadge({ kind: "new_word" })).toBeNull();
+  });
+
+  it("shows the first existing sense as the subtitle of a new-sense group", async () => {
+    const { getVocabularyGroupSubtitle } = await import("../../lib/learning/vocabulary-picker-ui");
+
+    expect(getVocabularyGroupSubtitle({ kind: "new_sense_of_existing", existingTranslation: "banco (instituição)" }))
+      .toBe("você já conhece «banco (instituição)»");
+  });
+
+  it("omits the subtitle for new words or missing existing translations", async () => {
+    const { getVocabularyGroupSubtitle } = await import("../../lib/learning/vocabulary-picker-ui");
+
+    expect(getVocabularyGroupSubtitle({ kind: "new_word" })).toBeNull();
+    expect(getVocabularyGroupSubtitle({ kind: "new_sense_of_existing" })).toBeNull();
+  });
+});
