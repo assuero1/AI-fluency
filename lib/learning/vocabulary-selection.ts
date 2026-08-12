@@ -35,12 +35,17 @@ export type VocabularyCandidateGroup = {
   correctOccurrenceCount: number;
   incorrectOccurrenceCount: number;
   eligible: boolean;
+  kind: "new_word" | "new_sense_of_existing";
+  existingWordId?: string;     // preenchido quando kind === "new_sense_of_existing"
+  existingTranslation?: string; // primeiro sentido existente, para o subtítulo do picker
 };
 
 export type ExistingVocabularyFamily = {
+  id?: string;
   lemma: string;
   displayText: string;
   formsJson?: string;
+  senses?: string[]; // traduções dos sentidos já cadastrados (primário primeiro)
 };
 
 type VocabularyOccurrence = Omit<VocabularyCandidate, "id" | "occurrenceCount" | "correctOccurrenceCount" | "incorrectOccurrenceCount" | "eligible"> & {
@@ -48,7 +53,15 @@ type VocabularyOccurrence = Omit<VocabularyCandidate, "id" | "occurrenceCount" |
   occurrenceOrdinal: number;
 };
 
-type VocabularyLinguisticData = { lemma: string; translation: string; partOfSpeech: string };
+type VocabularyLinguisticData = { lemma: string; translation: string; partOfSpeech: string; isNewSense?: boolean };
+
+// Sentidos já cadastrados das palavras conhecidas, enviados à análise para que
+// ela distinga "mesmo significado" de "novo significado" no contexto.
+type KnownVocabularyEntry = { lemma: string; senses: string[] };
+
+// Resultado de groupCandidatesByLemma antes da classificação contra o
+// vocabulário existente (kind/existingWordId entram só no picker).
+type VocabularyCandidateFamily = Omit<VocabularyCandidateGroup, "kind" | "existingWordId" | "existingTranslation">;
 
 const MAX_VOCABULARY_CANDIDATES = 80;
 const VOCABULARY_ANALYSIS_CHUNK_SIZE = 20;
@@ -294,19 +307,47 @@ export async function groupNewVocabularyCandidates(
   conversationId?: string
 ) {
   const limited = rankVocabularyCandidates(candidates).slice(0, MAX_VOCABULARY_CANDIDATES);
+  const knownVocabulary = existingWords
+    .map((word) => ({ lemma: normalizeVocabularyToken(word.lemma || word.displayText), senses: word.senses ?? [] }))
+    .filter((entry) => entry.lemma);
   const linguisticData = conversationId
-    ? await analyzeConversationVocabulary(conversationId, limited, language)
-    : await analyzeVocabulary(limited, language);
-  const groups = groupCandidatesByLemma(limited, linguisticData);
-  const existingKeys = new Set(existingWords.flatMap((word) => [
-    normalizeVocabularyToken(word.lemma || word.displayText),
-    normalizeVocabularyToken(word.displayText),
-    ...parseVocabularyForms(word.formsJson).map(normalizeVocabularyToken)
-  ]).filter(Boolean));
-  return groups.filter((group) =>
-    !existingKeys.has(group.lemma) &&
-    !group.forms.some((form) => existingKeys.has(normalizeVocabularyToken(form)))
-  );
+    ? await analyzeConversationVocabulary(conversationId, limited, language, knownVocabulary)
+    : await analyzeVocabulary(limited, language, knownVocabulary);
+  const families = groupCandidatesByLemma(limited, linguisticData);
+  const wordKeySets = existingWords.map((word) => ({
+    word,
+    keys: new Set([
+      normalizeVocabularyToken(word.lemma || word.displayText),
+      normalizeVocabularyToken(word.displayText),
+      ...parseVocabularyForms(word.formsJson).map(normalizeVocabularyToken)
+    ].filter(Boolean))
+  }));
+  const groups: VocabularyCandidateGroup[] = [];
+  for (const family of families) {
+    const match = wordKeySets.find(({ keys }) =>
+      keys.has(family.lemma) || family.forms.some((form) => keys.has(normalizeVocabularyToken(form)))
+    );
+    if (!match) {
+      groups.push({ ...family, kind: "new_word" });
+      continue;
+    }
+    // Palavra conhecida: só permanece no picker quando a análise marcou um
+    // significado distinto dos sentidos cadastrados.
+    const isNewSense = family.candidateIds.some((id) => linguisticData[id]?.isNewSense);
+    if (!isNewSense) continue;
+    const senses = match.word.senses ?? [];
+    const translationKey = normalizeVocabularyToken(family.translation);
+    // Mesma tradução com redação diferente é falso positivo da IA: se a
+    // tradução normalizada já existe como sentido, tratar como known_sense.
+    if (translationKey && senses.some((sense) => normalizeVocabularyToken(sense) === translationKey)) continue;
+    groups.push({
+      ...family,
+      kind: "new_sense_of_existing",
+      ...(match.word.id ? { existingWordId: match.word.id } : {}),
+      ...(senses[0] ? { existingTranslation: senses[0] } : {})
+    });
+  }
+  return groups;
 }
 
 export async function getConversationVocabularyGroups(conversationId: string) {
@@ -337,7 +378,7 @@ function groupCandidatesByLemma(
   candidates: VocabularyCandidate[],
   linguisticData: Record<string, VocabularyLinguisticData>
 ) {
-  const groups = new Map<string, VocabularyCandidateGroup>();
+  const groups = new Map<string, VocabularyCandidateFamily>();
   for (const candidate of candidates) {
     const linguistic = linguisticData[candidate.id] ?? {
       lemma: candidate.normalized,
@@ -597,10 +638,15 @@ function rankVocabularyCandidates(candidates: VocabularyCandidate[]) {
   });
 }
 
-async function analyzeConversationVocabulary(conversationId: string, candidates: VocabularyCandidate[], language: string) {
+async function analyzeConversationVocabulary(
+  conversationId: string,
+  candidates: VocabularyCandidate[],
+  language: string,
+  knownVocabulary: KnownVocabularyEntry[] = []
+) {
   const cached = readVocabularyAnalysisCache(conversationId);
   const missing = candidates.filter((candidate) => !cached?.analyses[candidate.id]);
-  const analyzed = missing.length ? await analyzeVocabulary(missing, language) : {};
+  const analyzed = missing.length ? await analyzeVocabulary(missing, language, knownVocabulary) : {};
   const analyses = { ...cached?.analyses, ...analyzed };
   if (Object.keys(analyses).length) writeVocabularyAnalysisCache(conversationId, analyses);
   return Object.fromEntries(candidates.map((candidate) => [candidate.id, analyses[candidate.id] ?? {
@@ -648,7 +694,7 @@ function stableVocabularyAnalysisHash(ids: string[]) {
   return hash.toString(36);
 }
 
-async function analyzeVocabulary(candidates: VocabularyCandidate[], language: string) {
+async function analyzeVocabulary(candidates: VocabularyCandidate[], language: string, knownVocabulary: KnownVocabularyEntry[] = []) {
   const merged = Object.fromEntries(candidates.map((candidate) => [candidate.id, {
     lemma: fallbackVocabularyLemma(candidate.normalized, language),
     translation: "",
@@ -659,21 +705,31 @@ async function analyzeVocabulary(candidates: VocabularyCandidate[], language: st
   // sequentially to stay clear of provider rate limits.
   for (let index = 0; index < candidates.length; index += VOCABULARY_ANALYSIS_CHUNK_SIZE) {
     const chunk = candidates.slice(index, index + VOCABULARY_ANALYSIS_CHUNK_SIZE);
-    Object.assign(merged, await analyzeVocabularyChunk(chunk, language));
+    Object.assign(merged, await analyzeVocabularyChunk(chunk, language, knownVocabulary));
   }
   await translateMissingTranslations(merged, candidates, language);
   return merged;
 }
 
-async function analyzeVocabularyChunk(chunk: VocabularyCandidate[], language: string) {
+async function analyzeVocabularyChunk(chunk: VocabularyCandidate[], language: string, knownVocabulary: KnownVocabularyEntry[] = []) {
+  // Só os sentidos das palavras conhecidas presentes no chunk entram no
+  // prompt, para mantê-lo pequeno mesmo com vocabulários grandes.
+  const relevantKnown = knownVocabulary.filter((entry) =>
+    chunk.some((candidate) =>
+      candidate.normalized === entry.lemma || fallbackVocabularyLemma(candidate.normalized, language) === entry.lemma
+    )
+  );
   let content: string;
   try {
     const response = await createChatCompletion([
       {
         role: "system",
-        content: "Analise vocabulário no idioma informado. Responda somente JSON válido: um array com objetos {id, lemma, translation, part_of_speech}. Preserve cada id exatamente, agrupe flexões usando o mesmo lemma canônico de dicionário, traduza brevemente para português brasileiro e informe a classe gramatical no idioma alvo."
+        content: "Analise vocabulário no idioma informado. Para cada item, se o lemma consta em 'Palavras conhecidas', compare o significado no contexto com os sentidos cadastrados: se for um significado diferente, responda sense_status=new_sense e traduza o NOVO significado; se for o mesmo, sense_status=known_sense. Responda somente JSON válido: array de {id, lemma, translation, part_of_speech, sense_status}. Preserve cada id exatamente, agrupe flexões usando o mesmo lemma canônico de dicionário, traduza brevemente para português brasileiro e informe a classe gramatical no idioma alvo."
       },
-      { role: "user", content: `Idioma: ${language}\nItens: ${JSON.stringify(chunk.map((candidate) => ({ id: candidate.id, text: candidate.text, context: candidate.context })))}` }
+      {
+        role: "user",
+        content: `Idioma: ${language}\nPalavras conhecidas: ${JSON.stringify(relevantKnown)}\nItens: ${JSON.stringify(chunk.map((candidate) => ({ id: candidate.id, text: candidate.text, context: candidate.context })))}`
+      }
     ], { temperature: 0, maxTokens: 2_000, timeoutMs: 15_000 });
     content = response.content;
   } catch (error) {
@@ -692,10 +748,13 @@ async function analyzeVocabularyChunk(chunk: VocabularyCandidate[], language: st
       if (typeof item.id !== "string" || !allowedIds.has(item.id) || typeof item.lemma !== "string") continue;
       const lemma = normalizeVocabularyToken(item.lemma);
       if (!lemma) continue;
+      // sense_status ausente/malformado → comportamento legado (sem isNewSense).
+      const senseStatus = typeof item.sense_status === "string" ? item.sense_status.trim() : "";
       result[item.id] = {
         lemma,
         translation: typeof item.translation === "string" ? item.translation.trim() : "",
-        partOfSpeech: typeof item.part_of_speech === "string" ? item.part_of_speech.trim() : ""
+        partOfSpeech: typeof item.part_of_speech === "string" ? item.part_of_speech.trim() : "",
+        ...(senseStatus === "new_sense" ? { isNewSense: true } : senseStatus === "known_sense" ? { isNewSense: false } : {})
       };
     }
     return result;
