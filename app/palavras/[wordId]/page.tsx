@@ -7,6 +7,7 @@ import { IconBubble } from "@/components/IconBubble";
 import { Pill } from "@/components/Pill";
 import { VoiceButton } from "@/components/VoiceButton";
 import { WordPracticeButton } from "@/components/WordPracticeButton";
+import { WordSensesSection } from "@/components/WordSensesSection";
 import { getWordDetail, wordStrengthLabels } from "@/lib/learning/words";
 
 export const dynamic = "force-dynamic";
@@ -60,6 +61,8 @@ export default async function WordDetailPage({ params }: WordDetailPageProps) {
         <VoiceButton languageCode={data.languageCode} text={word.displayText} label="Ouvir pronúncia" />
         <CopyButton label="Copiar palavra" text={word.displayText} />
       </div>
+
+      <WordSensesSection senses={data.senses} wordId={word.id} />
 
       <section className="section">
         <div className="practice-tip">

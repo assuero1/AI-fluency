@@ -901,6 +901,31 @@ a {
   font-size: 13px;
 }
 
+.word-senses-list {
+  display: grid;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 0;
+  list-style: none;
+}
+
+.word-sense-item {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+}
+
+.word-sense-item .row-meta {
+  margin: 0;
+}
+
+.add-sense-form {
+  display: grid;
+  gap: 12px;
+}
+
 .practice-tip {
   display: flex;
   align-items: flex-start;
