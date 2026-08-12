@@ -111,6 +111,7 @@ export type WordSenseFields = {
   review_state?: "new" | "learning" | "review" | "difficult" | "suspended";
   review_version?: string;
   leech_flagged_at?: string;
+  created_at?: string;
 };
 
 export type WordOccurrenceFields = {

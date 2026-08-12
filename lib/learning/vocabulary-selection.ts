@@ -7,7 +7,15 @@ import { CorrectionFields, getConversation, MessageFields, WordFields, WordSense
 import { matchesLearningScope } from "./scope";
 import { addSavedWordsToDailyFeedback } from "./feedback";
 import { calculateAdaptiveReview, reviewToWordFields } from "./spaced-repetition";
-import { listSensesByWordIds, synthesizeLegacySense } from "./word-senses";
+import {
+  aggregateSenseReviewToWordFields,
+  canonicalSenseKey,
+  createWordSense,
+  listSensesByWordIds,
+  matchesCanonicalSenseKey,
+  nextSenseOrder,
+  synthesizeLegacySense
+} from "./word-senses";
 import type { UserFields } from "./profile";
 
 export type VocabularyCandidate = {
@@ -490,16 +498,28 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
   if (!selected.length) throw new LearningStateError("Selecione ao menos uma palavra.", 400);
 
   const client = getTeableClient();
-  const [existingWords, usageSummaries, users, linguisticData] = await Promise.all([
+  const [existingWords, usageSummaries, users] = await Promise.all([
     client.listAllRecords<WordFields>("words"),
     client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries"),
-    client.listAllRecords<UserFields>("users"),
-    analyzeConversationVocabulary(conversationId, selected, language)
+    client.listAllRecords<UserFields>("users")
   ]);
   const timeZone = users.find((record) => record.id === context.conversation.fields.user_id)?.fields.timezone ?? "UTC";
   const now = new Date().toISOString();
   const reviewDue = new Date(Date.now() + 7 * 86400000).toISOString();
   const scope = { userId: context.conversation.fields.user_id, profileId: context.conversation.fields.language_profile_id };
+  const scopedWords = existingWords.filter((word) => matchesLearningScope(word.fields, scope));
+  const sensesByWord = await listSensesByWordIds(scopedWords.map((word) => word.id));
+  const linguisticData = await analyzeConversationVocabulary(
+    conversationId,
+    selected,
+    language,
+    scopedWords
+      .map((word) => ({
+        lemma: normalizeVocabularyToken(word.fields.lemma || word.fields.display_text),
+        senses: knownSenseTranslations(word, sensesByWord.get(word.id))
+      }))
+      .filter((entry) => entry.lemma)
+  );
   let savedCount = 0;
   let newWordCount = 0;
   let rejectedCount = 0;
@@ -562,6 +582,8 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
       }
     }
     const resolvedWord = word;
+    const wordSenses = sensesByWord.get(resolvedWord.id) ?? [];
+    const translationBeforeSave = (resolvedWord.fields.translation ?? "").trim();
     const usageKey = wordUsageKey(resolvedWord.id, conversationId);
     const existingUsage = usageSummaries.find((summary) => summary.fields.usage_key === usageKey);
     const previousObservedCount = Number(existingUsage?.fields.observed_count ?? 0);
@@ -580,6 +602,64 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
       ...(!resolvedWord.fields.part_of_speech && family.partOfSpeech ? { part_of_speech: family.partOfSpeech } : {}),
       ...(implicitReview ? { ...reviewToWordFields(implicitReview), implicit_review_at: now } : {})
     });
+    // Captura de sentidos: palavra nova ganha o sentido primário; palavra
+    // existente com significado novo ganha um sentido não-primário, sem tocar
+    // em words.translation (cache do primário).
+    const filledTranslation = !translationBeforeSave && family.translation ? family.translation.trim() : "";
+    const senseBase = {
+      word_id: resolvedWord.id,
+      part_of_speech: family.partOfSpeech,
+      example_sentence: relevant[0]?.context ?? "",
+      source: "chat" as const,
+      review_due_at: reviewDue,
+      review_state: "new" as const,
+      created_at: now
+    };
+    if (createdWord) {
+      const created = await createWordSense({
+        ...senseBase,
+        sense_key: canonicalSenseKey(scope.userId, scope.profileId, family.lemma, family.translation),
+        translation: family.translation,
+        is_primary: true,
+        sense_order: 1
+      });
+      sensesByWord.set(resolvedWord.id, [created]);
+    } else if (!wordSenses.length && filledTranslation) {
+      // Buraco do backfill: a palavra não tinha sentido nem tradução; a
+      // tradução que acabou de preencher words.translation vira o primário.
+      const created = await createWordSense({
+        ...senseBase,
+        sense_key: canonicalSenseKey(scope.userId, scope.profileId, family.lemma, filledTranslation),
+        translation: filledTranslation,
+        is_primary: true,
+        sense_order: 1
+      });
+      sensesByWord.set(resolvedWord.id, [created]);
+    } else if (family.translation && family.candidateIds.some((id) => linguisticData[id]?.isNewSense)) {
+      const senseKey = canonicalSenseKey(scope.userId, scope.profileId, family.lemma, family.translation);
+      // Dedupe por sense_key/tradução normalizada: falso positivo da IA vira
+      // known_sense mesmo que a análise diga new_sense.
+      const alreadyKnown = wordSenses.some((sense) =>
+        matchesCanonicalSenseKey(sense.fields.sense_key, senseKey) ||
+        normalizeVocabularyToken(sense.fields.translation ?? "") === normalizeVocabularyToken(family.translation)
+      );
+      if (!alreadyKnown) {
+        const created = await createWordSense({
+          ...senseBase,
+          sense_key: senseKey,
+          translation: family.translation,
+          is_primary: false,
+          sense_order: await nextSenseOrder(resolvedWord.id)
+        });
+        const allSenses = [...wordSenses, created];
+        sensesByWord.set(resolvedWord.id, allSenses);
+        // O cache da word reflete o agregado dos sentidos (a tradução do
+        // primário não muda). Sem sentidos pré-existentes não há o que agregar.
+        if (wordSenses.length) {
+          await client.updateRecord<WordFields>("words", resolvedWord.id, aggregateSenseReviewToWordFields(allSenses));
+        }
+      }
+    }
     const summaryFields: WordUsageSummaryFields = {
       Name: forms[0] ?? family.lemma,
       usage_key: usageKey,

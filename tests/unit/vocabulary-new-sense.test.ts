@@ -235,3 +235,214 @@ describe("AI analysis sense_status parsing", () => {
     vi.restoreAllMocks();
   });
 });
+
+describe("saveSelectedVocabulary creates word senses", () => {
+  beforeEach(() => {
+    messages = [];
+    corrections = [];
+    profile = { id: "profile-1", fields: { language_code: "en" } };
+    words.splice(0);
+    senses.splice(0);
+    usageSummaries.splice(0);
+    vi.clearAllMocks();
+    addSavedWordsToDailyFeedback.mockResolvedValue(undefined);
+    createChatCompletion.mockResolvedValue({ content: "[]", tokensUsed: 1 });
+    listRecords.mockImplementation(async (table: string) =>
+      table === "words"
+        ? [...words]
+        : table === "wordSenses"
+          ? [...senses]
+          : table === "wordUsageSummaries"
+            ? [...usageSummaries]
+            : []);
+    createRecord.mockImplementation(async (table: string, fields: Record<string, unknown>) => {
+      const target = table === "words" ? words : table === "wordSenses" ? senses : usageSummaries;
+      const record = { id: `${table}-${target.length + 1}`, fields: { ...fields } };
+      target.push(record);
+      return record;
+    });
+    updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
+      const source = table === "words" ? words : table === "wordSenses" ? senses : usageSummaries;
+      const record = source.find((item) => item.id === id)!;
+      record.fields = { ...record.fields, ...fields };
+      return record;
+    });
+  });
+
+  it("creates the primary sense when saving a brand-new word", async () => {
+    createChatCompletion.mockResolvedValue({
+      content: JSON.stringify([{ id: "user:solar", lemma: "solar", translation: "solar", part_of_speech: "adjective" }]),
+      tokensUsed: 1
+    });
+    messages = [buildMessage("m-solar", "user", "Solar panels")];
+    const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+    const { canonicalSenseKey } = await import("../../lib/learning/word-senses");
+
+    const result = await saveSelectedVocabulary("conversation-sense-new-word", ["user:solar"]);
+
+    expect(result.newWordCount).toBe(1);
+    expect(words).toHaveLength(1);
+    expect(senses).toHaveLength(1);
+    expect(senses[0].fields).toMatchObject({
+      word_id: words[0].id,
+      sense_key: canonicalSenseKey("user-1", "profile-1", "solar", "solar"),
+      translation: "solar",
+      part_of_speech: "adjective",
+      example_sentence: "Solar panels",
+      source: "chat",
+      is_primary: true,
+      sense_order: 1,
+      review_state: "new"
+    });
+    expect(new Date(String(senses[0].fields.review_due_at)).getTime()).toBeGreaterThan(Date.now() + 6 * 86400000);
+  });
+
+  it("does not duplicate senses when the same conversation is saved twice", async () => {
+    createChatCompletion.mockResolvedValue({
+      content: JSON.stringify([{ id: "user:solar", lemma: "solar", translation: "solar", part_of_speech: "adjective" }]),
+      tokensUsed: 1
+    });
+    messages = [buildMessage("m-solar", "user", "Solar panels")];
+    const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+
+    await saveSelectedVocabulary("conversation-sense-resave", ["user:solar"]);
+    const second = await saveSelectedVocabulary("conversation-sense-resave", ["user:solar"]);
+
+    expect(second.savedCount).toBe(0);
+    expect(words).toHaveLength(1);
+    expect(senses).toHaveLength(1);
+  });
+
+  it("creates a non-primary sense for a new meaning of a known word without touching words.translation", async () => {
+    seedBankWord();
+    const { canonicalSenseKey } = await import("../../lib/learning/word-senses");
+    senses.push({
+      id: "sense-1",
+      fields: {
+        word_id: "word-bank",
+        sense_key: canonicalSenseKey("user-1", "profile-1", "bank", "banco (instituição)"),
+        translation: "banco (instituição)",
+        is_primary: true,
+        sense_order: 1,
+        review_state: "review",
+        review_due_at: "2099-01-01T00:00:00.000Z"
+      }
+    });
+    createChatCompletion.mockResolvedValue({
+      content: JSON.stringify([
+        { id: "user:bank", lemma: "bank", translation: "margem (do rio)", part_of_speech: "noun", sense_status: "new_sense" }
+      ]),
+      tokensUsed: 1
+    });
+    messages = [buildMessage("m-bank", "user", "I sat on the bank of the river")];
+    const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+
+    const result = await saveSelectedVocabulary("conversation-sense-new-meaning", ["user:bank"]);
+
+    expect(result.newWordCount).toBe(0);
+    expect(senses).toHaveLength(2);
+    expect(senses[1].fields).toMatchObject({
+      word_id: "word-bank",
+      sense_key: canonicalSenseKey("user-1", "profile-1", "bank", "margem (do rio)"),
+      translation: "margem (do rio)",
+      part_of_speech: "noun",
+      example_sentence: "I sat on the bank of the river",
+      source: "chat",
+      is_primary: false,
+      sense_order: 2,
+      review_state: "new"
+    });
+    // O cache da palavra mantém a tradução do sentido primário.
+    expect(words[0].fields.translation).toBe("banco (instituição)");
+    // Agregados SRS recalculados a partir dos sentidos.
+    const aggregateUpdate = updateRecord.mock.calls.find(([table, id, fields]) =>
+      table === "words" && id === "word-bank" && Object.prototype.hasOwnProperty.call(fields, "review_state"));
+    expect(aggregateUpdate).toBeDefined();
+  });
+
+  it("treats an AI-flagged new sense as known when the normalized translation already exists", async () => {
+    seedBankWord();
+    const { canonicalSenseKey } = await import("../../lib/learning/word-senses");
+    senses.push({
+      id: "sense-1",
+      fields: {
+        word_id: "word-bank",
+        sense_key: canonicalSenseKey("user-1", "profile-1", "bank", "banco (instituição)"),
+        translation: "banco (instituição)",
+        is_primary: true,
+        sense_order: 1
+      }
+    });
+    createChatCompletion.mockResolvedValue({
+      content: JSON.stringify([
+        { id: "user:bank", lemma: "bank", translation: "Banco (Instituição)", part_of_speech: "noun", sense_status: "new_sense" }
+      ]),
+      tokensUsed: 1
+    });
+    messages = [buildMessage("m-bank", "user", "I went to the bank")];
+    const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+
+    await saveSelectedVocabulary("conversation-sense-false-positive", ["user:bank"]);
+
+    expect(senses).toHaveLength(1);
+  });
+
+  it("skips a flagged new sense whose translation stayed empty", async () => {
+    seedBankWord();
+    const { canonicalSenseKey } = await import("../../lib/learning/word-senses");
+    senses.push({
+      id: "sense-1",
+      fields: {
+        word_id: "word-bank",
+        sense_key: canonicalSenseKey("user-1", "profile-1", "bank", "banco (instituição)"),
+        translation: "banco (instituição)",
+        is_primary: true,
+        sense_order: 1
+      }
+    });
+    createChatCompletion
+      .mockResolvedValueOnce({
+        content: JSON.stringify([
+          { id: "user:bank", lemma: "bank", translation: "", part_of_speech: "noun", sense_status: "new_sense" }
+        ]),
+        tokensUsed: 1
+      })
+      .mockResolvedValueOnce({ content: "[]", tokensUsed: 1 });
+    messages = [buildMessage("m-bank", "user", "I sat on the bank of the river")];
+    const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+
+    await saveSelectedVocabulary("conversation-sense-empty-translation", ["user:bank"]);
+
+    expect(senses).toHaveLength(1);
+  });
+
+  it("creates the primary sense for a legacy word whose translation is filled on save", async () => {
+    seedBankWord({ translation: "" });
+    createChatCompletion.mockResolvedValue({
+      content: JSON.stringify([{ id: "user:bank", lemma: "bank", translation: "banco (instituição)", part_of_speech: "noun" }]),
+      tokensUsed: 1
+    });
+    messages = [buildMessage("m-bank", "user", "I went to the bank")];
+    const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+    const { canonicalSenseKey } = await import("../../lib/learning/word-senses");
+
+    const result = await saveSelectedVocabulary("conversation-sense-legacy-hole", ["user:bank"]);
+
+    expect(result.updatedWordCount).toBe(1);
+    expect(words[0].fields.translation).toBe("banco (instituição)");
+    expect(senses).toHaveLength(1);
+    expect(senses[0].fields).toMatchObject({
+      word_id: "word-bank",
+      sense_key: canonicalSenseKey("user-1", "profile-1", "bank", "banco (instituição)"),
+      translation: "banco (instituição)",
+      source: "chat",
+      is_primary: true,
+      sense_order: 1,
+      review_state: "new"
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+});

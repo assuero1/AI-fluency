@@ -44,6 +44,7 @@ const messages = [
 
 const words: Array<{ id: string; fields: Record<string, unknown> }> = [];
 const occurrences: Array<{ id: string; fields: Record<string, unknown> }> = [];
+const senses: Array<{ id: string; fields: Record<string, unknown> }> = [];
 const usageSummaries: Array<{ id: string; fields: Record<string, unknown> }> = [];
 const createRecord = vi.fn();
 const updateRecord = vi.fn();
@@ -76,6 +77,7 @@ describe("vocabulary integrity", () => {
   beforeEach(() => {
     words.splice(0);
     occurrences.splice(0);
+    senses.splice(0);
     usageSummaries.splice(0);
     corrections = [];
     vi.clearAllMocks();
@@ -86,15 +88,18 @@ describe("vocabulary integrity", () => {
         ? [...messages]
         : table === "wordUsageSummaries"
           ? [...usageSummaries]
-          : [...occurrences]);
+          : table === "wordSenses"
+            ? [...senses]
+            : [...occurrences]);
     createRecord.mockImplementation(async (table: string, fields: Record<string, unknown>) => {
-      const target = table === "words" ? words : table === "wordUsageSummaries" ? usageSummaries : occurrences;
+      const target = table === "words" ? words : table === "wordUsageSummaries" ? usageSummaries : table === "wordSenses" ? senses : occurrences;
       const record = { id: `${table}-${target.length + 1}`, fields: { ...fields } };
       target.push(record);
       return record;
     });
     updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
-      const record = (table === "wordUsageSummaries" ? usageSummaries : words).find((item) => item.id === id)!;
+      const source = table === "words" ? words : table === "wordUsageSummaries" ? usageSummaries : table === "wordSenses" ? senses : occurrences;
+      const record = source.find((item) => item.id === id)!;
       record.fields = { ...record.fields, ...fields };
       return record;
     });

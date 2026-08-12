@@ -136,6 +136,12 @@ export async function getPrimarySense(wordId: string): Promise<TeableRecord<Word
   return senses.filter((sense) => sense.fields.is_primary).sort(byOrder)[0] ?? [...senses].sort(byOrder)[0];
 }
 
+/** Próximo sense_order da palavra (maior existente + 1; 1 quando não há sentidos). */
+export async function nextSenseOrder(wordId: string): Promise<number> {
+  const senses = (await listSensesByWordIds([wordId])).get(wordId) ?? [];
+  return senses.reduce((order, sense) => Math.max(order, Number(sense.fields.sense_order ?? 0) || 0), 0) + 1;
+}
+
 export async function createWordSense(fields: WordSenseFields): Promise<TeableRecord<WordSenseFields>> {
   const client = getTeableClient();
   try {
