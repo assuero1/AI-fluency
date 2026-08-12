@@ -235,3 +235,29 @@ describe("flashcard attempt persistence and resume", () => {
     expect(result.presentationNumber).toBe(1);
   });
 });
+
+describe("flashcard target sense round-trip", () => {
+  it("persists targetSenseId on the frozen card record and restores it", async () => {
+    const { flashcardToRecord, flashcardRecordToCard } = await import("../../lib/learning/flashcards");
+    const card = { id: "card-sense", sessionId: "", type: "target_to_native" as const, targetWordId: "word-a", targetSenseId: "sense-a", supportingWordIds: [], prompt: "banco", expectedAnswer: "banco (instituição)", acceptedAnswers: [], translation: "banco (instituição)", difficulty: 1 };
+
+    const record = flashcardToRecord(card, session.id, 0, "2026-08-12T12:00:00.000Z");
+    expect(record.target_sense_id).toBe("sense-a");
+
+    const restored = flashcardRecordToCard({ id: "card-sense", fields: { ...record, practice_session_id: session.id } });
+    expect(restored).toMatchObject({ id: "card-sense", sessionId: session.id, targetWordId: "word-a", targetSenseId: "sense-a" });
+  });
+
+  it("keeps legacy frozen cards valid: missing target_sense_id reads back as undefined", async () => {
+    const { flashcardToRecord, flashcardRecordToCard } = await import("../../lib/learning/flashcards");
+    const legacyCard = { id: "card-legacy", sessionId: "", type: "target_to_native" as const, targetWordId: "word-a", supportingWordIds: [], prompt: "hola", expectedAnswer: "olá", acceptedAnswers: [], translation: "olá", difficulty: 1 };
+
+    const record = flashcardToRecord(legacyCard, session.id, 1, "2026-08-12T12:00:00.000Z");
+    expect(record.target_sense_id).toBe("");
+
+    const legacyRecord = { id: "card-legacy", fields: { ...record, practice_session_id: session.id } };
+    delete (legacyRecord.fields as Record<string, unknown>).target_sense_id;
+    const restored = flashcardRecordToCard(legacyRecord);
+    expect(restored.targetSenseId).toBeUndefined();
+  });
+});

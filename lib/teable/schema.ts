@@ -337,6 +337,7 @@ export const teableSchema: TeableTableDefinition[] = [
     fields: [
       { name: "practice_session_id", type: "relation", note: "PracticeSessions" },
       { name: "target_word_id", type: "relation", note: "Words" },
+      { name: "target_sense_id", type: "relation", note: "WordSenses" },
       { name: "supporting_word_ids", type: "json" },
       { name: "card_type", type: "singleSelect" },
       { name: "prompt", type: "longText" },
@@ -361,6 +362,7 @@ export const teableSchema: TeableTableDefinition[] = [
       { name: "practice_session_id", type: "relation", note: "PracticeSessions" },
       { name: "flashcard_id", type: "relation", note: "Flashcards" },
       { name: "word_id", type: "relation", note: "Words" },
+      { name: "sense_id", type: "relation", note: "WordSenses" },
       { name: "presentation_number", type: "number" },
       { name: "client_attempt_id", type: "text" },
       { name: "user_answer", type: "longText" },

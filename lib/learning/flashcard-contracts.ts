@@ -19,6 +19,7 @@ export type Flashcard = {
   sessionId: string;
   type: FlashcardType;
   targetWordId: string;
+  targetSenseId?: string;
   supportingWordIds: string[];
   prompt: string;
   expectedAnswer: string;

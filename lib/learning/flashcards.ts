@@ -55,6 +55,7 @@ export type PracticeSessionFields = {
 export type FlashcardFields = {
   practice_session_id: string;
   target_word_id: string;
+  target_sense_id?: string;
   supporting_word_ids: string;
   card_type: Flashcard["type"];
   prompt: string;
@@ -74,6 +75,7 @@ export type FlashcardAttemptFields = {
   practice_session_id: string;
   flashcard_id: string;
   word_id: string;
+  sense_id?: string;
   presentation_number: number;
   client_attempt_id: string;
   user_answer: string;
@@ -817,10 +819,12 @@ function isStoredFlashcard(value: unknown): value is Flashcard {
   return typeof card.id === "string" && typeof card.sessionId === "string" && ["target_to_native", "native_to_target", "cloze", "listening"].includes(card.type ?? "") && typeof card.targetWordId === "string" && Array.isArray(card.supportingWordIds) && typeof card.prompt === "string" && typeof card.expectedAnswer === "string" && Array.isArray(card.acceptedAnswers) && typeof card.translation === "string" && typeof card.difficulty === "number";
 }
 
-function flashcardToRecord(card: Flashcard, sessionId: string, initialPosition: number, createdAt: string): FlashcardFields {
+export function flashcardToRecord(card: Flashcard, sessionId: string, initialPosition: number, createdAt: string): FlashcardFields {
   return {
     practice_session_id: sessionId,
     target_word_id: card.targetWordId,
+    // Blank on legacy/synthetic-sense cards: their reviews update the word directly.
+    target_sense_id: card.targetSenseId ?? "",
     supporting_word_ids: JSON.stringify(card.supportingWordIds),
     card_type: card.type,
     prompt: card.prompt,
@@ -837,12 +841,15 @@ function flashcardToRecord(card: Flashcard, sessionId: string, initialPosition: 
   };
 }
 
-function flashcardRecordToCard(record: TeableRecord<FlashcardFields>): Flashcard {
+export function flashcardRecordToCard(record: TeableRecord<FlashcardFields>): Flashcard {
   return {
     id: record.id,
     sessionId: record.fields.practice_session_id,
     type: record.fields.card_type,
     targetWordId: record.fields.target_word_id,
+    // Legacy frozen cards have no target_sense_id: undefined keeps them on the
+    // legacy review path (the SRS update writes the word directly).
+    targetSenseId: record.fields.target_sense_id || undefined,
     supportingWordIds: parseStringArray(record.fields.supporting_word_ids),
     prompt: record.fields.prompt,
     expectedAnswer: record.fields.expected_answer,
