@@ -657,6 +657,37 @@ describe("vocabulary candidate selection", () => {
     });
   });
 
+  describe("assistant words exclusion", () => {
+    it("rejects saving candidates that only the assistant used", async () => {
+      messages = [buildMessage("m-ai", "assistant", "Serendipity ephemeral")];
+      const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+
+      await expect(saveSelectedVocabulary("conversation-ai-only", ["assistant:serendipity"])).rejects.toThrow("Selecione ao menos uma palavra.");
+      expect(words).toHaveLength(0);
+    });
+
+    it("does not offer assistant-only words in the picker groups", async () => {
+      messages = [
+        buildMessage("m-user", "user", "I enjoyed the concert"),
+        buildMessage("m-ai", "assistant", "Serendipity ephemeral")
+      ];
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([
+          { id: "user:enjoyed", lemma: "enjoy", translation: "curtir", part_of_speech: "verb" },
+          { id: "user:concert", lemma: "concert", translation: "show", part_of_speech: "noun" },
+          { id: "assistant:serendipity", lemma: "serendipity", translation: "serendipidade", part_of_speech: "noun" }
+        ]),
+        tokensUsed: 1
+      });
+      const { getConversationVocabularyGroups } = await import("../../lib/learning/vocabulary-selection");
+
+      const groups = await getConversationVocabularyGroups("conversation-ai-picker");
+
+      expect(groups.every((group) => group.source === "user")).toBe(true);
+      expect(groups.map((group) => group.lemma)).not.toContain("serendipity");
+    });
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });

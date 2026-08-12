@@ -293,6 +293,19 @@ export function extractVocabularyCandidates(
 }
 
 /**
+ * Apenas palavras produzidas pelo usuário entram no pipeline de análise e
+ * salvamento: sugestões que só apareceram em mensagens da IA não medem
+ * domínio do aluno e inflam a análise (mais chunks de LLM, mais gravações).
+ */
+export function extractUserVocabularyCandidates(
+  messages: TeableRecord<MessageFields>[],
+  corrections: TeableRecord<CorrectionFields>[] = [],
+  language = ""
+) {
+  return extractVocabularyCandidates(messages, corrections, language).filter((candidate) => candidate.source === "user");
+}
+
+/**
  * Keeps the end-of-conversation picker focused on additions.  Comparing the
  * fallback lemma also avoids offering common inflections (for example,
  * "worked") when its base form is already in the learner's vocabulary.
@@ -374,7 +387,7 @@ export async function getConversationVocabularyGroups(conversationId: string) {
   const scopedWords = words.filter((word) => matchesLearningScope(word.fields, scope));
   const sensesByWord = await listSensesByWordIds(scopedWords.map((word) => word.id));
   return groupNewVocabularyCandidates(
-    extractVocabularyCandidates(context.messages, context.corrections, language),
+    extractUserVocabularyCandidates(context.messages, context.corrections, language),
     scopedWords.map((word) => ({
       id: word.id,
       lemma: word.fields.lemma,
@@ -491,7 +504,7 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
   }
   const language = context.profile?.fields.language_code ?? "auto";
   const allOccurrences = extractVocabularyOccurrences(context.messages, context.corrections, language);
-  const allowed = new Map(extractVocabularyCandidates(context.messages, context.corrections, language).map((item) => [item.id, item]));
+  const allowed = new Map(extractUserVocabularyCandidates(context.messages, context.corrections, language).map((item) => [item.id, item]));
   const selected = rankVocabularyCandidates(
     [...new Set(candidateIds)].map((id) => allowed.get(id)).filter((item): item is VocabularyCandidate => Boolean(item))
   ).slice(0, MAX_VOCABULARY_CANDIDATES);

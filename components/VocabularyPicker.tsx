@@ -16,10 +16,6 @@ export function VocabularyPicker({ conversationId }: {
   const [selected, setSelected] = useState(() => new Set<string>());
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
-  const sourceSections = [
-    { source: "user" as const, title: "Palavras que você usou" },
-    { source: "assistant" as const, title: "Palavras usadas pela IA" }
-  ];
 
   useEffect(() => {
     let cancelled = false;
@@ -74,13 +70,13 @@ export function VocabularyPicker({ conversationId }: {
     <p className="row-meta">Aqui aparecem apenas palavras que ainda não estão no seu vocabulário. Nada é salvo automaticamente.</p>
     {candidateGroups === null ? <div className="empty-state"><Loader2 className="spin" /> Analisando formas relacionadas...</div> : null}
     {candidateGroups?.length === 0 && !message ? <div className="empty-state">Nenhuma palavra nova disponível nesta conversa.</div> : null}
-    {sourceSections.map((group) => {
-      const items = (candidateGroups ?? []).filter((item) => item.source === group.source);
+    {(() => {
+      const items = candidateGroups ?? [];
       if (candidateGroups === null || items.length === 0) return null;
       const eligibleItems = items.filter((item) => item.eligible);
       const allSelected = eligibleItems.length > 0 && eligibleItems.every((item) => selected.has(item.id));
-      return <div className="vocabulary-group" key={group.source}>
-        <div className="top-row"><h3 className="row-title">{group.title}</h3>
+      return <div className="vocabulary-group">
+        <div className="top-row"><h3 className="row-title">Palavras que você usou</h3>
           <button className="text-button" type="button" onClick={() => setSelected((current) => {
             const next = new Set(current); eligibleItems.forEach((item) => allSelected ? next.delete(item.id) : next.add(item.id)); return next;
           })}>{allSelected ? "Desmarcar todas" : "Selecionar todas"}</button>
@@ -97,7 +93,7 @@ export function VocabularyPicker({ conversationId }: {
           </label>)}
         </div>
       </div>;
-    })}
+    })()}
     <button className="green-button full-button" disabled={candidateGroups === null || saving || selected.size === 0} onClick={save} type="button">
       {saving ? <Loader2 className="spin" /> : <BookOpen />} Salvar {selected.size} selecionada(s)
     </button>
@@ -113,7 +109,6 @@ function formatRelatedForms(group: VocabularyCandidateGroup) {
 function getCandidateStatus(candidate: VocabularyCandidateGroup) {
   if (!candidate.eligible) return "Uso corrigido — não será salvo";
   if (candidate.incorrectOccurrenceCount > 0) return `${candidate.correctOccurrenceCount} uso(s) correto(s); usos corrigidos ignorados`;
-  if (candidate.source === "assistant") return "Sugestão usada pela IA — não conta como domínio";
   return "Novo uso do seu vocabulário";
 }
 
