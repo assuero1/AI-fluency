@@ -1,11 +1,10 @@
 import { getTeableConfig } from "./config";
 import { getSchemaTable, TeableTableKey } from "./schema";
+import { TeableConfigError, TeableRequestError } from "./types";
+import type { TeableRecord } from "./types";
 
-export type TeableRecord<TFields extends Record<string, unknown> = Record<string, unknown>> = {
-  id: string;
-  fields: TFields;
-  createdTime?: string;
-};
+export { TeableConfigError, TeableRequestError } from "./types";
+export type { TeableRecord } from "./types";
 
 export type TeableListResponse<TFields extends Record<string, unknown> = Record<string, unknown>> = {
   records?: TeableRecord<TFields>[];
@@ -22,20 +21,6 @@ export type TeableCreateResponse<TFields extends Record<string, unknown> = Recor
         records?: TeableRecord<TFields>[];
       };
     };
-
-export class TeableConfigError extends Error {
-  status = 503;
-}
-
-export class TeableRequestError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public detail?: unknown
-  ) {
-    super(message);
-  }
-}
 
 function trimSlash(value: string) {
   return value.replace(/\/+$/, "");
