@@ -48,9 +48,12 @@
     "senses:backfill": "node scripts/backfill-word-senses.mjs",
     "senses:backfill:apply": "node scripts/backfill-word-senses.mjs --apply",
     "scope:reset-test-data": "node scripts/reset-personal-test-data.mjs",
-    "security:bundle": "node scripts/verify-client-secrets.mjs"
+    "security:bundle": "node scripts/verify-client-secrets.mjs",
+    "supabase:apply-schema": "node scripts/apply-supabase-schema.mjs",
+    "supabase:migrate": "node scripts/migrate-teable-to-supabase.mjs"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.112.3",
     "lucide-react": "^0.468.0",
     "next": "^15.0.0",
     "react": "^19.0.0",
