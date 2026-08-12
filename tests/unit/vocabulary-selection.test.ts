@@ -52,6 +52,12 @@ let profile = { id: "profile-1", fields: { language_code: "en" } };
 const words: Array<{ id: string; fields: Record<string, unknown> }> = [];
 const senses: Array<{ id: string; fields: Record<string, unknown> }> = [];
 const usageSummaries: Array<{ id: string; fields: Record<string, unknown> }> = [];
+const users: Array<{ id: string; fields: Record<string, unknown> }> = [
+  { id: "user-1", fields: { timezone: "UTC" } }
+];
+const listRecordsWhere = vi.fn();
+const listRecordsWhereAll = vi.fn();
+const getRecord = vi.fn();
 const createRecord = vi.fn();
 const updateRecord = vi.fn();
 const listRecords = vi.fn();
@@ -85,7 +91,15 @@ vi.mock("../../lib/learning/conversations", async (importOriginal) => {
 vi.mock("../../lib/learning/feedback", () => ({ addSavedWordsToDailyFeedback }));
 vi.mock("../../lib/teable/client", () => ({
   TeableRequestError: class TeableRequestError extends Error {},
-  getTeableClient: () => ({ listRecords, listAllRecords: listRecords, createRecord, updateRecord })
+  getTeableClient: () => ({
+    listRecords,
+    listAllRecords: listRecords,
+    listRecordsWhere,
+    listRecordsWhereAll,
+    getRecord,
+    createRecord,
+    updateRecord
+  })
 }));
 
 describe("vocabulary candidate selection", () => {
@@ -106,6 +120,19 @@ describe("vocabulary candidate selection", () => {
         : table === "wordUsageSummaries"
           ? [...usageSummaries]
           : []);
+    const tableRecords = (table: string) =>
+      table === "words" ? words : table === "wordSenses" ? senses : table === "wordUsageSummaries" ? usageSummaries : users;
+    listRecordsWhere.mockImplementation(async (table: string, field: string, value: string) =>
+      tableRecords(table).filter((record) => String(record.fields[field] ?? "") === value)
+    );
+    listRecordsWhereAll.mockImplementation(async (table: string, filters: Array<{ field: string; value: string }>) =>
+      tableRecords(table).filter((record) => filters.every(({ field, value }) => String(record.fields[field] ?? "") === value))
+    );
+    getRecord.mockImplementation(async (table: string, id: string) => {
+      const record = tableRecords(table).find((item) => item.id === id);
+      if (!record) throw new Error("not found");
+      return record;
+    });
     createRecord.mockImplementation(async (table: string, fields: Record<string, unknown>) => {
       const target = table === "words" ? words : table === "wordSenses" ? senses : usageSummaries;
       const record = { id: `${table}-${target.length + 1}`, fields: { ...fields } };
@@ -685,6 +712,39 @@ describe("vocabulary candidate selection", () => {
 
       expect(groups.every((group) => group.source === "user")).toBe(true);
       expect(groups.map((group) => group.lemma)).not.toContain("serendipity");
+    });
+  });
+
+  describe("scoped reads", () => {
+    it("saves using scoped queries instead of full-table scans", async () => {
+      words.push({
+        id: "word-other-user",
+        fields: {
+          user_id: "user-2",
+          language_profile_id: "profile-2",
+          lemma: "solar",
+          display_text: "solar",
+          canonical_key: JSON.stringify(["user-2", "profile-2", "solar"]),
+          forms_json: "[]",
+          translation: "solar",
+          total_uses: 9
+        }
+      });
+      createChatCompletion.mockResolvedValue({
+        content: JSON.stringify([{ id: "user:solar", lemma: "solar", translation: "solar", part_of_speech: "adjective" }]),
+        tokensUsed: 1
+      });
+      messages = [buildMessage("m-solar", "user", "Solar panels")];
+      const { saveSelectedVocabulary } = await import("../../lib/learning/vocabulary-selection");
+
+      const result = await saveSelectedVocabulary("conversation-scoped", ["user:solar"]);
+
+      expect(result.newWordCount).toBe(1);
+      expect(listRecordsWhereAll).toHaveBeenCalled();
+      // Sem full-table scan de words nem de wordUsageSummaries no fluxo.
+      expect(listRecords.mock.calls.filter(([table]) => table === "words" || table === "wordUsageSummaries")).toHaveLength(0);
+      // A palavra de outro usuário não foi tocada.
+      expect(words.find((word) => word.id === "word-other-user")?.fields.total_uses).toBe(9);
     });
   });
 

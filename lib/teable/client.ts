@@ -196,10 +196,22 @@ export class TeableClient {
     field: string,
     value: string
   ) {
+    return this.listRecordsWhereAll<TFields>(tableKey, [{ field, value }]);
+  }
+
+  async listRecordsWhereAll<TFields extends Record<string, unknown> = Record<string, unknown>>(
+    tableKey: TeableTableKey,
+    filters: Array<{ field: string; value: string }>
+  ) {
     const tableId = this.tableId(tableKey);
     const filter = encodeURIComponent(
-      JSON.stringify({ conjunction: "and", filterSet: [{ fieldId: field, operator: "is", value }] })
+      JSON.stringify({
+        conjunction: "and",
+        filterSet: filters.map(({ field, value }) => ({ fieldId: field, operator: "is", value }))
+      })
     );
+    const matches = (record: TeableRecord<TFields>) =>
+      filters.every(({ field, value }) => String(record.fields?.[field] ?? "") === value);
     const records: TeableRecord<TFields>[] = [];
     const pageSize = 1000;
 
@@ -212,9 +224,9 @@ export class TeableClient {
       // Self-hosted Teable (teableio/teable#3041, v1.10.x) can silently ignore
       // the filter param and return unfiltered rows. Detect that and fall back
       // to a full client-side filter so results stay correct on any version.
-      if (page.some((record) => String(record.fields?.[field] ?? "") !== value)) {
+      if (page.some((record) => !matches(record))) {
         const all = await this.listAllRecords<TFields>(tableKey);
-        return all.filter((record) => String(record.fields?.[field] ?? "") === value);
+        return all.filter(matches);
       }
 
       records.push(...page);

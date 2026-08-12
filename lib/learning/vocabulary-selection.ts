@@ -378,13 +378,15 @@ export async function getConversationVocabularyGroups(conversationId: string) {
   if (context.conversation.fields.status !== "completed") {
     throw new LearningStateError("Finalize a conversa antes de escolher palavras.", 409);
   }
-  const words = await getTeableClient().listAllRecords<WordFields>("words");
   const language = context.profile?.fields.language_code ?? "auto";
   const scope = {
     userId: context.conversation.fields.user_id,
     profileId: context.conversation.fields.language_profile_id
   };
-  const scopedWords = words.filter((word) => matchesLearningScope(word.fields, scope));
+  const scopedWords = await getTeableClient().listRecordsWhereAll<WordFields>("words", [
+    { field: "user_id", value: scope.userId },
+    { field: "language_profile_id", value: scope.profileId }
+  ]);
   const sensesByWord = await listSensesByWordIds(scopedWords.map((word) => word.id));
   return groupNewVocabularyCandidates(
     extractUserVocabularyCandidates(context.messages, context.corrections, language),
@@ -511,16 +513,20 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
   if (!selected.length) throw new LearningStateError("Selecione ao menos uma palavra.", 400);
 
   const client = getTeableClient();
-  const [existingWords, usageSummaries, users] = await Promise.all([
-    client.listAllRecords<WordFields>("words"),
-    client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries"),
-    client.listAllRecords<UserFields>("users")
+  const scope = { userId: context.conversation.fields.user_id, profileId: context.conversation.fields.language_profile_id };
+  const scopeFilters = [
+    { field: "user_id", value: scope.userId },
+    { field: "language_profile_id", value: scope.profileId }
+  ];
+  const [existingWords, usageSummaries, userRecord] = await Promise.all([
+    client.listRecordsWhereAll<WordFields>("words", scopeFilters),
+    client.listRecordsWhere<WordUsageSummaryFields>("wordUsageSummaries", "conversation_id", conversationId),
+    client.getRecord<UserFields>("users", scope.userId).catch(() => undefined)
   ]);
-  const timeZone = users.find((record) => record.id === context.conversation.fields.user_id)?.fields.timezone ?? "UTC";
+  const timeZone = userRecord?.fields.timezone ?? "UTC";
   const now = new Date().toISOString();
   const reviewDue = new Date(Date.now() + 7 * 86400000).toISOString();
-  const scope = { userId: context.conversation.fields.user_id, profileId: context.conversation.fields.language_profile_id };
-  const scopedWords = existingWords.filter((word) => matchesLearningScope(word.fields, scope));
+  const scopedWords = existingWords;
   const sensesByWord = await listSensesByWordIds(scopedWords.map((word) => word.id));
   const linguisticData = await analyzeConversationVocabulary(
     conversationId,
@@ -589,7 +595,7 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
         existingWords.push(word);
       } catch (error) {
         if (!(error instanceof TeableRequestError) || ![400, 409, 422].includes(error.status)) throw error;
-        const refreshed = await client.listAllRecords<WordFields>("words");
+        const refreshed = await client.listRecordsWhereAll<WordFields>("words", scopeFilters);
         word = refreshed.find((item) => matchesCanonicalVocabularyKey(item.fields.canonical_key, canonicalKey));
         if (!word) throw error;
       }
@@ -600,7 +606,9 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
     const usageKey = wordUsageKey(resolvedWord.id, conversationId);
     const existingUsage = usageSummaries.find((summary) => summary.fields.usage_key === usageKey);
     const previousObservedCount = Number(existingUsage?.fields.observed_count ?? 0);
-    const otherUses = usageSummaries.filter((summary) => summary.fields.word_id === resolvedWord.id && summary.fields.usage_key !== usageKey)
+    const wordSummaries = await client.listRecordsWhere<WordUsageSummaryFields>("wordUsageSummaries", "word_id", resolvedWord.id);
+    const otherUses = wordSummaries
+      .filter((summary) => summary.fields.usage_key !== usageKey)
       .reduce((sum, summary) => sum + Number(summary.fields.correct_use_count ?? 0), 0);
     const mergedForms = uniqueVocabularyForms([...parseVocabularyForms(resolvedWord.fields.forms_json), ...forms]);
     const dueTime = resolvedWord.fields.review_due_at ? new Date(resolvedWord.fields.review_due_at).getTime() : 0;
@@ -718,7 +726,7 @@ async function upsertWordUsageSummary(
     return await client.createRecord<WordUsageSummaryFields>("wordUsageSummaries", fields);
   } catch (error) {
     if (!(error instanceof TeableRequestError) || ![400, 409, 422].includes(error.status)) throw error;
-    const refreshed = await client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries");
+    const refreshed = await client.listRecordsWhere<WordUsageSummaryFields>("wordUsageSummaries", "usage_key", fields.usage_key);
     const concurrent = refreshed.find((summary) => summary.fields.usage_key === fields.usage_key);
     if (!concurrent) throw error;
     return client.updateRecord<WordUsageSummaryFields>("wordUsageSummaries", concurrent.id, fields);

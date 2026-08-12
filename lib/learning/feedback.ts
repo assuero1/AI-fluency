@@ -82,7 +82,10 @@ async function finalizeConversation(conversationId: string) {
   const client = getTeableClient();
   const endedAt = new Date().toISOString();
   const supportingData = Promise.all([
-    client.listAllRecords<WordFields>("words"),
+    client.listRecordsWhereAll<WordFields>("words", [
+      { field: "user_id", value: context.conversation.fields.user_id },
+      { field: "language_profile_id", value: context.conversation.fields.language_profile_id }
+    ]),
     client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
     client.listRecords<ConversationFields>("conversations", 300)
   ]);
@@ -151,8 +154,11 @@ async function getPersistedCompletion(context: NonNullable<Awaited<ReturnType<ty
   const client = getTeableClient();
   const [dailyFeedbacks, usageSummaries, words] = await Promise.all([
     client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
-    client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries"),
-    client.listAllRecords<WordFields>("words")
+    client.listRecordsWhere<WordUsageSummaryFields>("wordUsageSummaries", "conversation_id", context.conversation.id),
+    client.listRecordsWhereAll<WordFields>("words", [
+      { field: "user_id", value: context.conversation.fields.user_id },
+      { field: "language_profile_id", value: context.conversation.fields.language_profile_id }
+    ])
   ]);
   const date = toDateKey(context.conversation.fields.ended_at || context.conversation.fields.started_at);
   const dailyFeedback = dailyFeedbacks.find(
@@ -196,10 +202,14 @@ export async function getConversationSummary(conversationId: string) {
   }
 
   const client = getTeableClient();
+  const summaryScopeFilters = [
+    { field: "user_id", value: context.conversation.fields.user_id },
+    { field: "language_profile_id", value: context.conversation.fields.language_profile_id }
+  ];
   const [dailyFeedbacks, usageSummaries, words] = await Promise.all([
-    client.listAllRecords<DailyFeedbackFields>("dailyFeedbacks"),
-    client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries"),
-    client.listAllRecords<WordFields>("words")
+    client.listRecordsWhereAll<DailyFeedbackFields>("dailyFeedbacks", summaryScopeFilters),
+    client.listRecordsWhere<WordUsageSummaryFields>("wordUsageSummaries", "conversation_id", context.conversation.id),
+    client.listRecordsWhereAll<WordFields>("words", summaryScopeFilters)
   ]);
 
   const feedbackDate = toDateKey(context.conversation.fields.ended_at || context.conversation.fields.started_at);
