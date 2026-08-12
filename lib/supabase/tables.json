@@ -1,0 +1,21 @@
+{
+  "tables": [
+    { "key": "users", "tableName": "users", "jsonbColumns": [], "fkColumns": { "active_language_id": "language_profiles" }, "hasCreatedAt": true },
+    { "key": "languageProfiles", "tableName": "language_profiles", "jsonbColumns": [], "fkColumns": { "user_id": "users" }, "hasCreatedAt": true },
+    { "key": "aiProviderSettings", "tableName": "ai_provider_settings", "jsonbColumns": [], "fkColumns": { "user_id": "users" }, "hasCreatedAt": false },
+    { "key": "voiceProviderSettings", "tableName": "voice_provider_settings", "jsonbColumns": [], "fkColumns": { "user_id": "users" }, "hasCreatedAt": false },
+    { "key": "conversations", "tableName": "conversations", "jsonbColumns": [], "fkColumns": { "user_id": "users", "language_profile_id": "language_profiles", "topic_id": "topics" }, "hasCreatedAt": false },
+    { "key": "messages", "tableName": "messages", "jsonbColumns": [], "fkColumns": { "conversation_id": "conversations" }, "hasCreatedAt": true },
+    { "key": "corrections", "tableName": "corrections", "jsonbColumns": [], "fkColumns": { "conversation_id": "conversations", "message_id": "messages" }, "hasCreatedAt": true },
+    { "key": "words", "tableName": "words", "jsonbColumns": ["forms_json"], "fkColumns": { "user_id": "users", "language_profile_id": "language_profiles" }, "hasCreatedAt": false },
+    { "key": "wordSenses", "tableName": "word_senses", "jsonbColumns": [], "fkColumns": { "word_id": "words" }, "hasCreatedAt": true },
+    { "key": "wordOccurrences", "tableName": "word_occurrences", "jsonbColumns": [], "fkColumns": { "word_id": "words", "conversation_id": "conversations", "message_id": "messages" }, "hasCreatedAt": true },
+    { "key": "wordUsageSummaries", "tableName": "word_usage_summaries", "jsonbColumns": ["forms_json"], "fkColumns": { "word_id": "words", "conversation_id": "conversations" }, "hasCreatedAt": false },
+    { "key": "dailyFeedbacks", "tableName": "daily_feedbacks", "jsonbColumns": ["recurring_errors", "suggested_topics"], "fkColumns": { "user_id": "users", "language_profile_id": "language_profiles" }, "hasCreatedAt": true },
+    { "key": "topics", "tableName": "topics", "jsonbColumns": [], "fkColumns": { "user_id": "users", "language_profile_id": "language_profiles", "related_feedback_id": "daily_feedbacks" }, "hasCreatedAt": true },
+    { "key": "practiceSessions", "tableName": "practice_sessions", "jsonbColumns": ["configuration_json"], "fkColumns": { "user_id": "users", "language_profile_id": "language_profiles", "conversation_id": "conversations", "parent_session_id": "practice_sessions" }, "hasCreatedAt": true },
+    { "key": "flashcards", "tableName": "flashcards", "jsonbColumns": ["supporting_word_ids", "accepted_answers"], "fkColumns": { "practice_session_id": "practice_sessions", "target_word_id": "words", "target_sense_id": "word_senses" }, "hasCreatedAt": true },
+    { "key": "flashcardAttempts", "tableName": "flashcard_attempts", "jsonbColumns": ["review_snapshot"], "fkColumns": { "practice_session_id": "practice_sessions", "flashcard_id": "flashcards", "word_id": "words", "sense_id": "word_senses" }, "hasCreatedAt": true },
+    { "key": "appEvents", "tableName": "app_events", "jsonbColumns": ["payload"], "fkColumns": { "user_id": "users" }, "hasCreatedAt": true }
+  ]
+}
