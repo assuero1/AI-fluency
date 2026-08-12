@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import tablesJson from "@/lib/supabase/tables.json";
 import { teableSchema } from "@/lib/teable/schema";
 
-const tables = tablesJson.tables as Array<{
+const tables = tablesJson.tables as unknown as Array<{
   key: string;
   tableName: string;
   jsonbColumns: string[];
