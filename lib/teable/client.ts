@@ -1,3 +1,5 @@
+import { createSupabaseTeableClient } from "@/lib/supabase/client";
+import { resolveDataBackend } from "@/lib/supabase/config";
 import { getTeableConfig } from "./config";
 import { getSchemaTable, TeableTableKey } from "./schema";
 import { TeableConfigError, TeableRequestError } from "./types";
@@ -303,6 +305,12 @@ function safeHealthPath(path: string) {
   return path.replace(/\/api\/table\/[^/]+/, "/api/table/[id]");
 }
 
-export function getTeableClient() {
+export function getTeableClient(): TeableClient {
+  if (resolveDataBackend() === "supabase") {
+    // SupabaseTeableClient implementa a mesma interface pública; o cast evita
+    // tocar nos ~15 consumidores que anotam o tipo TeableClient (classe com
+    // membros privados não é estruturalmente assignável).
+    return createSupabaseTeableClient() as unknown as TeableClient;
+  }
   return new TeableClient();
 }
