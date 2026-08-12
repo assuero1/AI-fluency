@@ -7,6 +7,7 @@ export type TeableTableKey =
   | "messages"
   | "corrections"
   | "words"
+  | "wordSenses"
   | "wordOccurrences"
   | "wordUsageSummaries"
   | "dailyFeedbacks"
@@ -197,6 +198,35 @@ export const teableSchema: TeableTableDefinition[] = [
       { name: "average_response_time_ms", type: "number" },
       { name: "review_state", type: "singleSelect" },
       { name: "review_version", type: "text" }
+    ]
+  },
+  {
+    key: "wordSenses",
+    envName: "TEABLE_WORD_SENSES_TABLE_ID",
+    displayName: "WordSenses",
+    purpose: "Individual meanings (senses) of a vocabulary word, with per-sense SRS.",
+    fields: [
+      { name: "word_id", type: "relation", note: "Words" },
+      { name: "sense_key", type: "text", note: "Unique user + language profile + lemma + normalized translation key." },
+      { name: "translation", type: "text" },
+      { name: "part_of_speech", type: "text" },
+      { name: "example_sentence", type: "longText" },
+      { name: "source", type: "singleSelect", note: "chat | manual | backfill" },
+      { name: "is_primary", type: "checkbox" },
+      { name: "sense_order", type: "number", note: "1-based display order; primary is 1." },
+      { name: "review_due_at", type: "date" },
+      { name: "review_interval_days", type: "number" },
+      { name: "review_ease", type: "number" },
+      { name: "review_streak", type: "number" },
+      { name: "lapse_count", type: "number" },
+      { name: "learning_step", type: "number" },
+      { name: "last_reviewed_at", type: "date" },
+      { name: "last_rating", type: "singleSelect" },
+      { name: "average_response_time_ms", type: "number" },
+      { name: "review_state", type: "singleSelect" },
+      { name: "review_version", type: "text" },
+      { name: "leech_flagged_at", type: "date" },
+      { name: "created_at", type: "date" }
     ]
   },
   {

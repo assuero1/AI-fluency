@@ -40,6 +40,9 @@
     "review:undo-fields": "node scripts/ensure-flashcard-undo-fields.mjs",
     "chat:schema-fields": "node scripts/ensure-chat-fields.mjs",
     "chat:schema-fields:apply": "node scripts/ensure-chat-fields.mjs --apply",
+    "senses:ensure-table": "node scripts/ensure-word-senses-table.mjs",
+    "senses:backfill": "node scripts/backfill-word-senses.mjs",
+    "senses:backfill:apply": "node scripts/backfill-word-senses.mjs --apply",
     "scope:reset-test-data": "node scripts/reset-personal-test-data.mjs",
     "security:bundle": "node scripts/verify-client-secrets.mjs"
   },

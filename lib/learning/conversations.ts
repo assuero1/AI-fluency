@@ -89,6 +89,30 @@ export type WordFields = {
   leech_flagged_at?: string;
 };
 
+export type WordSenseFields = {
+  Name?: string;
+  word_id: string;
+  sense_key?: string;
+  translation: string;
+  part_of_speech?: string;
+  example_sentence?: string;
+  source?: "chat" | "manual" | "backfill";
+  is_primary?: boolean;
+  sense_order?: number;
+  review_due_at?: string;
+  review_interval_days?: number;
+  review_ease?: number;
+  review_streak?: number;
+  lapse_count?: number;
+  learning_step?: number;
+  last_reviewed_at?: string;
+  last_rating?: "forgot" | "hard" | "good" | "easy";
+  average_response_time_ms?: number;
+  review_state?: "new" | "learning" | "review" | "difficult" | "suspended";
+  review_version?: string;
+  leech_flagged_at?: string;
+};
+
 export type WordOccurrenceFields = {
   Name?: string;
   word_id: string;

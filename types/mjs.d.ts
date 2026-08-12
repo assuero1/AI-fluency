@@ -16,4 +16,14 @@ declare module "*.mjs" {
     translate?: (env: Record<string, string>, batch: Array<{ id: string; text: string; language: string }>) => Promise<Record<string, string>>,
     languageByProfileId?: Record<string, string>
   ): Promise<Record<string, string>>;
+  export function senseKey(userId: unknown, profileId: unknown, lemma: unknown, translation: unknown): string;
+  export function buildWordSenseBackfillPlan(
+    words: Array<{ id: string; fields?: Record<string, unknown> }>,
+    existingSenses: Array<{ id: string; fields?: Record<string, unknown> }>,
+    now: string
+  ): {
+    creates: Array<{ wordId: string; fields: Record<string, unknown> }>;
+    skippedExisting: number;
+    skippedNoTranslation: number;
+  };
 }
