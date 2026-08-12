@@ -24,19 +24,6 @@ const TABLE_ENV = {
   appEvents: "TEABLE_APP_EVENTS_TABLE_ID"
 };
 
-// Teable primary field `Name`: only `users` has a counterpart column (`name`)
-// in the Supabase schema; for every other table it is a record title with no
-// target column and is dropped.
-const RENAME_COLUMNS = { users: { Name: "name" } };
-const DROP_COLUMNS = new Set(["Name"]);
-
-function resolveColumn(meta, column) {
-  const renamed = RENAME_COLUMNS[meta.tableName]?.[column];
-  if (renamed) return renamed;
-  if (DROP_COLUMNS.has(column)) return null;
-  return column;
-}
-
 const PAGE_SIZE = 1000;
 const BATCH = 200;
 const date = new Date().toISOString().slice(0, 10);
@@ -66,9 +53,7 @@ function toRow(meta, fields, { skipForeignKeys }) {
   const jsonb = new Set(meta.jsonbColumns);
   const foreignKeys = new Set(Object.keys(meta.fkColumns));
   const row = {};
-  for (const [rawColumn, value] of Object.entries(fields)) {
-    const column = resolveColumn(meta, rawColumn);
-    if (column === null) continue;
+  for (const [column, value] of Object.entries(fields)) {
     if (value === undefined) continue;
     if (skipForeignKeys && foreignKeys.has(column)) continue;
     if (value === "") {
@@ -198,9 +183,7 @@ for (const meta of tablesJson.tables) {
       sampleMismatches.push({ legacyId: record.id, error: error?.message ?? "row not found" });
       continue;
     }
-    for (const [rawColumn, value] of Object.entries(record.fields ?? {})) {
-      const column = resolveColumn(meta, rawColumn);
-      if (column === null) continue;
+    for (const [column, value] of Object.entries(record.fields ?? {})) {
       if (!valuesEqual(column, meta, value, row[column], idMap)) {
         sampleMismatches.push({ legacyId: record.id, column, teable: value, supabase: row[column] });
       }

@@ -5,7 +5,7 @@
 create table if not exists users (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
-  name text,
+  "Name" text,
   avatar_url text,
   active_language_id uuid,
   timezone text,
@@ -16,6 +16,7 @@ create table if not exists users (
 create table if not exists language_profiles (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   user_id uuid,
   language_code text,
   language_name text,
@@ -34,6 +35,7 @@ create table if not exists language_profiles (
 create table if not exists ai_provider_settings (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   user_id uuid,
   provider text check (provider is null or provider = any (array['openai', 'anthropic', 'google', 'openrouter', 'custom', 'kokoro', 'deepseek'])),
   base_url text,
@@ -50,6 +52,7 @@ create table if not exists ai_provider_settings (
 create table if not exists voice_provider_settings (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   user_id uuid,
   provider text,
   base_url text,
@@ -65,6 +68,7 @@ create table if not exists voice_provider_settings (
 create table if not exists topics (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   user_id uuid,
   language_profile_id uuid,
   title text,
@@ -79,6 +83,7 @@ create table if not exists topics (
 create table if not exists conversations (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   user_id uuid,
   language_profile_id uuid,
   topic_id uuid,
@@ -96,6 +101,7 @@ create table if not exists conversations (
 create table if not exists messages (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   conversation_id uuid,
   role text check (role is null or role = any (array['user', 'assistant', 'system'])),
   text text,
@@ -111,6 +117,7 @@ create table if not exists messages (
 create table if not exists corrections (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   conversation_id uuid,
   message_id uuid,
   original_text text,
@@ -125,6 +132,7 @@ create table if not exists corrections (
 create table if not exists words (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   user_id uuid,
   language_profile_id uuid,
   lemma text,
@@ -155,6 +163,7 @@ create table if not exists words (
 create table if not exists word_senses (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   word_id uuid,
   sense_key text unique,
   translation text,
@@ -182,6 +191,7 @@ create table if not exists word_senses (
 create table if not exists word_occurrences (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   word_id uuid,
   occurrence_key text unique,
   conversation_id uuid,
@@ -195,6 +205,7 @@ create table if not exists word_occurrences (
 create table if not exists word_usage_summaries (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   usage_key text unique,
   word_id uuid,
   conversation_id uuid,
@@ -209,6 +220,7 @@ create table if not exists word_usage_summaries (
 create table if not exists daily_feedbacks (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   user_id uuid,
   language_profile_id uuid,
   date timestamptz,
@@ -226,6 +238,7 @@ create table if not exists daily_feedbacks (
 create table if not exists practice_sessions (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   user_id uuid,
   language_profile_id uuid,
   conversation_id uuid,
@@ -253,6 +266,7 @@ create table if not exists practice_sessions (
 create table if not exists flashcards (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   practice_session_id uuid,
   target_word_id uuid,
   target_sense_id uuid,
@@ -274,6 +288,7 @@ create table if not exists flashcards (
 create table if not exists flashcard_attempts (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   practice_session_id uuid,
   flashcard_id uuid,
   word_id uuid,
@@ -302,6 +317,7 @@ create table if not exists flashcard_attempts (
 create table if not exists app_events (
   id uuid primary key default gen_random_uuid(),
   legacy_id text unique,
+  "Name" text,
   user_id uuid,
   event_name text not null,
   payload jsonb,
