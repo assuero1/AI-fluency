@@ -2,9 +2,22 @@ import fs from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { getSchemaTable } from "../../lib/teable/schema";
+import { resolveDueSenses } from "../../lib/learning/word-senses";
+import type { WordFields, WordSenseFields } from "../../lib/learning/conversations";
+import type { TeableRecord } from "../../lib/teable/client";
 
 const root = path.resolve(import.meta.dirname, "../..");
 const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
+
+const NOW = new Date("2026-08-12T12:00:00.000Z");
+
+function word(id: string, fields: Partial<WordFields>): TeableRecord<WordFields> {
+  return { id, fields: fields as WordFields };
+}
+
+function sense(id: string, wordId: string, fields: Partial<WordSenseFields>): TeableRecord<WordSenseFields> {
+  return { id, fields: { word_id: wordId, translation: `tr-${id}`, ...fields } as WordSenseFields };
+}
 
 describe("word senses flashcard fields schema contract", () => {
   it("registers target_sense_id on the flashcards table", () => {
@@ -37,5 +50,115 @@ describe("word senses flashcard fields schema contract", () => {
     const packageJson = JSON.parse(read("package.json")) as { scripts: Record<string, string> };
 
     expect(packageJson.scripts["senses:flashcard-fields"]).toBe("node scripts/ensure-word-senses-flashcard-fields.mjs");
+  });
+});
+
+describe("resolveDueSenses", () => {
+  it("synthesizes a legacy sense from the word SRS cache when the word has no senses", () => {
+    const legacy = word("word-legacy", {
+      user_id: "user-a",
+      language_profile_id: "profile-a",
+      lemma: "hola",
+      translation: "olá",
+      review_due_at: "2026-08-10T09:00:00.000Z",
+      review_state: "review",
+      review_streak: 5
+    });
+
+    const [entry] = resolveDueSenses([legacy], new Map(), NOW);
+
+    expect(entry.word).toBe(legacy);
+    expect(entry.synthetic).toBe(true);
+    expect(entry.sense.id).toBe("");
+    expect(entry.sense.fields).toMatchObject({
+      word_id: "word-legacy",
+      translation: "olá",
+      is_primary: true,
+      review_due_at: "2026-08-10T09:00:00.000Z",
+      review_state: "review",
+      review_streak: 5
+    });
+  });
+
+  it("picks the most-due sense of the word (min review_due_at among due senses)", () => {
+    const target = word("word-a", { lemma: "banco", translation: "banco" });
+    const senses = new Map([
+      ["word-a", [
+        sense("sense-late", "word-a", { review_due_at: "2026-08-11T09:00:00.000Z", translation: "banco (assento)" }),
+        sense("sense-early", "word-a", { review_due_at: "2026-08-01T09:00:00.000Z", translation: "banco (instituição)" })
+      ]]
+    ]);
+
+    const [entry] = resolveDueSenses([target], senses, NOW);
+
+    expect(entry.synthetic).toBe(false);
+    expect(entry.sense.id).toBe("sense-early");
+  });
+
+  it("prefers a due sense over a not-yet-due sense of the same word", () => {
+    const target = word("word-a", { lemma: "banco" });
+    const senses = new Map([
+      ["word-a", [
+        sense("sense-future", "word-a", { review_due_at: "2026-08-20T09:00:00.000Z" }),
+        sense("sense-due", "word-a", { review_due_at: "2026-08-12T09:00:00.000Z" })
+      ]]
+    ]);
+
+    const [entry] = resolveDueSenses([target], senses, NOW);
+
+    expect(entry.sense.id).toBe("sense-due");
+  });
+
+  it("falls back to the closest upcoming sense when no sense is due yet", () => {
+    const target = word("word-a", { lemma: "banco" });
+    const senses = new Map([
+      ["word-a", [
+        sense("sense-far", "word-a", { review_due_at: "2026-08-30T09:00:00.000Z" }),
+        sense("sense-near", "word-a", { review_due_at: "2026-08-15T09:00:00.000Z" })
+      ]]
+    ]);
+
+    const [entry] = resolveDueSenses([target], senses, NOW);
+
+    expect(entry.sense.id).toBe("sense-near");
+  });
+
+  it("treats a sense without review_due_at as due first (like a new card)", () => {
+    const target = word("word-a", { lemma: "banco" });
+    const senses = new Map([
+      ["word-a", [
+        sense("sense-scheduled", "word-a", { review_due_at: "2026-08-01T09:00:00.000Z" }),
+        sense("sense-new", "word-a", { review_state: "new" })
+      ]]
+    ]);
+
+    const [entry] = resolveDueSenses([target], senses, NOW);
+
+    expect(entry.sense.id).toBe("sense-new");
+  });
+
+  it("skips suspended senses while the word still has active ones", () => {
+    const target = word("word-a", { lemma: "banco" });
+    const senses = new Map([
+      ["word-a", [
+        sense("sense-suspended", "word-a", { review_state: "suspended", review_due_at: "2026-08-01T09:00:00.000Z" }),
+        sense("sense-active", "word-a", { review_state: "review", review_due_at: "2026-08-11T09:00:00.000Z" })
+      ]]
+    ]);
+
+    const [entry] = resolveDueSenses([target], senses, NOW);
+
+    expect(entry.sense.id).toBe("sense-active");
+  });
+
+  it("resolves one entry per word, preserving the input order", () => {
+    const words = [word("word-a", { lemma: "a" }), word("word-b", { lemma: "b" }), word("word-c", { lemma: "c" })];
+    const senses = new Map([["word-b", [sense("sense-b", "word-b", { review_due_at: "2026-08-01T09:00:00.000Z" })]]]);
+
+    const resolved = resolveDueSenses(words, senses, NOW);
+
+    expect(resolved.map((entry) => entry.word.id)).toEqual(["word-a", "word-b", "word-c"]);
+    expect(resolved.map((entry) => entry.synthetic)).toEqual([true, false, true]);
+    expect(resolved[1].sense.id).toBe("sense-b");
   });
 });

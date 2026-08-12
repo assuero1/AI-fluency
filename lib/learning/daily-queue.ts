@@ -44,6 +44,10 @@ export function normalizeNewCardsQuota(value: unknown, fallback = DEFAULT_NEW_CA
 }
 
 // "New" in the SRS sense: never reviewed in a flashcard session.
+// NOTE (per-sense SRS): novelty is tracked at word level via the aggregated
+// last_reviewed_at cache, so a NEW SENSE of an already-reviewed word does not
+// consume the daily new-card quota. Accepted in this phase; per-sense quota
+// rules are a future refinement.
 export function isNewWord(word: TeableRecord<DailyQueueWordFields>) {
   return !dateValue(word.fields.last_reviewed_at);
 }

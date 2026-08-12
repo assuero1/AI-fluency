@@ -160,3 +160,42 @@ export async function createWordSense(fields: WordSenseFields): Promise<TeableRe
 export async function updateWordSense(senseId: string, fields: Partial<WordSenseFields>): Promise<TeableRecord<WordSenseFields>> {
   return getTeableClient().updateRecord<WordSenseFields>("wordSenses", senseId, fields);
 }
+
+export type DueSense = {
+  word: TeableRecord<WordFields>;
+  sense: TeableRecord<WordSenseFields>;   // real or synthesized via synthesizeLegacySense
+  synthetic: boolean;                      // true = word still has no senses (legacy)
+};
+
+function senseDueTime(sense: TeableRecord<WordSenseFields>) {
+  // Senses never scheduled count as due first, like new cards in an SRS deck.
+  const time = sense.fields.review_due_at ? Date.parse(sense.fields.review_due_at) : 0;
+  return Number.isNaN(time) ? 0 : time;
+}
+
+/**
+ * Resolves, for each word, the sense a flashcard should exercise: the most-due
+ * sense, preferring senses already due at `now`. Words without senses enter with
+ * a synthetic legacy sense (SRS fields of the word itself, empty id), preserving
+ * the current behavior for data not yet migrated — their cards carry no
+ * target_sense_id and reviews keep updating the word directly.
+ */
+export function resolveDueSenses(
+  words: TeableRecord<WordFields>[],
+  sensesByWord: Map<string, TeableRecord<WordSenseFields>[]>,
+  now: Date = new Date()
+): DueSense[] {
+  const nowTime = now.getTime();
+  return words.map((word) => {
+    const senses = sensesByWord.get(word.id) ?? [];
+    if (!senses.length) {
+      return { word, sense: { id: "", fields: synthesizeLegacySense(word) }, synthetic: true };
+    }
+    const active = senses.filter((sense) => sense.fields.review_state !== "suspended");
+    const candidates = active.length ? active : senses;
+    const due = candidates.filter((sense) => senseDueTime(sense) <= nowTime);
+    const pool = due.length ? due : candidates;
+    const sense = pool.reduce((mostDue, candidate) => (senseDueTime(candidate) < senseDueTime(mostDue) ? candidate : mostDue));
+    return { word, sense, synthetic: false };
+  });
+}

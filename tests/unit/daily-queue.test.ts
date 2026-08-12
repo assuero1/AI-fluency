@@ -202,3 +202,27 @@ describe("selectDifficultWords", () => {
     expect(selectDifficultWords(many)[0].id).toBe("d-34");
   });
 });
+
+describe("daily queue with sense-aggregated word fields", () => {
+  // With per-sense SRS (Fase 2), words.review_due_at is the aggregated minimum
+  // across the word's senses (aggregateSenseReviewToWordFields). The queue keeps
+  // operating on word ids and consumes that cache; the word → most-due-sense
+  // resolution happens at card-build time via resolveDueSenses.
+  it("queues a word by its aggregated min-due cache, oldest first", () => {
+    const queue = computeDailyQueue([
+      word("word-two-senses", { last_reviewed_at: "2026-08-01T13:00:00.000Z", review_due_at: "2026-08-02T09:00:00.000Z" }),
+      word("word-one-sense", { last_reviewed_at: "2026-08-01T13:00:00.000Z", review_due_at: "2026-08-01T09:00:00.000Z" }),
+      word("word-all-future", { last_reviewed_at: "2026-08-01T13:00:00.000Z", review_due_at: "2026-08-10T09:00:00.000Z" })
+    ], { now: NOW, timeZone: "UTC" });
+
+    expect(queue.dueWordIds).toEqual(["word-one-sense", "word-two-senses"]);
+    expect(queue.sessionWordIds).toEqual(["word-one-sense", "word-two-senses"]);
+  });
+
+  it("keeps the daily quota word-level: a reviewed word stays non-new even when a new sense exists", () => {
+    // Fase 2 accepts that a NEW SENSE of an already-reviewed word does not consume
+    // the new-card quota (novelty is tracked via the aggregated last_reviewed_at).
+    expect(isNewWord(word("reviewed-with-new-sense", { last_reviewed_at: "2026-08-01T13:00:00.000Z" }))).toBe(false);
+    expect(isNewWord(word("never-reviewed", {}))).toBe(true);
+  });
+});
