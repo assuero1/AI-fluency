@@ -5,6 +5,9 @@ type TestRecord = { id: string; fields: Record<string, unknown> };
 const createChatCompletion = vi.fn();
 const listRecords = vi.fn();
 const listAllRecords = vi.fn();
+const listRecordsWhere = vi.fn();
+const listRecordsWhereAll = vi.fn();
+const getRecord = vi.fn();
 const createRecord = vi.fn();
 const updateRecord = vi.fn();
 const createEvent = vi.fn();
@@ -12,7 +15,7 @@ const getConversation = vi.fn();
 
 vi.mock("../../lib/ai/client", () => ({ createChatCompletion }));
 vi.mock("../../lib/teable/client", () => ({
-  getTeableClient: () => ({ listRecords, listAllRecords, createRecord, updateRecord, createEvent })
+  getTeableClient: () => ({ listRecords, listAllRecords, listRecordsWhere, listRecordsWhereAll, getRecord, createRecord, updateRecord, createEvent })
 }));
 vi.mock("../../lib/learning/conversations", () => ({ getConversation, startConversation: vi.fn() }));
 vi.mock("../../lib/learning/home", () => ({}));
@@ -59,6 +62,19 @@ describe("endConversation idempotency", () => {
         ? [...conversations]
         : []);
     listAllRecords.mockImplementation(async () => []);
+    const tableRecords = (table: string) =>
+      table === "dailyFeedbacks" ? dailyFeedbacks : table === "conversations" ? conversations : [];
+    listRecordsWhere.mockImplementation(async (table: string, field: string, value: string) =>
+      tableRecords(table).filter((record) => String(record.fields[field] ?? "") === value)
+    );
+    listRecordsWhereAll.mockImplementation(async (table: string, filters: Array<{ field: string; value: string }>) =>
+      tableRecords(table).filter((record) => filters.every(({ field, value }) => String(record.fields[field] ?? "") === value))
+    );
+    getRecord.mockImplementation(async (table: string, id: string) => {
+      const record = tableRecords(table).find((item) => item.id === id);
+      if (!record) throw new Error("not found");
+      return record;
+    });
     createEvent.mockResolvedValue(undefined);
     createRecord.mockImplementation(async (table: string, fields: Record<string, unknown>) => {
       const record = { id: `${table}-${dailyFeedbacks.length + 1}`, fields: { ...fields } };

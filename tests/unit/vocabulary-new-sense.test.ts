@@ -52,6 +52,10 @@ let profile = { id: "profile-1", fields: { language_code: "en" } };
 const words: Array<{ id: string; fields: Record<string, unknown> }> = [];
 const senses: Array<{ id: string; fields: Record<string, unknown> }> = [];
 const usageSummaries: Array<{ id: string; fields: Record<string, unknown> }> = [];
+const users: Array<{ id: string; fields: Record<string, unknown> }> = [];
+const listRecordsWhere = vi.fn();
+const listRecordsWhereAll = vi.fn();
+const getRecord = vi.fn();
 const createRecord = vi.fn();
 const updateRecord = vi.fn();
 const listRecords = vi.fn();
@@ -91,7 +95,15 @@ vi.mock("../../lib/teable/client", () => ({
       this.status = status;
     }
   },
-  getTeableClient: () => ({ listRecords, listAllRecords: listRecords, createRecord, updateRecord })
+  getTeableClient: () => ({
+    listRecords,
+    listAllRecords: listRecords,
+    listRecordsWhere,
+    listRecordsWhereAll,
+    getRecord,
+    createRecord,
+    updateRecord
+  })
 }));
 
 const BANK_WORD = {
@@ -137,6 +149,19 @@ describe("AI analysis sense_status parsing", () => {
           : table === "wordUsageSummaries"
             ? [...usageSummaries]
             : []);
+    const tableRecords = (table: string) =>
+      table === "words" ? words : table === "wordSenses" ? senses : table === "wordUsageSummaries" ? usageSummaries : users;
+    listRecordsWhere.mockImplementation(async (table: string, field: string, value: string) =>
+      tableRecords(table).filter((record) => String(record.fields[field] ?? "") === value)
+    );
+    listRecordsWhereAll.mockImplementation(async (table: string, filters: Array<{ field: string; value: string }>) =>
+      tableRecords(table).filter((record) => filters.every(({ field, value }) => String(record.fields[field] ?? "") === value))
+    );
+    getRecord.mockImplementation(async (table: string, id: string) => {
+      const record = tableRecords(table).find((item) => item.id === id);
+      if (!record) throw new Error("not found");
+      return record;
+    });
     createRecord.mockImplementation(async (table: string, fields: Record<string, unknown>) => {
       const target = table === "words" ? words : table === "wordSenses" ? senses : usageSummaries;
       const record = { id: `${table}-${target.length + 1}`, fields: { ...fields } };
@@ -255,6 +280,19 @@ describe("saveSelectedVocabulary creates word senses", () => {
           : table === "wordUsageSummaries"
             ? [...usageSummaries]
             : []);
+    const tableRecords = (table: string) =>
+      table === "words" ? words : table === "wordSenses" ? senses : table === "wordUsageSummaries" ? usageSummaries : users;
+    listRecordsWhere.mockImplementation(async (table: string, field: string, value: string) =>
+      tableRecords(table).filter((record) => String(record.fields[field] ?? "") === value)
+    );
+    listRecordsWhereAll.mockImplementation(async (table: string, filters: Array<{ field: string; value: string }>) =>
+      tableRecords(table).filter((record) => filters.every(({ field, value }) => String(record.fields[field] ?? "") === value))
+    );
+    getRecord.mockImplementation(async (table: string, id: string) => {
+      const record = tableRecords(table).find((item) => item.id === id);
+      if (!record) throw new Error("not found");
+      return record;
+    });
     createRecord.mockImplementation(async (table: string, fields: Record<string, unknown>) => {
       const target = table === "words" ? words : table === "wordSenses" ? senses : usageSummaries;
       const record = { id: `${table}-${target.length + 1}`, fields: { ...fields } };
