@@ -137,7 +137,8 @@ describe("getWordDetail with senses", () => {
       reviewDueAt: "2026-08-20T09:00:00.000Z",
       reviewStreak: 5,
       lapseCount: 0,
-      needsReview: false
+      needsReview: false,
+      totalUses: 0
     });
     expect(data?.senses[1]).toMatchObject({
       id: "sense-bank",
@@ -169,7 +170,8 @@ describe("getWordDetail with senses", () => {
       reviewDueAt: "2026-08-01T09:00:00.000Z",
       reviewStreak: 3,
       lapseCount: 1,
-      needsReview: true
+      needsReview: true,
+      totalUses: 4
     });
   });
 

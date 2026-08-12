@@ -1,4 +1,4 @@
-import { ArrowRight, Check, Clock, MessageCircle, MessageSquareOff } from "lucide-react";
+import { ArrowRight, BookOpen, Check, Clock, MessageCircle, MessageSquareOff } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { IconBubble } from "@/components/IconBubble";
@@ -7,6 +7,7 @@ import { MetricGrid } from "@/components/MetricGrid";
 import { Pill } from "@/components/Pill";
 import { LearningStateError } from "@/lib/learning/access";
 import { getConversationSummary } from "@/lib/learning/feedback";
+import { formatSavedWordMeta } from "@/lib/learning/vocabulary-picker-ui";
 import { VocabularyPicker } from "@/components/VocabularyPicker";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +60,12 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
       label: "Erros recorrentes",
       icon: Clock,
       tone: "warning" as const
+    },
+    {
+      value: String(data.unusedWordCount),
+      label: "Nunca usadas",
+      icon: BookOpen,
+      tone: "info" as const
     }
   ];
 
@@ -108,7 +115,7 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
               <ListRow
                 key={word.id}
                 title={word.fields.display_text || word.fields.lemma}
-                meta={word.fields.translation || `usada ${word.fields.total_uses} vez(es)`}
+                meta={formatSavedWordMeta(word, data.wordSensesUsage)}
                 Icon={MessageCircle}
                 tone="primary"
               />

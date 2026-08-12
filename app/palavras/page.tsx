@@ -58,7 +58,7 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
         <div className="row-meta">Meta semanal: {data.summary.weeklyNew}/{data.summary.weeklyGoal} novas palavras</div>
       </section>
       <section className="section word-review-states" aria-label="Estados de revisão">
-        <div><strong>{data.summary.toReview}</strong><span>para hoje</span></div><div><strong>{data.summary.newWords}</strong><span>novas</span></div><div><strong>{data.summary.learningWords}</strong><span>aprendendo</span></div><div><strong>{data.summary.reviewWords}</strong><span>consolidadas</span></div><div><strong>{data.summary.strongWords}</strong><span>fortes</span></div>
+        <div><strong>{data.summary.toReview}</strong><span>para hoje</span></div><div><strong>{data.summary.newWords}</strong><span>novas</span></div><div><strong>{data.summary.learningWords}</strong><span>aprendendo</span></div><div><strong>{data.summary.reviewWords}</strong><span>consolidadas</span></div><div><strong>{data.summary.strongWords}</strong><span>fortes</span></div><div><strong>{data.summary.unusedWords}</strong><span>não usadas</span></div>
       </section>
 
       <form className="word-search-form" action="/palavras" role="search">

@@ -61,6 +61,7 @@ export type WordSenseListItem = {
   reviewStreak: number;
   lapseCount: number;
   needsReview: boolean;
+  totalUses: number;
 };
 
 export const wordStrengthLabels: Record<WordStrengthLevel, string> = {
@@ -170,7 +171,8 @@ export async function getWordsData(filter: WordFilter = "all", query = "") {
       learningWords: mapped.filter((word) => word.reviewState === "learning").length,
       reviewWords: mapped.filter((word) => word.reviewState === "review").length,
       difficultWords: mapped.filter((word) => word.reviewState === "difficult").length,
-      strongWords: mapped.filter((word) => word.strengthLevel === "strong").length
+      strongWords: mapped.filter((word) => word.strengthLevel === "strong").length,
+      unusedWords: mapped.filter((word) => word.totalUses === 0).length
     }
   };
 }
@@ -408,7 +410,8 @@ function toWordSenseListItem(sense: TeableRecord<WordSenseFields>, now: number):
     reviewDueAt,
     reviewStreak: Number(sense.fields.review_streak ?? 0),
     lapseCount: Number(sense.fields.lapse_count ?? 0),
-    needsReview: reviewState !== "suspended" && isPastOrToday(reviewDueAt, now)
+    needsReview: reviewState !== "suspended" && isPastOrToday(reviewDueAt, now),
+    totalUses: Number(sense.fields.total_uses ?? 0)
   };
 }
 
@@ -424,7 +427,8 @@ function legacyWordSenseListItem(word: WordListItem): WordSenseListItem {
     reviewDueAt: word.reviewDueAt,
     reviewStreak: word.reviewStreak,
     lapseCount: word.lapseCount,
-    needsReview: word.needsReview
+    needsReview: word.needsReview,
+    totalUses: word.totalUses
   };
 }
 

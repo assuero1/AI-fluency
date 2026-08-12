@@ -20,6 +20,7 @@ import {
 import { matchesLearningScope } from "./scope";
 import { createTopic } from "./topics";
 import { normalizeStoredInteractionMode } from "./chat-contracts";
+import { listSensesByWordIds } from "./word-senses";
 import type { PracticeSessionFields } from "./flashcards";
 
 type ConversationSummary = {
@@ -192,7 +193,7 @@ export async function getConversationSummary(conversationId: string) {
   const cached = completionCache.get(conversationId);
   if (cached) {
     completionCache.delete(conversationId);
-    if (cached.expiresAt > Date.now()) return cached.value;
+    if (cached.expiresAt > Date.now()) return withVocabularyUsageStats(cached.value);
   }
   const context = await getConversation(conversationId);
   if (!context) throw new LearningStateError("Conversa não encontrada.", 404);
@@ -244,7 +245,7 @@ export async function getConversationSummary(conversationId: string) {
     })
   );
 
-  return {
+  return withVocabularyUsageStats({
     ...context,
     dailyFeedback: dailyFeedback!,
     words: conversationWords,
@@ -252,6 +253,27 @@ export async function getConversationSummary(conversationId: string) {
       userId: context.conversation.fields.user_id,
       profileId: context.conversation.fields.language_profile_id
     }))
+  });
+}
+
+/**
+ * Acrescenta usos por sentido das palavras da conversa e o contador de
+ * palavras do banco nunca usadas. Roda sobre o resumo fresco e sobre o valor
+ * do completionCache (que não carrega esses campos).
+ */
+async function withVocabularyUsageStats<T extends { words: TeableRecord<WordFields>[]; vocabularyWords: TeableRecord<WordFields>[] }>(summary: T) {
+  const sensesByWord = await listSensesByWordIds(summary.words.map((word) => word.id));
+  return {
+    ...summary,
+    wordSensesUsage: summary.words.flatMap((word) =>
+      (sensesByWord.get(word.id) ?? []).map((sense) => ({
+        wordId: word.id,
+        translation: sense.fields.translation ?? "",
+        isPrimary: sense.fields.is_primary === true,
+        totalUses: Number(sense.fields.total_uses ?? 0)
+      }))
+    ),
+    unusedWordCount: summary.vocabularyWords.filter((word) => Number(word.fields.total_uses ?? 0) === 0).length
   };
 }
 

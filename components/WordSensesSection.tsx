@@ -33,7 +33,7 @@ export function WordSensesSection({ wordId, senses }: WordSensesSectionProps) {
               <Pill tone={sense.needsReview ? "warning" : "default"}>{sense.needsReview ? "Revisar agora" : reviewStateLabels[sense.reviewState]}</Pill>
               {sense.partOfSpeech ? <Pill>{sense.partOfSpeech}</Pill> : null}
             </div>
-            <p className="row-meta">{sense.reviewStreak} {sense.reviewStreak === 1 ? "acerto seguido" : "acertos seguidos"} · {sense.lapseCount} {sense.lapseCount === 1 ? "lapso" : "lapsos"}</p>
+            <p className="row-meta">{sense.totalUses} {sense.totalUses === 1 ? "uso" : "usos"} · {sense.reviewStreak} {sense.reviewStreak === 1 ? "acerto seguido" : "acertos seguidos"} · {sense.lapseCount} {sense.lapseCount === 1 ? "lapso" : "lapsos"}</p>
             {sense.exampleSentence ? <p className="row-meta">“{sense.exampleSentence}”</p> : null}
           </li>
         ))}
