@@ -1,5 +1,6 @@
 import { createSupabaseTeableClient } from "@/lib/supabase/client";
 import { resolveDataBackend } from "@/lib/supabase/config";
+import { getRequestSupabaseClient } from "@/lib/supabase/server";
 import { getTeableConfig } from "./config";
 import { getSchemaTable, TeableTableKey } from "./schema";
 import { TeableConfigError, TeableRequestError } from "./types";
@@ -307,10 +308,8 @@ function safeHealthPath(path: string) {
 
 export function getTeableClient(): TeableClient {
   if (resolveDataBackend() === "supabase") {
-    // SupabaseTeableClient implementa a mesma interface pública; o cast evita
-    // tocar nos ~15 consumidores que anotam o tipo TeableClient (classe com
-    // membros privados não é estruturalmente assignável).
-    return createSupabaseTeableClient() as unknown as TeableClient;
+    // Client autenticado pelo cookie da request: o Postgres aplica RLS.
+    return createSupabaseTeableClient(getRequestSupabaseClient()) as unknown as TeableClient;
   }
   return new TeableClient();
 }

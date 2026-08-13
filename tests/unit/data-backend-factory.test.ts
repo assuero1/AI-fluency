@@ -3,6 +3,12 @@ import { getTeableClient } from "@/lib/teable/client";
 import { SupabaseTeableClient } from "@/lib/supabase/client";
 import { TeableClient } from "@/lib/teable/client";
 
+// O adapter resolve o client autenticado lazy a partir dos cookies da request;
+// fora de uma request (teste unitário), injetamos um fake.
+vi.mock("@/lib/supabase/server", () => ({
+  getRequestSupabaseClient: vi.fn(async () => ({ from: vi.fn() }))
+}));
+
 describe("getTeableClient factory", () => {
   afterEach(() => {
     vi.unstubAllEnvs();
