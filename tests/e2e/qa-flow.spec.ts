@@ -566,7 +566,7 @@ test("voice playback supports pause, resume, replay, and one active audio", asyn
 
   await page.goto(`/chat?conversationId=${fixtureConversationId()}`);
   const playButtons = page.getByRole("button", { name: "Ouvir mensagem" });
-  expect(await playButtons.count()).toBeGreaterThan(0);
+  await expect(playButtons.first()).toBeVisible();
   await playButtons.first().click();
   const retry = page.getByRole("button", { name: "Voz indisponível. Tentar novamente" }).first();
   await expect(retry).toBeVisible();
@@ -615,7 +615,7 @@ test("voice playback replays an ended message", async ({ page }) => {
 
   await page.goto(`/chat?conversationId=${fixtureConversationId()}`);
   const playButtons = page.getByRole("button", { name: "Ouvir mensagem" });
-  expect(await playButtons.count()).toBeGreaterThan(0);
+  await expect(playButtons.first()).toBeVisible();
   await playButtons.first().click();
   await expect(page.getByRole("button", { name: "Pausar áudio" }).first()).toBeVisible();
   await page.evaluate(() => {
