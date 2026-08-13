@@ -319,7 +319,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
       configuration_json: JSON.stringify({ distribution: deck.planned, deckSeed, adapted: deck.adapted }),
       updated_at: new Date().toISOString()
     });
-    await client.createEvent(user.id, "flashcard_generation_completed", { session_id: session.id, card_count: cards.length, duration_ms: Date.now() - operationStartedAt, fallback_used: deck.adapted });
+    await client.createEvent(user.id, "flashcard_generation_completed", { session_id: session.id, card_count: cards.length, duration_ms: Date.now() - operationStartedAt, fallback_used: deck.adapted, rejection_reasons: deck.rejectionReasons, fallbacks_by_type: deck.fallbacksByType });
   } catch (error) {
     await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, { status: "failed", updated_at: new Date().toISOString() }).catch(() => undefined);
     await client.createEvent(user.id, "flashcard_generation_failed", { session_id: session.id, duration_ms: Date.now() - operationStartedAt, error_type: safeErrorType(error) }).catch(() => undefined);
@@ -827,10 +827,14 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
 
 export async function buildDeck(words: TeableRecord<WordFields>[], language: string, level: string, seed: string, desiredTypes: FlashcardType[], sensesByWord?: Map<string, TeableRecord<WordSenseFields>[]>) {
   const planned = countPlannedTypes(desiredTypes);
-  const phrases = await generatePhrases(words, language, level);
+  const generation = await generatePhrases(words, language, level);
   const resolved = resolveDueSenses(words, sensesByWord ?? new Map());
-  const cards = resolved.map(({ word, sense }, index) => buildActiveRecallCard(word, sense, desiredTypes[index] ?? "target_to_native", phrases.get(word.id), index, sensesByWord?.get(word.id) ?? []));
-  return { cards: seededShuffle(cards, seed), planned, adapted: cards.filter((card) => card.type === "cloze").length < planned.cloze };
+  const cards = resolved.map(({ word, sense }, index) => buildActiveRecallCard(word, sense, desiredTypes[index] ?? "target_to_native", generation.phrases.get(word.id), index, sensesByWord?.get(word.id) ?? []));
+  const fallbacksByType: Record<string, number> = {};
+  for (const card of cards) {
+    if (card.generationSource === "fallback") fallbacksByType[card.type] = (fallbacksByType[card.type] ?? 0) + 1;
+  }
+  return { cards: seededShuffle(cards, seed), planned, adapted: cards.some((card) => card.generationSource === "fallback"), rejectionReasons: generation.rejectionReasons, fallbacksByType };
 }
 
 type GeneratedPhrase = { text: string; translation: string; supportingWordIds: string[] };
@@ -838,40 +842,51 @@ type GeneratedPhraseInput = { text?: unknown; translation?: unknown; word_ids?: 
 
 export function validateGeneratedPhrases(items: GeneratedPhraseInput[], words: TeableRecord<WordFields>[]) {
   const generatedByWord = new Map<string, GeneratedPhrase>();
+  const rejectionReasons: Record<string, number> = {};
+  const reject = (reason: string) => { rejectionReasons[reason] = (rejectionReasons[reason] ?? 0) + 1; };
   const knownIds = new Set(words.map((word) => word.id));
   const vocabularyTokens = new Set(words.flatMap((word) => [word.fields.display_text, word.fields.lemma].filter(Boolean).flatMap((value) => lexicalTokens(value))));
   const seenSentences = new Set<string>();
   for (const item of items) {
-    if (typeof item.text !== "string" || typeof item.translation !== "string" || !item.translation.trim()) continue;
+    if (typeof item.text !== "string" || typeof item.translation !== "string" || !item.translation.trim()) { reject("invalid_shape"); continue; }
     const text = item.text.trim();
-    if (countLexicalWords(text) > 5 || /```|https?:\/\/|\b(?:json|id|translation|word_ids)\b/iu.test(text)) continue;
+    if (countLexicalWords(text) > 5) { reject("too_many_words"); continue; }
+    if (/```|https?:\/\/|\b(?:json|id|translation|word_ids)\b/iu.test(text)) { reject("technical_tokens"); continue; }
     const unknownLexicalWords = lexicalTokens(text).filter((token) => !vocabularyTokens.has(token) && !allowedFunctionWords.has(token));
-    if (new Set(unknownLexicalWords).size > 1) continue;
+    if (new Set(unknownLexicalWords).size > 1) { reject("unknown_words"); continue; }
     const normalizedSentence = text.toLocaleLowerCase();
-    if (seenSentences.has(normalizedSentence)) continue;
+    if (seenSentences.has(normalizedSentence)) { reject("duplicate"); continue; }
     const ids = Array.isArray(item.word_ids) ? item.word_ids.filter((id): id is string => typeof id === "string" && knownIds.has(id)) : [];
-    if (!ids.length || ids.length > 2) continue;
+    if (!ids.length || ids.length > 2) { reject("bad_word_ids"); continue; }
     const target = words.find((candidate) => candidate.id === ids[0]);
-    if (!target || targetOccurrenceCount(text, targetText(target)) !== 1 || generatedByWord.has(target.id)) continue;
+    if (!target || targetOccurrenceCount(text, targetText(target)) !== 1) { reject("target_occurrences"); continue; }
+    if (generatedByWord.has(target.id)) { reject("already_has_phrase"); continue; }
     generatedByWord.set(target.id, { text, translation: item.translation.trim(), supportingWordIds: ids.filter((id) => id !== target.id) });
     seenSentences.add(normalizedSentence);
   }
-  return generatedByWord;
+  return { phrases: generatedByWord, rejectionReasons };
 }
 
-async function generatePhrases(words: TeableRecord<WordFields>[], language: string, level: string): Promise<Map<string, GeneratedPhrase>> {
-  if (!words.length) return new Map();
+async function generatePhrases(words: TeableRecord<WordFields>[], language: string, level: string): Promise<{ phrases: Map<string, GeneratedPhrase>; rejectionReasons: Record<string, number> }> {
+  if (!words.length) return { phrases: new Map(), rejectionReasons: {} };
   const vocabulary = words.map((word) => ({ id: word.id, word: word.fields.display_text || word.fields.lemma, translation: word.fields.translation }));
-  try {
-    const ai = await withTimeout(createChatCompletion([
-      { role: "system", content: "Crie flashcards de frases naturais no idioma alvo e adequadas ao nível informado. Cada frase deve ter no máximo 5 palavras, uma única palavra-alvo e resposta não ambígua. Priorize exclusivamente o vocabulário fornecido; permita no máximo uma palavra lexical nova e use artigos, preposições, pronomes ou auxiliares extras quando indispensável. Em word_ids, coloque primeiro o ID da palavra-alvo e opcionalmente um único ID de apoio. Responda somente JSON válido no formato {\"phrases\":[{\"text\":\"...\",\"translation\":\"...\",\"word_ids\":[\"target-id\",\"optional-support-id\"]}]} e escreva translation em português brasileiro." },
-      { role: "user", content: `Idioma: ${language}\nNível: ${level}\nCrie ${words.length} frases. Cada frase deve usar uma palavra principal diferente desta lista: ${JSON.stringify(vocabulary)}\nVocabulário disponível: ${JSON.stringify(vocabulary)}` }
-    ], { temperature: 0.45, maxTokens: 1200 }), 8_000);
-    const match = ai.content.match(/\{[\s\S]*\}/);
-    const parsed = JSON.parse(match?.[0] ?? "{}") as { phrases?: GeneratedPhraseInput[] };
-    return validateGeneratedPhrases(parsed.phrases ?? [], words);
-  } catch { /* deterministic word cards remain available */ }
-  return new Map();
+  const request = () => withTimeout(createChatCompletion([
+    { role: "system", content: "Crie flashcards de frases naturais no idioma alvo e adequadas ao nível informado. Cada frase deve ter no máximo 5 palavras, usar a palavra-alvo exatamente como fornecida, uma única vez, sem flexionar ou conjugar, e resposta não ambígua. Use somente palavras muito comuns do idioma; permita no máximo uma palavra lexical nova e use artigos, preposições, pronomes ou auxiliares extras quando indispensável. Em word_ids, coloque primeiro o ID da palavra-alvo e opcionalmente um único ID de apoio. Responda somente JSON válido no formato {\"phrases\":[{\"text\":\"...\",\"translation\":\"...\",\"word_ids\":[\"target-id\",\"optional-support-id\"]}]} e escreva translation em português brasileiro." },
+    { role: "user", content: `Idioma: ${language}\nNível: ${level}\nCrie ${words.length} frases. Cada frase deve usar uma palavra principal diferente desta lista: ${JSON.stringify(vocabulary)}\nVocabulário disponível: ${JSON.stringify(vocabulary)}` }
+  ], { temperature: 0.45, maxTokens: 1200 }), 8_000);
+  let rejectionReasons: Record<string, number> = {};
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 600));
+    try {
+      const ai = await request();
+      const match = ai.content.match(/\{[\s\S]*\}/);
+      const parsed = JSON.parse(match?.[0] ?? "{}") as { phrases?: GeneratedPhraseInput[] };
+      const validated = validateGeneratedPhrases(parsed.phrases ?? [], words);
+      rejectionReasons = validated.rejectionReasons;
+      if (validated.phrases.size > 0) return validated;
+    } catch { /* timeout/JSON inválido: tenta uma vez mais e depois cai no fallback determinístico */ }
+  }
+  return { phrases: new Map(), rejectionReasons };
 }
 
 function buildActiveRecallCard(word: TeableRecord<WordFields>, sense: TeableRecord<WordSenseFields>, desiredType: "target_to_native" | "native_to_target" | "cloze" | "listening", phrase: GeneratedPhrase | undefined, index: number, wordSenses: TeableRecord<WordSenseFields>[] = []): Flashcard {

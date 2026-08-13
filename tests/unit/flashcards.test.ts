@@ -120,7 +120,7 @@ describe("current flashcard behavior", () => {
 
   it("keeps valid phrases and discards invalid items independently", () => {
     const words = [word("word-a", { display_text: "fui" }), word("word-b", { display_text: "mercado" })];
-    const phrases = validateGeneratedPhrases([
+    const { phrases, rejectionReasons } = validateGeneratedPhrases([
       { text: "Ayer fui al mercado.", translation: "Ontem fui ao mercado.", word_ids: ["word-a", "word-b"] },
       { text: "fui fui ayer", translation: "repetida", word_ids: ["word-a"] },
       { text: "```json fui```", translation: "técnica", word_ids: ["word-a"] },
@@ -128,6 +128,7 @@ describe("current flashcard behavior", () => {
     ], words);
     expect([...phrases.keys()]).toEqual(["word-a"]);
     expect(phrases.get("word-a")?.supportingWordIds).toEqual(["word-b"]);
+    expect(rejectionReasons).toEqual({ target_occurrences: 1, technical_tokens: 1, unknown_words: 1 });
   });
 });
 
@@ -179,6 +180,16 @@ describe("buildDeck with mixed types", () => {
     ], "Espanhol", "Intermediário (B1)", "seed-2", ["cloze"]);
     expect(["native_to_target", "target_to_native"]).toContain(deck.cards[0].type);
     expect(deck.adapted).toBe(true);
+  }, 15_000);
+
+  it("marks the deck as adapted when a non-cloze type falls back", async () => {
+    const deck = await buildDeck([
+      word("casa", { display_text: "casa", translation: "", review_state: "review" })
+    ], "Espanhol", "Intermediário (B1)", "seed-3", ["native_to_target"]);
+    expect(deck.cards[0].type).toBe("target_to_native");
+    expect(deck.cards[0].generationSource).toBe("fallback");
+    expect(deck.adapted).toBe(true);
+    expect(deck.fallbacksByType).toEqual({ target_to_native: 1 });
   }, 15_000);
 });
 
