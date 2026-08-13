@@ -1,4 +1,5 @@
 import { AppShell } from "@/components/AppShell";
+import { LogoutButton } from "@/components/LogoutButton";
 import { ProfilePreferences } from "@/components/ProfilePreferences";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { getProfileSettings } from "@/lib/learning/account";
@@ -13,6 +14,9 @@ export default async function ProfilePage() {
     <AppShell activeNav="perfil" section="neutral">
       <ScreenHeader title="Perfil" subtitle="Preferências da sua IA" />
       <ProfilePreferences initial={profile} streak={progress.streak} />
+      <div className="px-4 pb-6">
+        <LogoutButton />
+      </div>
     </AppShell>
   );
 }
