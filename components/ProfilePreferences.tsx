@@ -5,7 +5,9 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { IconBubble } from "./IconBubble";
+import { LevelPills } from "./LevelPills";
 import { ModalDialog } from "./ModalDialog";
+import { DEFAULT_LANGUAGE_LEVEL } from "@/lib/learning/levels";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 
 type ProfilePreferencesProps = {
@@ -41,6 +43,7 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
   const [name, setName] = useState(initial.user.name);
   const [activeLanguageId, setActiveLanguageId] = useState(initial.user.activeLanguageId);
   const [preferences, setPreferences] = useState({
+    level: initial.activeProfile?.level ?? DEFAULT_LANGUAGE_LEVEL,
     correctionStyle: initial.activeProfile?.correctionStyle ?? "Corrigir sempre",
     audioEnabled: initial.activeProfile?.audioEnabled ?? true,
     transcriptEnabled: initial.activeProfile?.transcriptEnabled ?? true,
@@ -157,6 +160,13 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
           Salvar perfil
         </button>
       </form>
+
+      {initial.activeProfile ? (
+        <section className="section">
+          <h2 className="section-title">Qual seu nível?</h2>
+          <LevelPills level={preferences.level} onChange={(option) => savePreference({ level: option })} />
+        </section>
+      ) : null}
 
       <section className="section">
         <h2 className="section-title">Como a IA deve te corrigir?</h2>

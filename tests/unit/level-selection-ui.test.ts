@@ -25,4 +25,11 @@ describe("language level selection UI contracts", () => {
     const page = read("app/onboarding/page.tsx");
     expect(page).toContain("profileLevels={profileLevels}");
   });
+
+  it("lets the active profile level be edited from profile preferences", () => {
+    const prefs = read("components/ProfilePreferences.tsx");
+    expect(prefs).toContain("LevelPills");
+    expect(prefs).toContain("savePreference({ level:");
+    expect(prefs).toContain("Qual seu nível?");
+  });
 });
