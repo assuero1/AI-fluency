@@ -1,5 +1,5 @@
 import { cache } from "react";
-import { getConnectionStatus } from "@/lib/settings/status";
+import { getConnectionStatus, isDataBackendReady } from "@/lib/settings/status";
 import { getEnv } from "@/lib/env";
 import { getTeableClient, safeUpdateRecord, TeableRecord } from "@/lib/teable/client";
 import { normalizeNewCardsQuota } from "./daily-queue";
@@ -161,7 +161,7 @@ export async function createOrActivateLanguageProfile(user: TeableRecord<UserFie
 
 export async function getOnboardingRedirectTarget() {
   const status = await getConnectionStatus();
-  const teableReady = status.teable.configured && status.teable.mappedTableCount === status.teable.totalTableCount;
+  const teableReady = isDataBackendReady(status);
   const aiReady = status.ai.configured;
 
   return {

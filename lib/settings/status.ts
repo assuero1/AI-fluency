@@ -12,3 +12,8 @@ export async function getConnectionStatus() {
     kokoro: getKokoroStatus()
   };
 }
+
+export function isDataBackendReady(status: Awaited<ReturnType<typeof getConnectionStatus>>) {
+  if (status.backend === "supabase") return status.supabase.configured;
+  return status.teable.configured && status.teable.mappedTableCount === status.teable.totalTableCount;
+}

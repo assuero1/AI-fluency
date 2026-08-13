@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TeableConfigError } from "@/lib/teable/types";
+import { TeableConfigError, TeableRequestError } from "@/lib/teable/types";
 
 type BuilderResult = { data: unknown; error: unknown };
 
@@ -121,6 +121,23 @@ describe("SupabaseTeableClient", () => {
     mocks.from.mockReturnValue(makeBuilder({ data: null, error: { message: "permission denied" } }));
     const client = createSupabaseTeableClient();
     await expect(client.listRecords("users")).rejects.toThrow(/permission denied/);
+  });
+
+  it("maps unique-violation errors (23505) to status 409", async () => {
+    mocks.from.mockReturnValue(makeBuilder({ data: null, error: { code: "23505", message: "duplicate key" } }));
+    const client = createSupabaseTeableClient();
+    const error = await client.createRecord("wordSenses", { sense_key: "word::sense" }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(TeableRequestError);
+    expect((error as TeableRequestError).status).toBe(409);
+    expect((error as TeableRequestError).message).toMatch(/duplicate key/);
+  });
+
+  it("maps no-rows errors (PGRST116) to status 404", async () => {
+    mocks.from.mockReturnValue(makeBuilder({ data: null, error: { code: "PGRST116", message: "JSON object requested, multiple (or no) rows returned" } }));
+    const client = createSupabaseTeableClient();
+    const error = await client.updateRecord("users", "00000000-0000-0000-0000-000000000000", { name: "x" }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(TeableRequestError);
+    expect((error as TeableRequestError).status).toBe(404);
   });
 
   it("disables postgrest-js internal retries so the adapter's single retry is exact", () => {

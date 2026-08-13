@@ -1,6 +1,6 @@
 import "server-only";
 
-import { getConnectionStatus } from "@/lib/settings/status";
+import { getConnectionStatus, isDataBackendReady } from "@/lib/settings/status";
 import { getTeableClient, TeableClient, TeableRecord } from "@/lib/teable/client";
 import {
   getActiveLanguageProfile,
@@ -22,13 +22,9 @@ type ReadyLearningAccess = {
   profile: TeableRecord<LanguageProfileFields>;
 };
 
-function hasMappedTeableSchema(status: Awaited<ReturnType<typeof getConnectionStatus>>) {
-  return status.teable.configured && status.teable.mappedTableCount === status.teable.totalTableCount;
-}
-
 export async function getLearningGate() {
   const status = await getConnectionStatus();
-  const teableReady = hasMappedTeableSchema(status);
+  const teableReady = isDataBackendReady(status);
 
   if (!teableReady) {
     return { gate: "connections" as const, status, user: null, profile: null };
@@ -45,7 +41,7 @@ export async function assertPracticeReady(): Promise<ReadyLearningAccess> {
   const gate = await getLearningGate();
 
   if (gate.gate === "connections") {
-    throw new LearningStateError("Configure o Teable e a IA antes de iniciar uma conversa.");
+    throw new LearningStateError("Configure o banco de dados e a IA nas configurações.");
   }
   if (!gate.user || !gate.profile) {
     throw new LearningStateError("Conclua o onboarding e escolha um idioma antes de iniciar uma conversa.");

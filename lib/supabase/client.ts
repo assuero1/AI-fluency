@@ -85,16 +85,19 @@ export class SupabaseTeableClient {
     return row;
   }
 
-  private unwrap<T>(result: { data: T | null; error: { message?: string } | null }, context: string): T {
+  private unwrap<T>(result: { data: T | null; error: { message?: string; code?: string } | null }, context: string): T {
     if (result.error) {
-      throw new TeableRequestError(`Supabase ${context} failed: ${result.error.message ?? "unknown error"}`, 502, result.error);
+      // Map PostgREST/Postgres error codes so idempotent-create recovery paths
+      // (which branch on 409/404) keep working against the Supabase backend.
+      const status = result.error.code === "23505" ? 409 : result.error.code === "PGRST116" ? 404 : 502;
+      throw new TeableRequestError(`Supabase ${context} failed: ${result.error.message ?? "unknown error"}`, status, result.error);
     }
     return result.data as T;
   }
 
   // Idempotent reads get one retry on transient network/timeout failures,
   // mirroring TeableClient. Writes are never retried.
-  private async read<T>(context: string, run: () => PromiseLike<{ data: T | null; error: { message?: string } | null }>): Promise<T> {
+  private async read<T>(context: string, run: () => PromiseLike<{ data: T | null; error: { message?: string; code?: string } | null }>): Promise<T> {
     let result = await run();
     if (result.error && TRANSIENT_ERROR.test(result.error.message ?? "")) {
       result = await run();

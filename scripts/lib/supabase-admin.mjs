@@ -42,6 +42,21 @@ export async function dbList(env, envNameOrKey, { limit = 1000 } = {}) {
   return data.map((row) => ({ id: row.id, fields: Object.fromEntries(Object.entries(row).filter(([k]) => k !== "id" && k !== "legacy_id")) }));
 }
 
+export async function dbListAll(env, envNameOrKey, { pageSize = 1000 } = {}) {
+  const meta = metaFor(envNameOrKey);
+  const records = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await getSupabaseAdmin(env)
+      .from(meta.tableName)
+      .select("*")
+      .order("id")
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(`dbListAll ${meta.tableName}: ${error.message}`);
+    records.push(...data.map((row) => ({ id: row.id, fields: Object.fromEntries(Object.entries(row).filter(([k]) => k !== "id" && k !== "legacy_id")) })));
+    if (data.length < pageSize) return records;
+  }
+}
+
 export async function dbInsert(env, envNameOrKey, fields) {
   const meta = metaFor(envNameOrKey);
   const { data, error } = await getSupabaseAdmin(env).from(meta.tableName).insert(fields).select("*").single();
