@@ -3,6 +3,7 @@ import { getConnectionStatus, isDataBackendReady } from "@/lib/settings/status";
 import { getEnv } from "@/lib/env";
 import { getTeableClient, safeUpdateRecord, TeableRecord } from "@/lib/teable/client";
 import { normalizeNewCardsQuota } from "./daily-queue";
+import { DEFAULT_LANGUAGE_LEVEL, isLanguageLevel } from "./levels";
 
 export type UserFields = {
   Name?: string;
@@ -116,7 +117,7 @@ export async function createLanguageProfile(user: TeableRecord<UserFields>, payl
     user_id: user.id,
     language_code: payload.language_code ?? "en",
     language_name: payload.language_name ?? "Inglês",
-    level: payload.level ?? "Intermediário (B1)",
+    level: payload.level ?? DEFAULT_LANGUAGE_LEVEL,
     learning_goal: payload.learning_goal ?? "Falar com mais naturalidade em situações reais.",
     correction_style: payload.correction_style ?? "Corrigir sempre",
     audio_enabled: payload.audio_enabled ?? true,
@@ -149,14 +150,28 @@ export async function createOrActivateLanguageProfile(user: TeableRecord<UserFie
 
   if (!existingProfile) return createLanguageProfile(user, payload);
 
+  let activeProfile = existingProfile;
+  const nextLevel = isLanguageLevel(payload.level) ? payload.level : null;
+  if (nextLevel && nextLevel !== existingProfile.fields.level) {
+    activeProfile = await client.updateRecord<LanguageProfileFields>("languageProfiles", existingProfile.id, {
+      level: nextLevel,
+      updated_at: new Date().toISOString()
+    });
+    await client.createEvent(user.id, "language_level_updated", {
+      language_code: existingProfile.fields.language_code,
+      previous_level: existingProfile.fields.level,
+      level: nextLevel
+    });
+  }
+
   await safeUpdateRecord<UserFields>("users", user.id, { active_language_id: existingProfile.id });
   await client.createEvent(user.id, "language_profile_activated", {
-    language_code: existingProfile.fields.language_code,
-    language_name: existingProfile.fields.language_name,
-    level: existingProfile.fields.level
+    language_code: activeProfile.fields.language_code,
+    language_name: activeProfile.fields.language_name,
+    level: activeProfile.fields.level
   });
 
-  return existingProfile;
+  return activeProfile;
 }
 
 export async function getOnboardingRedirectTarget() {
