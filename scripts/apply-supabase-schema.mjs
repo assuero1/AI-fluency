@@ -14,7 +14,7 @@ const env = readEnv(envPath);
 const supabaseUrl = required(env, "SUPABASE_URL").replace(/\/+$/, "");
 const serviceKey = required(env, "SUPABASE_SERVICE_ROLE_KEY");
 
-const sqlPath = path.resolve("supabase/migrations/0001_initial_schema.sql");
+const sqlPath = path.resolve(option("--file") ?? "supabase/migrations/0001_initial_schema.sql");
 const sql = fs.readFileSync(sqlPath, "utf8");
 
 async function checkTables() {
