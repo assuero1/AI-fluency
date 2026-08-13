@@ -52,9 +52,9 @@ export function FlashcardTrainer() {
   const [error, setError] = useState("");
   const [dailyQueue, setDailyQueue] = useState<DailyQueueSummary | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
-  const [quotaSaving, setQuotaSaving] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<Recognition | null>(null);
+  const quotaSyncRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => {
     const speechWindow = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
@@ -100,16 +100,19 @@ export function FlashcardTrainer() {
     finally { setBusy(false); }
   }
 
-  async function changeQuota(delta: number) {
-    if (!dailyQueue || quotaSaving) return;
+  function changeQuota(delta: number) {
+    if (!dailyQueue) return;
     const next = Math.max(0, Math.min(50, dailyQueue.quota + delta));
     if (next === dailyQueue.quota) return;
-    setQuotaSaving(true);
-    try {
-      const response = await fetch("/api/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dailyNewCardsQuota: next }) });
-      if (response.ok) await loadOverview();
-    } catch { /* mantém a quota anterior na tela */ }
-    finally { setQuotaSaving(false); }
+    // Otimista: o número muda na hora; o PATCH vai em background, serializado
+    // para que cliques rápidos terminem sempre no último valor escolhido.
+    setDailyQueue({ ...dailyQueue, quota: next });
+    quotaSyncRef.current = quotaSyncRef.current.then(async () => {
+      try {
+        const response = await fetch("/api/profile", { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dailyNewCardsQuota: next }) });
+        if (!response.ok) throw new Error("quota save failed");
+      } catch { await loadOverview(); /* falhou: ressincroniza com o valor persistido */ }
+    });
   }
 
   async function submitAttempt(event?: FormEvent, forgot = false) {
@@ -313,11 +316,12 @@ export function FlashcardTrainer() {
       <div className="top-row row-meta">
         <span>Novas por dia</span>
         <span>
-          <button aria-label="Diminuir novas por dia" className="outline-button" disabled={quotaSaving || dailyQueue.quota <= 0} onClick={() => void changeQuota(-1)} type="button">−</button>
+          <button aria-label="Diminuir novas por dia" className="outline-button" disabled={dailyQueue.quota <= 0} onClick={() => changeQuota(-1)} type="button">−</button>
           <strong> {dailyQueue.quota} </strong>
-          <button aria-label="Aumentar novas por dia" className="outline-button" disabled={quotaSaving || dailyQueue.quota >= 50} onClick={() => void changeQuota(1)} type="button">+</button>
+          <button aria-label="Aumentar novas por dia" className="outline-button" disabled={dailyQueue.quota >= 50} onClick={() => changeQuota(1)} type="button">+</button>
         </span>
       </div>
+      <p className="row-meta">Quantas palavras inéditas entram na sua fila de revisão de cada dia.</p>
     </section> : null}
     {dailyQueue && dailyQueue.difficultCount > 0 ? <button className="outline-button full-button" disabled={busy} onClick={() => void start("difficult")} type="button">Só difíceis ({dailyQueue.difficultCount})</button> : null}
     <button className="outline-button full-button" onClick={() => setCustomOpen((open) => !open)} type="button">Sessão custom</button>
