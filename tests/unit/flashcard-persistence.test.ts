@@ -161,6 +161,30 @@ describe("flashcard attempt persistence and resume", () => {
     expect(result.rating).toBe("forgot");
   });
 
+  it("maps 'Difícil' to hard without a lapse for a correct answer", async () => {
+    listRecords.mockImplementation(async (table: string) => {
+      if (table === "practiceSessions") return [session];
+      if (table === "flashcards") return [cardRecord];
+      if (table === "flashcardAttempts") return attempts;
+      return [];
+    });
+    const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    const result = await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "dif-0001", cardId: cardRecord.id, presentationNumber: 1, userAnswer: "hola", difficulty: "hard", forgot: false, responseTimeMs: 2400 });
+    expect(result.rating).toBe("hard");
+  });
+
+  it("maps 'Fácil' to the latency-inferred rating for a correct answer", async () => {
+    const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    const result = await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "dif-0002", cardId: cardRecord.id, presentationNumber: 1, userAnswer: "hola", difficulty: "easy", forgot: false, responseTimeMs: 1200 });
+    expect(result.rating).toBe("easy");
+  });
+
+  it("auto-resolves a wrong typed answer to forgot when no difficulty is sent", async () => {
+    const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
+    const result = await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "dif-0003", cardId: cardRecord.id, presentationNumber: 1, userAnswer: "olla", forgot: false, responseTimeMs: 2400 });
+    expect(result.rating).toBe("forgot");
+  });
+
   it("stores a review snapshot of the affected words when applying the incremental review", async () => {
     listRecords.mockImplementation(async (table: string) => {
       if (table === "practiceSessions") return [session];
@@ -176,7 +200,7 @@ describe("flashcard attempt persistence and resume", () => {
     expect(snapshot["word-a"]).toMatchObject({ familiarity_score: 4, review_ease: 2.5 });
   });
 
-  it("previews exact intervals for both binary choices without persisting", async () => {
+  it("previews exact intervals for the difficulty buttons without persisting", async () => {
     listRecords.mockImplementation(async (table: string) => {
       if (table === "practiceSessions") return [session];
       if (table === "flashcards") return [cardRecord];
@@ -187,9 +211,9 @@ describe("flashcard attempt persistence and resume", () => {
     const { previewFlashcardAttemptIntervals } = await import("../../lib/learning/flashcards");
     const preview = await previewFlashcardAttemptIntervals({ sessionId: session.id, cardId: cardRecord.id, presentationNumber: 1, userAnswer: "hola", responseTimeMs: 1200 });
     expect(preview.match).toBe("exact");
-    expect(preview.inferredRating).toBe("easy");
     expect(preview.forgotDays).toBe(1);
-    expect(preview.rememberedDays).toBeGreaterThan(preview.forgotDays);
+    expect(preview.easyDays).toBeGreaterThan(preview.forgotDays);
+    expect(typeof preview.hardDays).toBe("number");
     expect(createRecord).not.toHaveBeenCalled();
     expect(updateRecord).not.toHaveBeenCalled();
   });
@@ -453,7 +477,7 @@ describe("sense-aware review persistence", () => {
     expect(preview.forgotDays).toBe(1);
     // The word-level cache has no SRS fields (a new-card schedule would hint a
     // few days); a long graduated interval can only come from the sense's row.
-    expect(preview.rememberedDays).toBeGreaterThanOrEqual(40);
+    expect(preview.easyDays).toBeGreaterThanOrEqual(40);
     expect(listRecordsWhere).toHaveBeenCalledWith("wordSenses", "word_id", "word-a");
     expect(createRecord).not.toHaveBeenCalled();
     expect(updateRecord).not.toHaveBeenCalled();
@@ -466,7 +490,7 @@ describe("sense-aware review persistence", () => {
     const preview = await previewFlashcardAttemptIntervals({ sessionId: session.id, cardId: senseCardRecord.id, presentationNumber: 1, userAnswer: "hola", responseTimeMs: 1200 });
 
     expect(preview.match).toBe("exact");
-    expect(preview.rememberedDays).toBeLessThan(40);
+    expect(preview.easyDays).toBeLessThan(40);
     expect(listRecordsWhere).toHaveBeenCalledWith("wordSenses", "word_id", "word-a");
   });
 });

@@ -59,14 +59,14 @@ describe("flashcard API contracts", () => {
     expect(await response.json()).toMatchObject({ ok: true, score: 100 });
   });
 
-  it("returns exact interval previews for the binary buttons", async () => {
-    previewFlashcardAttemptIntervals.mockResolvedValue({ match: "exact", inferredRating: "easy", forgotDays: 1, rememberedDays: 15 });
+  it("returns exact interval previews for the difficulty buttons", async () => {
+    previewFlashcardAttemptIntervals.mockResolvedValue({ match: "exact", forgotDays: 1, hardDays: 4, easyDays: 15 });
     const { POST } = await import("../../app/api/practice/flashcards/preview/route");
     const body = { sessionId: "session-a", cardId: "card-a", presentationNumber: 1, userAnswer: "hola", responseTimeMs: 1200 };
     const response = await POST(new Request("http://localhost/api/practice/flashcards/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }));
     expect(response.status).toBe(200);
     expect(previewFlashcardAttemptIntervals).toHaveBeenCalledWith(body);
-    expect(await response.json()).toMatchObject({ ok: true, forgotDays: 1, rememberedDays: 15 });
+    expect(await response.json()).toMatchObject({ ok: true, forgotDays: 1, hardDays: 4, easyDays: 15 });
   });
 
   it("undoes the latest attempt of a session", async () => {

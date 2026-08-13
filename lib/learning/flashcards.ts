@@ -9,7 +9,7 @@ import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUse
 import { matchesLearningScope } from "./scope";
 import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, summarizeDailyQueue } from "./daily-queue";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
-import { isRatingCorrect, rebuildFlashcardQueue, inferRecallRating, resolveBinaryRating } from "./flashcard-queue";
+import { isRatingCorrect, rebuildFlashcardQueue, inferRecallRating, resolveBinaryRating, resolveDifficultyRating } from "./flashcard-queue";
 import { calculateAdaptiveReview, previewSingleInterval, reviewToSenseFields, reviewToWordFields, type ReviewAttempt, type ReviewFields } from "./spaced-repetition";
 import { chooseCardTypes, countPlannedTypes, type CardTypeFlags } from "./flashcard-type-selection";
 import { aggregateSenseReviewToWordFields, listSensesByWordIds, resolveDueSenses } from "./word-senses";
@@ -19,6 +19,7 @@ import {
   type Flashcard,
   type FlashcardAnswer,
   type FlashcardCriterion,
+  type FlashcardDifficulty,
   type FlashcardQueueKind,
   type FlashcardType,
   type RecallRating
@@ -432,7 +433,7 @@ export async function abandonFlashcardPractice(sessionId: string) {
   return { sessionId: session.id, status: "abandoned" as const };
 }
 
-export async function persistFlashcardAttempt(input: { sessionId?: unknown; clientAttemptId?: unknown; cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; remembered?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown; audioReplayCount?: unknown; usedSlowAudio?: unknown; audioFailed?: unknown }) {
+export async function persistFlashcardAttempt(input: { sessionId?: unknown; clientAttemptId?: unknown; cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; remembered?: unknown; difficulty?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown; audioReplayCount?: unknown; usedSlowAudio?: unknown; audioFailed?: unknown }) {
   const sessionId = typeof input.sessionId === "string" ? input.sessionId : "";
   const clientAttemptId = typeof input.clientAttemptId === "string" ? input.clientAttemptId : "";
   if (!sessionId || !isClientOperationId(clientAttemptId)) throw new LearningStateError("Identificador da tentativa inválido.", 422);
@@ -450,7 +451,7 @@ export async function persistFlashcardAttempt(input: { sessionId?: unknown; clie
   try { return await operation; } finally { attemptLocks.delete(lockKey); }
 }
 
-async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptId: string, input: { cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; remembered?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown; audioReplayCount?: unknown; usedSlowAudio?: unknown; audioFailed?: unknown }) {
+async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptId: string, input: { cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; remembered?: unknown; difficulty?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown; audioReplayCount?: unknown; usedSlowAudio?: unknown; audioFailed?: unknown }) {
   const operationStartedAt = Date.now();
   const client = getTeableClient();
   const user = await getOrCreatePersonalUser();
@@ -487,9 +488,12 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
   const matchResult = forgot ? "incorrect" as const : compareAnswerForCard(card, userAnswer);
   const responseTimeMs = Math.max(0, Math.min(300_000, Math.round(Number(input.responseTimeMs) || 0)));
   const inferredRating = inferRecallRating({ match: matchResult, forgot, responseTimeMs, cardType: card.type });
-  const rating = typeof input.remembered === "boolean"
-    ? resolveBinaryRating({ remembered: input.remembered, match: matchResult, forgot, responseTimeMs, cardType: card.type })
-    : isRecallRating(input.rating) ? input.rating : inferredRating;
+  const rating = isFlashcardDifficulty(input.difficulty)
+    ? resolveDifficultyRating({ difficulty: input.difficulty, match: matchResult, forgot, responseTimeMs, cardType: card.type })
+    : typeof input.remembered === "boolean"
+      ? resolveBinaryRating({ remembered: input.remembered, match: matchResult, forgot, responseTimeMs, cardType: card.type })
+      : isRecallRating(input.rating) ? input.rating
+      : forgot || matchResult === "incorrect" || matchResult === "unknown" ? "forgot" : inferredRating;
   const now = new Date().toISOString();
   const record = await client.createRecord<FlashcardAttemptFields>("flashcardAttempts", {
     practice_session_id: sessionId,
@@ -634,7 +638,6 @@ export async function previewFlashcardAttemptIntervals(input: { sessionId?: unkn
   if (!forgot && !userAnswer) throw new LearningStateError("Informe uma resposta ou marque que não lembra.", 422);
   const match = forgot ? "incorrect" as const : compareAnswerForCard(card, userAnswer);
   const responseTimeMs = Math.max(0, Math.min(300_000, Math.round(Number(input.responseTimeMs) || 0)));
-  const inferredRating = resolveBinaryRating({ remembered: true, match, forgot, responseTimeMs, cardType: card.type });
   const word = words.find((item) => item.id === card.targetWordId && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
   if (!word) throw new LearningStateError("Palavra do card não encontrada.", 404);
   // Sense-frozen cards project the hints from the sense's own schedule, matching
@@ -647,11 +650,12 @@ export async function previewFlashcardAttemptIntervals(input: { sessionId?: unkn
   }
   const now = new Date();
   const timeZone = user.fields.timezone ?? "UTC";
+  const easyRating = resolveDifficultyRating({ difficulty: "easy", match, forgot, responseTimeMs, cardType: card.type });
   return {
     match,
-    inferredRating,
     forgotDays: previewSingleInterval(schedule.fields, { rating: "forgot", responseTimeMs, cardType: card.type }, now, timeZone, schedule.id),
-    rememberedDays: previewSingleInterval(schedule.fields, { rating: inferredRating, responseTimeMs, cardType: card.type }, now, timeZone, schedule.id)
+    hardDays: previewSingleInterval(schedule.fields, { rating: "hard", responseTimeMs, cardType: card.type }, now, timeZone, schedule.id),
+    easyDays: previewSingleInterval(schedule.fields, { rating: easyRating, responseTimeMs, cardType: card.type }, now, timeZone, schedule.id)
   };
 }
 
@@ -917,6 +921,7 @@ export function seededShuffle<T>(items: T[], seed: string) { const next = [...it
 function hashSeed(seed: string) { let hash = 2166136261; for (const char of seed) { hash ^= char.charCodeAt(0); hash = Math.imul(hash, 16777619); } return hash >>> 0; }
 function isClientOperationId(value: string) { return /^[a-zA-Z0-9_-]{8,100}$/.test(value); }
 function isRecallRating(value: unknown): value is RecallRating { return value === "forgot" || value === "hard" || value === "good" || value === "easy"; }
+function isFlashcardDifficulty(value: unknown): value is FlashcardDifficulty { return value === "hard" || value === "easy"; }
 function cardsCount(cards: Flashcard[] | undefined) { return cards?.length ?? 0; }
 function targetText(word: TeableRecord<WordFields>) { return (word.fields.display_text || word.fields.lemma || "").trim(); }
 function targetOccurrenceCount(sentence: string, target: string) { return [...sentence.matchAll(new RegExp(`(^|\\s|[.,;:!?¿¡])${escapeRegExp(target)}(?=$|\\s|[.,;:!?¿¡])`, "giu"))].length; }
