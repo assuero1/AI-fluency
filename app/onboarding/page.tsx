@@ -1,11 +1,16 @@
 import { AppShell } from "@/components/AppShell";
 import { OnboardingForm } from "@/components/OnboardingForm";
-import { getActiveLanguageProfile, getExistingPersonalUser } from "@/lib/learning/profile";
+import { getActiveLanguageProfile, getExistingPersonalUser, LanguageProfileFields } from "@/lib/learning/profile";
+import { getTeableClient } from "@/lib/teable/client";
 
 export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ mode?: string }> }) {
   const { mode } = await searchParams;
   const user = await getExistingPersonalUser();
   const profile = user ? await getActiveLanguageProfile(user) : null;
+  const profiles = user ? await getTeableClient().listRecords<LanguageProfileFields>("languageProfiles", 50) : [];
+  const profileLevels = profiles
+    .filter((item) => item.fields.user_id === user?.id)
+    .map((item) => ({ languageCode: item.fields.language_code, level: item.fields.level }));
 
   return (
     <AppShell noNav>
@@ -27,6 +32,7 @@ export default async function OnboardingPage({ searchParams }: { searchParams: P
             : null
         }
         languageSelectionOnly={mode === "language"}
+        profileLevels={profileLevels}
       />
     </AppShell>
   );

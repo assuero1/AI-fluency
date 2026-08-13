@@ -5,9 +5,10 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { languages } from "@/data/mock";
+import { DEFAULT_LANGUAGE_LEVEL, LANGUAGE_LEVELS, LanguageLevel } from "@/lib/learning/levels";
+import { LevelPills } from "./LevelPills";
 import { Pill } from "./Pill";
 
-const levelOptions = ["Iniciante", "Intermediário (B1)", "Avançado"];
 const correctionOptions = ["Corrigir sempre", "Corrigir no final", "Só quando eu pedir"];
 const goals = [
   "Falar com mais naturalidade em situações reais.",
@@ -71,14 +72,16 @@ function LanguageChoices({ languageIndex, onSelect }: { languageIndex: number; o
 
 export function OnboardingForm({
   initialProfile = null,
-  languageSelectionOnly = false
+  languageSelectionOnly = false,
+  profileLevels = []
 }: {
   initialProfile?: InitialProfile | null;
   languageSelectionOnly?: boolean;
+  profileLevels?: Array<{ languageCode: string; level: string }>;
 }) {
   const router = useRouter();
   const [languageIndex, setLanguageIndex] = useState(() => languageIndexFromCode(initialProfile?.languageCode));
-  const [level, setLevel] = useState(initialProfile?.level ?? "Intermediário (B1)");
+  const [level, setLevel] = useState(initialProfile?.level ?? DEFAULT_LANGUAGE_LEVEL);
   const [goal, setGoal] = useState(initialProfile?.learningGoal ?? goals[0]);
   const [correctionStyle, setCorrectionStyle] = useState(initialProfile?.correctionStyle ?? "Corrigir sempre");
   const [audioEnabled, setAudioEnabled] = useState(initialProfile?.audioEnabled ?? true);
@@ -92,6 +95,13 @@ export function OnboardingForm({
     const completed = [selectedLanguage, level, goal, correctionStyle].filter(Boolean).length;
     return `${completed} de 4`;
   }, [correctionStyle, goal, level, selectedLanguage]);
+
+  function selectLanguage(index: number) {
+    setLanguageIndex(index);
+    const code = languageCode(languages[index].code);
+    const saved = profileLevels.find((item) => item.languageCode.toLowerCase() === code);
+    if (saved && (LANGUAGE_LEVELS as readonly string[]).includes(saved.level) && level !== saved.level) setLevel(saved.level);
+  }
 
   async function submit() {
     setIsSaving(true);
@@ -146,7 +156,12 @@ export function OnboardingForm({
         </section>
 
         <section className="section">
-          <LanguageChoices languageIndex={languageIndex} onSelect={setLanguageIndex} />
+          <LanguageChoices languageIndex={languageIndex} onSelect={selectLanguage} />
+        </section>
+
+        <section className="section">
+          <h2 className="section-title">Qual seu nível?</h2>
+          <LevelPills level={level} onChange={(option: LanguageLevel) => setLevel(option)} />
         </section>
 
         {error ? <div className="inline-error" role="alert">{error}</div> : null}
@@ -177,18 +192,12 @@ export function OnboardingForm({
 
       <section className="section">
         <h2 className="section-title">Escolha o idioma</h2>
-        <LanguageChoices languageIndex={languageIndex} onSelect={setLanguageIndex} />
+        <LanguageChoices languageIndex={languageIndex} onSelect={selectLanguage} />
       </section>
 
       <section className="section">
         <h2 className="section-title">Qual seu nível?</h2>
-        <div aria-label="Nível de conhecimento" className="level-pills" role="group">
-          {levelOptions.map((option) => (
-            <button aria-pressed={option === level} className="plain-button" key={option} onClick={() => setLevel(option)} type="button">
-              <Pill tone={option === level ? "primary" : "default"}>{option}</Pill>
-            </button>
-          ))}
-        </div>
+        <LevelPills level={level} onChange={(option: LanguageLevel) => setLevel(option)} />
       </section>
 
       <section className="section">
