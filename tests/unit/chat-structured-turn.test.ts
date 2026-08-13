@@ -7,7 +7,7 @@ const createRecord = vi.fn();
 const listRecordsWhere = vi.fn();
 const getRecord = vi.fn();
 const createEvent = vi.fn();
-const getExistingPersonalUser = vi.fn();
+const getSessionUser = vi.fn();
 const getActiveLanguageProfile = vi.fn();
 const getTutorContext = vi.fn();
 
@@ -18,7 +18,7 @@ vi.mock("../../lib/teable/client", () => ({
     status = 500;
   }
 }));
-vi.mock("../../lib/learning/profile", () => ({ getExistingPersonalUser, getActiveLanguageProfile }));
+vi.mock("../../lib/learning/profile", () => ({ getSessionUser, getActiveLanguageProfile }));
 vi.mock("../../lib/learning/tutor-context", () => ({
   getTutorContext,
   formatTutorContext: () => ""
@@ -54,7 +54,7 @@ describe("turno estruturado do chat", () => {
   beforeEach(() => {
     vi.clearAllMocks();
 
-    getExistingPersonalUser.mockResolvedValue({ id: "user-1", fields: {} });
+    getSessionUser.mockResolvedValue({ id: "user-1", fields: {} });
     getActiveLanguageProfile.mockResolvedValue({
       id: "profile-1",
       fields: { language_code: "en", language_name: "Inglês", level: "B1" }

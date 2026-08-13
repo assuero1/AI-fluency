@@ -21,7 +21,7 @@ vi.mock("../../lib/learning/conversations", () => ({ getConversation, startConve
 vi.mock("../../lib/learning/home", () => ({}));
 vi.mock("../../lib/learning/profile", () => ({
   getActiveLanguageProfile: vi.fn(),
-  getOrCreatePersonalUser: vi.fn()
+  getSessionUser: vi.fn()
 }));
 vi.mock("../../lib/learning/topics", () => ({ createTopic: vi.fn() }));
 vi.mock("../../lib/learning/flashcards", () => ({}));

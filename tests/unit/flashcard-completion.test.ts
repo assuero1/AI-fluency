@@ -17,7 +17,7 @@ const listRecordsWhere = vi.fn();
 
 vi.mock("../../lib/ai/client", () => ({ createChatCompletion: vi.fn() }));
 vi.mock("../../lib/learning/profile", () => ({
-  getOrCreatePersonalUser: vi.fn(async () => user),
+  getSessionUser: vi.fn(async () => user),
   getActiveLanguageProfile: vi.fn(async () => profile)
 }));
 vi.mock("../../lib/teable/client", () => ({

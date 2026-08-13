@@ -15,7 +15,7 @@ vi.mock("../../lib/teable/client", () => ({
   }
 }));
 vi.mock("../../lib/learning/profile", () => ({
-  getExistingPersonalUser: vi.fn(),
+  getSessionUser: vi.fn(),
   getActiveLanguageProfile: vi.fn()
 }));
 vi.mock("../../lib/learning/tutor-context", () => ({

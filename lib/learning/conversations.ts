@@ -5,7 +5,7 @@ import { TeableTableKey } from "@/lib/teable/schema";
 import { createTopic } from "./topics";
 import { assertPracticeReady, LearningStateError } from "./access";
 import { isMutableConversationStatus, selectScopedConversation } from "./conversation-state";
-import { getActiveLanguageProfile, getExistingPersonalUser, LanguageProfileFields } from "./profile";
+import { getActiveLanguageProfile, getSessionUser, LanguageProfileFields } from "./profile";
 import { formatTutorContext, getTutorContext, TutorContext } from "./tutor-context";
 import { ConversationQuickAction, getConversationQuickActionPrompt } from "./quick-actions";
 import {
@@ -358,7 +358,7 @@ export async function abandonConversation(conversationId: string) {
 
 export async function getConversation(conversationId?: string) {
   const client = getTeableClient();
-  const user = await getExistingPersonalUser();
+  const user = await getSessionUser();
   if (!user) return null;
 
   // With a known conversation id, messages/corrections/the conversation row do

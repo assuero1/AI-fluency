@@ -5,7 +5,7 @@ import type { TeableTableKey } from "@/lib/teable/schema";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields, WordOccurrenceFields, WordUsageSummaryFields } from "./conversations";
 import type { DailyFeedbackFields, TopicFields } from "./home";
 import type { FlashcardAttemptFields, FlashcardFields } from "./flashcards";
-import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUser, LanguageProfileFields, UserFields } from "./profile";
+import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser, LanguageProfileFields, UserFields } from "./profile";
 import { isLanguageLevel } from "./levels";
 import { matchesLearningScope } from "./scope";
 import { PERSONAL_DATA_EXPORT_SCHEMA_VERSION } from "./export";
@@ -51,7 +51,7 @@ export type LearningHistoryEventScope = {
 
 export async function getProfileSettings() {
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const [profiles, activeProfile] = await Promise.all([
     client.listRecords<LanguageProfileFields>("languageProfiles", 50),
     getActiveLanguageProfile(user)
@@ -93,7 +93,7 @@ export async function getProfileSettings() {
 
 export async function updatePersonalProfile(input: ProfileInput) {
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profiles = await client.listRecords<LanguageProfileFields>("languageProfiles", 50);
   const fields: Partial<UserFields> = {};
 
@@ -121,7 +121,7 @@ export async function updatePersonalProfile(input: ProfileInput) {
 
 export async function updatePreferences(input: PreferenceInput) {
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new AccountValidationError("Crie um perfil de idioma antes de alterar preferências.");
 
@@ -183,7 +183,7 @@ export async function exportPersonalData() {
 }
 
 export async function createDeletionConfirmation() {
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new AccountValidationError("Crie um perfil de idioma antes de limpar o histórico.");
   const token = randomUUID();
@@ -287,7 +287,7 @@ export function isConversationMessageInScope(
 
 async function getScopedLearningData() {
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   const [profiles, conversations, messages, corrections, words, wordOccurrences, wordUsageSummaries, dailyFeedbacks, topics, practiceSessions, flashcards, flashcardAttempts] = await Promise.all([
     client.listAllRecords<LanguageProfileFields>("languageProfiles"),

@@ -1,6 +1,6 @@
 import { startConversation } from "./conversations";
 import type { WordFields, WordSenseFields, WordUsageSummaryFields } from "./conversations";
-import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUser } from "./profile";
+import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser } from "./profile";
 import { createTopic } from "./topics";
 import { matchesLearningScope } from "./scope";
 import { LearningStateError } from "./access";
@@ -317,7 +317,7 @@ async function startVocabularyConversation(words: WordListItem[], source: "word"
 }
 
 async function getWordScope(): Promise<WordScope> {
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   return {
     userId: user.id,

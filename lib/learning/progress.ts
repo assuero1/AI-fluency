@@ -2,7 +2,7 @@ import { createTopic } from "./topics";
 import { startConversation } from "./conversations";
 import type { ConversationFields, CorrectionFields, WordFields } from "./conversations";
 import type { DailyFeedbackFields } from "./home";
-import { getActiveLanguageProfile, getOrCreatePersonalUser } from "./profile";
+import { getActiveLanguageProfile, getSessionUser } from "./profile";
 import { getTeableClient, TeableRecord } from "@/lib/teable/client";
 import { matchesLearningScope } from "./scope";
 import { getPracticeActivity } from "./practice-activity";
@@ -26,7 +26,7 @@ type ProgressStrength = {
 export async function getProgressData() {
   const client = getTeableClient();
   const [user, conversations, corrections, words, feedbacks, practiceSessions] = await Promise.all([
-    getOrCreatePersonalUser(),
+    getSessionUser(),
     client.listAllRecords<ConversationFields>("conversations"),
     client.listAllRecords<CorrectionFields>("corrections"),
     client.listAllRecords<WordFields>("words"),

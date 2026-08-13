@@ -4,8 +4,9 @@ import { getConnectionStatus, isDataBackendReady } from "@/lib/settings/status";
 import { getTeableClient, TeableClient, TeableRecord } from "@/lib/teable/client";
 import {
   getActiveLanguageProfile,
-  getExistingPersonalUser,
+  getSessionUser,
   LanguageProfileFields,
+  UnauthenticatedError,
   UserFields
 } from "./profile";
 import { resolveLearningGate } from "./conversation-state";
@@ -30,8 +31,16 @@ export async function getLearningGate() {
     return { gate: "connections" as const, status, user: null, profile: null };
   }
 
-  const user = await getExistingPersonalUser();
-  const profile = user ? await getActiveLanguageProfile(user) : null;
+  let user;
+  try {
+    user = await getSessionUser();
+  } catch (error) {
+    if (error instanceof UnauthenticatedError) {
+      return { gate: "login" as const, status, user: null, profile: null };
+    }
+    throw error;
+  }
+  const profile = await getActiveLanguageProfile(user);
   const gate = resolveLearningGate({ hasProfile: Boolean(profile), teableReady, aiReady: status.ai.configured });
 
   return { gate, status, user, profile };

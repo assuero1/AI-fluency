@@ -17,6 +17,7 @@ type ChatPageProps = {
 export default async function ChatPage({ searchParams }: ChatPageProps) {
   const params = await searchParams;
   const gate = await getLearningGate();
+  if (gate.gate === "login") redirect("/login");
   if (gate.gate === "onboarding") redirect("/onboarding");
   if (gate.gate === "connections") redirect("/settings/connections");
   const [context, progress] = await Promise.all([

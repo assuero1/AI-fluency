@@ -10,7 +10,7 @@ import {
   WordUsageSummaryFields
 } from "./conversations";
 import { DailyFeedbackFields } from "./home";
-import { getActiveLanguageProfile, getOrCreatePersonalUser } from "./profile";
+import { getActiveLanguageProfile, getSessionUser } from "./profile";
 import { LearningStateError } from "./access";
 import {
   getConversationSummaryAvailability,
@@ -316,7 +316,7 @@ export async function addSavedWordsToDailyFeedback(conversation: TeableRecord<Co
 export async function getCalendarData(monthInput?: string) {
   const client = getTeableClient();
   const [user, dailyFeedbacks, conversations, practiceSessions] = await Promise.all([
-    getOrCreatePersonalUser(),
+    getSessionUser(),
     client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
     client.listRecords<ConversationFields>("conversations", 400),
     client.listRecords<PracticeSessionFields>("practiceSessions", 400)
@@ -396,7 +396,7 @@ export async function getDailyFeedback(date: string) {
 
   const client = getTeableClient();
   const [user, dailyFeedbacks, conversations] = await Promise.all([
-    getOrCreatePersonalUser(),
+    getSessionUser(),
     client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
     client.listRecords<ConversationFields>("conversations", 220)
   ]);

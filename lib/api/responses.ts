@@ -4,7 +4,7 @@ import { KokoroConfigError, KokoroRequestError } from "@/lib/kokoro/client";
 import { AccountValidationError } from "@/lib/learning/account";
 import { LearningStateError } from "@/lib/learning/access";
 import { TranslationValidationError } from "@/lib/learning/translation";
-import { PersonalUserResolutionError } from "@/lib/learning/profile";
+import { UnauthenticatedError, UserLinkError } from "@/lib/learning/profile";
 import { TeableConfigError, TeableRequestError } from "@/lib/teable/client";
 
 export function jsonOk<T>(data: T, init?: ResponseInit) {
@@ -45,7 +45,11 @@ export function handleApiError(error: unknown) {
     return jsonError(error.message, error.status);
   }
 
-  if (error instanceof PersonalUserResolutionError) {
+  if (error instanceof UnauthenticatedError) {
+    return jsonError(error.message, 401);
+  }
+
+  if (error instanceof UserLinkError) {
     return jsonError(error.message, error.status);
   }
 

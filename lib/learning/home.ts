@@ -1,6 +1,6 @@
 import { getConnectionStatus } from "@/lib/settings/status";
 import { getTeableClient, TeableRecord } from "@/lib/teable/client";
-import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUser, LanguageProfileFields, UserFields } from "./profile";
+import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser, LanguageProfileFields, UserFields } from "./profile";
 import { matchesLearningScope } from "./scope";
 import type { ConversationFields } from "./conversations";
 import { getPracticeActivity } from "./practice-activity";
@@ -64,7 +64,7 @@ export type HomeSuggestion = {
 
 export async function getHomeData() {
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
 
   const [topics, feedbacks, words, conversations, sessions] = await Promise.all([

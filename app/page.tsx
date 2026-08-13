@@ -10,6 +10,7 @@ export const dynamic = "force-dynamic";
 
 export default async function HomePage() {
   const gate = await getLearningGate();
+  if (gate.gate === "login") redirect("/login");
   if (gate.gate === "onboarding") redirect("/onboarding");
   if (gate.gate === "connections") redirect("/settings/connections");
   const home = await getHomeData();

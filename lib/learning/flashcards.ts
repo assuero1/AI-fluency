@@ -5,7 +5,7 @@ import { getTeableClient, TeableRecord } from "@/lib/teable/client";
 import { getEnv } from "@/lib/env";
 import { LearningStateError } from "./access";
 import { WordFields, WordSenseFields } from "./conversations";
-import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUser } from "./profile";
+import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser } from "./profile";
 import { matchesLearningScope } from "./scope";
 import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, summarizeDailyQueue } from "./daily-queue";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
@@ -212,7 +212,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
   const criterion = normalizeFlashcardCriterion(input.criterion);
   const requestedCount = normalizeFlashcardCount(input.count);
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Configure um idioma antes de iniciar o treino.", 409);
   const [allWords, sessions] = await Promise.all([
@@ -334,7 +334,7 @@ export async function createFlashcardRetraining(sourceSessionId: string, mode: u
   const retrainMode = mode === "wrong" || mode === "difficult" ? mode : null;
   if (!sourceSessionId.trim() || !retrainMode) throw new LearningStateError("Retreino inválido.", 422);
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
   const [sessions, words, cardRecords, attemptRecords] = await Promise.all([
@@ -367,7 +367,7 @@ export async function createFlashcardRetraining(sourceSessionId: string, mode: u
 
 export async function getActiveFlashcardPractice() {
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) return null;
   const sessions = await client.listRecords<PracticeSessionFields>("practiceSessions", 300);
@@ -399,7 +399,7 @@ export async function getActiveFlashcardPractice() {
 
 export async function getDailyQueueSummary() {
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) return null;
   const [allWords, sessions] = await Promise.all([
@@ -416,7 +416,7 @@ export async function getDailyQueueSummary() {
 export async function abandonFlashcardPractice(sessionId: string) {
   if (!sessionId.trim()) throw new LearningStateError("Informe a sessão de treino.", 422);
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
   const sessions = await client.listRecords<PracticeSessionFields>("practiceSessions", 300);
@@ -454,7 +454,7 @@ export async function persistFlashcardAttempt(input: { sessionId?: unknown; clie
 async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptId: string, input: { cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; remembered?: unknown; difficulty?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown; audioReplayCount?: unknown; usedSlowAudio?: unknown; audioFailed?: unknown }) {
   const operationStartedAt = Date.now();
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
   const [sessions, cardRecords, attemptRecords, words] = await Promise.all([
@@ -613,7 +613,7 @@ export async function previewFlashcardAttemptIntervals(input: { sessionId?: unkn
   const sessionId = typeof input.sessionId === "string" ? input.sessionId : "";
   if (!sessionId) throw new LearningStateError("Informe a sessão de treino.", 422);
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
   const [sessions, cardRecords, attemptRecords, words] = await Promise.all([
@@ -662,7 +662,7 @@ export async function previewFlashcardAttemptIntervals(input: { sessionId?: unkn
 export async function undoFlashcardAttempt(sessionId: string) {
   if (!sessionId.trim()) throw new LearningStateError("Informe a sessão de treino.", 422);
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
   const [sessions, attemptRecords, words] = await Promise.all([
@@ -712,7 +712,7 @@ export async function completeFlashcardPractice(sessionId: string, clientComplet
 
 async function completeFlashcardPracticeUnlocked(sessionId: string, clientCompletionId: string, answers: Array<{ cardId?: unknown; presentationNumber?: unknown; userAnswer?: unknown; rating?: unknown; forgot?: unknown; usedSpeech?: unknown; responseTimeMs?: unknown }>) {
   const client = getTeableClient();
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
   const [sessions, words, cardRecords, attemptRecords] = await Promise.all([
