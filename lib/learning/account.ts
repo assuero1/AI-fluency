@@ -6,6 +6,7 @@ import type { ConversationFields, CorrectionFields, MessageFields, WordFields, W
 import type { DailyFeedbackFields, TopicFields } from "./home";
 import type { FlashcardAttemptFields, FlashcardFields } from "./flashcards";
 import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUser, LanguageProfileFields, UserFields } from "./profile";
+import { isLanguageLevel } from "./levels";
 import { matchesLearningScope } from "./scope";
 import { PERSONAL_DATA_EXPORT_SCHEMA_VERSION } from "./export";
 
@@ -19,6 +20,7 @@ export class AccountValidationError extends Error {
 
 type PreferenceInput = {
   correctionStyle?: string;
+  level?: string;
   audioEnabled?: boolean;
   transcriptEnabled?: boolean;
   calendarMemoryEnabled?: boolean;
@@ -128,6 +130,10 @@ export async function updatePreferences(input: PreferenceInput) {
     const allowed = ["Corrigir sempre", "Corrigir no final", "Só quando eu pedir"];
     if (!allowed.includes(input.correctionStyle)) throw new AccountValidationError("Estilo de correção inválido.");
     fields.correction_style = input.correctionStyle;
+  }
+  if (typeof input.level === "string") {
+    if (!isLanguageLevel(input.level)) throw new AccountValidationError("Nível de conhecimento inválido.");
+    fields.level = input.level;
   }
   if (typeof input.audioEnabled === "boolean") fields.audio_enabled = input.audioEnabled;
   if (typeof input.transcriptEnabled === "boolean") fields.transcript_enabled = input.transcriptEnabled;
