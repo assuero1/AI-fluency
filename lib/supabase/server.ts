@@ -6,6 +6,13 @@ import { createServerClient } from "@supabase/ssr";
 import { getEnv } from "@/lib/env";
 import { TeableConfigError } from "@/lib/teable/client";
 
+const REQUEST_TIMEOUT_MS = 10_000;
+
+function withTimeoutSignal(signal?: AbortSignal | null) {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  return signal ? AbortSignal.any([signal, timeout]) : timeout;
+}
+
 function requireConfig() {
   const url = getEnv("SUPABASE_URL");
   const anonKey = getEnv("SUPABASE_ANON_KEY");
@@ -20,6 +27,13 @@ export const getRequestSupabaseClient = cache(async function getRequestSupabaseC
   const { url, anonKey } = requireConfig();
   const cookieStore = await cookies();
   return createServerClient(url, anonKey, {
+    // postgrest-js >= 2.112 retenta GET/HEAD/OPTIONS internamente por padrão
+    // (até 3x, incluindo HTTP 503/520). Desabilitamos: o adapter já faz seu
+    // próprio retry único em falhas transitórias, espelhando o TeableClient.
+    db: { retry: false },
+    global: {
+      fetch: (fetchUrl, init) => fetch(fetchUrl, { ...init, signal: withTimeoutSignal(init?.signal ?? null) })
+    },
     cookies: {
       getAll() {
         return cookieStore.getAll();
