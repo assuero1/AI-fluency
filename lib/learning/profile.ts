@@ -117,7 +117,7 @@ export async function createLanguageProfile(user: TeableRecord<UserFields>, payl
     user_id: user.id,
     language_code: payload.language_code ?? "en",
     language_name: payload.language_name ?? "Inglês",
-    level: payload.level ?? DEFAULT_LANGUAGE_LEVEL,
+    level: isLanguageLevel(payload.level) ? payload.level : DEFAULT_LANGUAGE_LEVEL,
     learning_goal: payload.learning_goal ?? "Falar com mais naturalidade em situações reais.",
     correction_style: payload.correction_style ?? "Corrigir sempre",
     audio_enabled: payload.audio_enabled ?? true,

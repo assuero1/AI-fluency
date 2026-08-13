@@ -88,4 +88,52 @@ describe("createOrActivateLanguageProfile level handling", () => {
       expect.objectContaining({ level: "Intermediário (B1)" })
     );
   });
+
+  it("does not rewrite the level when the payload level matches the stored one", async () => {
+    const { createOrActivateLanguageProfile } = await import("../../lib/learning/profile");
+    const result = await createOrActivateLanguageProfile(user, { language_code: "en", level: "Intermediário (B1)" });
+
+    expect(result.fields.level).toBe("Intermediário (B1)");
+    expect(updateRecord).not.toHaveBeenCalled();
+    expect(createEvent).not.toHaveBeenCalledWith(user.id, "language_level_updated", expect.anything());
+    expect(createEvent).toHaveBeenCalledWith(
+      user.id,
+      "language_profile_activated",
+      expect.objectContaining({ level: "Intermediário (B1)" })
+    );
+  });
+});
+
+describe("createLanguageProfile level validation", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listRecords.mockResolvedValue([]);
+    createRecord.mockImplementation(async (_table: string, fields: Record<string, unknown>) => ({
+      id: "profile-new",
+      fields
+    }));
+    createEvent.mockResolvedValue({ id: "event-a", fields: {} });
+  });
+
+  it("stores the provided level when it is a valid language level", async () => {
+    const { createLanguageProfile } = await import("../../lib/learning/profile");
+    const result = await createLanguageProfile(user, { language_code: "en", level: "Avançado" });
+
+    expect(createRecord).toHaveBeenCalledWith(
+      "languageProfiles",
+      expect.objectContaining({ level: "Avançado" })
+    );
+    expect(result.fields.level).toBe("Avançado");
+  });
+
+  it("falls back to the default level when the payload level is invalid", async () => {
+    const { createLanguageProfile } = await import("../../lib/learning/profile");
+    const result = await createLanguageProfile(user, { language_code: "en", level: "Expert" });
+
+    expect(createRecord).toHaveBeenCalledWith(
+      "languageProfiles",
+      expect.objectContaining({ level: "Intermediário (B1)" })
+    );
+    expect(result.fields.level).toBe("Intermediário (B1)");
+  });
 });
