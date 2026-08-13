@@ -2,7 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 
 const PUBLIC_PAGES = ["/login", "/auth/callback", "/reset-password", "/offline"];
-const PUBLIC_FILES = ["/sw.js", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
+const PUBLIC_FILES = ["/sw.js", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/manifest.webmanifest"];
 
 export function isPublicPath(pathname: string) {
   return PUBLIC_FILES.includes(pathname) || PUBLIC_PAGES.some((path) => pathname === path || pathname.startsWith(`${path}/`));
