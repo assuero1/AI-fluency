@@ -75,7 +75,9 @@ Migration nova (`supabase/migrations/`):
   - `flashcards`, `flashcard_attempts` ← via `practice_sessions.user_id`
 - RLS habilitado em **todas as 17 tabelas**:
   - `users`: `auth_user_id = auth.uid()`
-  - tabelas com `user_id` (direto ou denormalizado): `user_id = auth.uid()`
+  - tabelas com `user_id` (direto ou denormalizado): `user_id = public.current_user_id()`
+    (função `stable security definer` que mapeia `auth.uid()` → `public.users.id` via
+    `auth_user_id`; os ids dos dois namespaces são UUIDs diferentes)
   - policies separadas para SELECT/INSERT/UPDATE/DELETE conforme a tabela.
 - Vinculação do usuário existente: script one-off seta `auth_user_id` do registro
   atual (o único usuário com dados) para o `auth.users.id` da primeira conta criada.
