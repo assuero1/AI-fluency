@@ -1,11 +1,11 @@
 "use client";
 
-import { ArrowLeft, Brain, Check, Clock3, Layers3, Loader2, Mic, MicOff, RotateCcw, Sparkles, Trophy, X } from "lucide-react";
+import { ArrowLeft, Brain, Check, Clock3, Layers3, Loader2, Mic, MicOff, RotateCcw, Sparkles, Trophy } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { compareAnswerForCard } from "@/lib/learning/flashcard-answer";
-import { advanceFlashcardQueue, createFlashcardQueue, selectNextQueueItem, inferRecallRating, rebuildFlashcardQueue } from "@/lib/learning/flashcard-queue";
-import type { AnswerMatch, DailyQueueSummary, Flashcard, FlashcardAnswer, FlashcardCriterion, FlashcardPracticeResult, FlashcardQueueKind, QueueItem, RecallRating } from "@/lib/learning/flashcard-contracts";
+import { advanceFlashcardQueue, createFlashcardQueue, selectNextQueueItem, rebuildFlashcardQueue } from "@/lib/learning/flashcard-queue";
+import type { AnswerMatch, DailyQueueSummary, Flashcard, FlashcardAnswer, FlashcardCriterion, FlashcardPracticeResult, FlashcardQueueKind, QueueItem } from "@/lib/learning/flashcard-contracts";
 import { Pill } from "./Pill";
 import { VoiceButton } from "./VoiceButton";
 
@@ -33,7 +33,7 @@ export function FlashcardTrainer() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [currentItem, setCurrentItem] = useState<QueueItem | null>(null);
   const [input, setInput] = useState("");
-  const [revealed, setRevealed] = useState<{ match: AnswerMatch; forgot: boolean; responseTimeMs: number; inferredRating: RecallRating; forgotDays: number | null; rememberedDays: number | null } | null>(null);
+  const [revealed, setRevealed] = useState<{ match: AnswerMatch; forgot: boolean; responseTimeMs: number; hardDays: number | null; easyDays: number | null } | null>(null);
   const [undoState, setUndoState] = useState<{ expiresAt: number } | null>(null);
   const [presentationStartedAt, setPresentationStartedAt] = useState(0);
   const [adapted, setAdapted] = useState(false);
@@ -118,28 +118,29 @@ export function FlashcardTrainer() {
     recognitionRef.current?.stop();
     const card = cards.find((candidate) => candidate.id === currentItem?.cardId);
     if (!card || !currentItem) return;
-    const match = forgot ? "incorrect" as const : compareAnswerForCard(card, input);
+    const typedAnswer = forgot ? "" : input.trim();
+    if (forgot) setInput("");
+    const match = forgot ? "incorrect" as const : compareAnswerForCard(card, typedAnswer);
     const responseTimeMs = Math.max(0, Date.now() - presentationStartedAt);
     setListening(false);
-    const fallback = { inferredRating: inferRecallRating({ match, forgot, responseTimeMs, cardType: card.type }), forgotDays: null, rememberedDays: null };
     try {
-      const response = await fetch("/api/practice/flashcards/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, cardId: currentItem.cardId, presentationNumber: currentItem.presentationNumber, userAnswer: input.trim(), forgot, responseTimeMs }) });
-      const data = await response.json() as { ok?: boolean; inferredRating?: RecallRating; forgotDays?: number; rememberedDays?: number };
-      if (!response.ok || !data.ok || typeof data.forgotDays !== "number" || typeof data.rememberedDays !== "number") throw new Error("preview unavailable");
-      setRevealed({ match, forgot, responseTimeMs, inferredRating: data.inferredRating ?? fallback.inferredRating, forgotDays: data.forgotDays, rememberedDays: data.rememberedDays });
+      const response = await fetch("/api/practice/flashcards/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, cardId: currentItem.cardId, presentationNumber: currentItem.presentationNumber, userAnswer: typedAnswer, forgot, responseTimeMs }) });
+      const data = await response.json() as { ok?: boolean; hardDays?: number; easyDays?: number };
+      if (!response.ok || !data.ok || typeof data.hardDays !== "number" || typeof data.easyDays !== "number") throw new Error("preview unavailable");
+      setRevealed({ match, forgot, responseTimeMs, hardDays: data.hardDays, easyDays: data.easyDays });
     } catch {
-      setRevealed({ match, forgot, responseTimeMs, ...fallback });
+      setRevealed({ match, forgot, responseTimeMs, hardDays: null, easyDays: null });
     }
   }
 
-  async function grade(remembered: boolean) {
+  async function grade(difficulty: "hard" | "easy" | null) {
     if (!revealed || busy || !currentItem) return;
     setBusy(true); setError("");
     const clientAttemptId = currentAttemptId || crypto.randomUUID();
     setCurrentAttemptId(clientAttemptId);
     let persisted: FlashcardAnswer;
     try {
-      const attemptResponse = await fetch("/api/practice/flashcards/attempt", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, clientAttemptId, cardId: currentItem.cardId, presentationNumber: currentItem.presentationNumber, userAnswer: input.trim(), remembered, forgot: revealed.forgot, usedSpeech, responseTimeMs: revealed.responseTimeMs, audioReplayCount, usedSlowAudio, audioFailed }) });
+      const attemptResponse = await fetch("/api/practice/flashcards/attempt", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, clientAttemptId, cardId: currentItem.cardId, presentationNumber: currentItem.presentationNumber, userAnswer: revealed.forgot ? "" : input.trim(), ...(difficulty ? { difficulty } : {}), forgot: revealed.forgot, usedSpeech, responseTimeMs: revealed.responseTimeMs, audioReplayCount, usedSlowAudio, audioFailed }) });
       const attemptData = await attemptResponse.json() as { ok?: boolean; error?: string; attempt?: FlashcardAnswer };
       if (!attemptResponse.ok || !attemptData.ok || !attemptData.attempt) throw new Error(attemptData.error ?? "Não foi possível salvar a tentativa.");
       persisted = attemptData.attempt;
@@ -221,7 +222,7 @@ export function FlashcardTrainer() {
     if (!Constructor) return;
     const recognition = new Constructor(); recognitionRef.current = recognition;
     const currentCard = cards.find((card) => card.id === currentItem?.cardId);
-    recognition.lang = currentCard?.type === "target_to_native" ? "pt-BR" : languageCode; recognition.interimResults = true; recognition.continuous = false;
+    recognition.lang = currentCard?.type === "target_to_native" || currentCard?.type === "listening" ? "pt-BR" : languageCode; recognition.interimResults = true; recognition.continuous = false;
     recognition.onresult = (event) => {
       let transcript = "";
       for (let i = 0; i < event.results.length; i += 1) transcript += event.results[i][0]?.transcript ?? "";
@@ -260,7 +261,7 @@ export function FlashcardTrainer() {
     return <div className="flashcard-screen">
       <div className="top-row"><button className="back-link button-reset" onClick={() => setExitConfirmationOpen(true)} type="button"><ArrowLeft /> Sair</button><Pill>{uniqueCompleted}/{cards.length} cards · apresentação {answers.length + 1}</Pill></div>
       <div className="progress-line"><span style={{ width: `${((uniqueCompleted + (currentItem.presentationNumber === 1 && revealed ? 1 : 0)) / cards.length) * 100}%` }} /></div>
-      {adapted ? <p className="flashcard-adapted">O treino foi adaptado porque algumas frases contextuais não passaram na validação.</p> : null}
+      {adapted ? <p className="flashcard-adapted">Ajustamos algumas atividades do treino de hoje para manter o ritmo.</p> : null}
       <div className="flashcard-kind">
         <Pill tone={card.type === "cloze" ? "info" : "primary"}>{cardTypeLabel(card.type)}</Pill>
         {card.targetSenseId && card.senseOrder && card.senseCount && card.senseCount > 1 ? <Pill tone="info">significado {card.senseOrder} de {card.senseCount}</Pill> : null}
@@ -285,11 +286,13 @@ export function FlashcardTrainer() {
         <div><span>Resposta esperada</span><strong>{card.expectedAnswer}</strong></div>
         <div><span>Sua tentativa</span><strong>{revealed.forgot ? "Não lembrei" : input}</strong></div>
         <p className={`answer-match ${revealed.match}`}>{matchLabel(revealed.match)}</p>
-        <p>{ratingExplanation(revealed)}</p>
-        <div className="recall-rating-grid">
-          <button disabled={busy} onClick={() => void grade(false)} type="button"><X /> Não lembrei{revealed.forgotDays ? <span className="interval-hint">→ {formatIntervalDays(revealed.forgotDays)}</span> : null}</button>
-          <button className="suggested" disabled={busy} onClick={() => void grade(true)} type="button"><Check /> Lembrei{revealed.rememberedDays ? <span className="interval-hint">→ {formatIntervalDays(revealed.rememberedDays)}</span> : null}</button>
-        </div>
+        {isAutoForgot(revealed) ? <>
+          <p>Sem problema — este card volta ainda nesta sessão.</p>
+          <div className="recall-rating-grid"><button className="suggested" disabled={busy} onClick={() => void grade(null)} type="button"><Check /> Continuar</button></div>
+        </> : <div className="recall-rating-grid">
+          <button disabled={busy} onClick={() => void grade("hard")} type="button">Difícil{revealed.hardDays ? <span className="interval-hint">→ {formatIntervalDays(revealed.hardDays)}</span> : null}</button>
+          <button className="suggested" disabled={busy} onClick={() => void grade("easy")} type="button"><Check /> Fácil{revealed.easyDays ? <span className="interval-hint">→ {formatIntervalDays(revealed.easyDays)}</span> : null}</button>
+        </div>}
       </section>}
       {undoState ? <p className="speech-status">Avaliação registrada. <button className="outline-button" disabled={busy} onClick={() => void undoLast()} type="button">Desfazer</button></p> : null}
       {busy ? <p className="speech-status"><Loader2 className="spin" /> Salvando resultado...</p> : null}{error ? <p className="inline-error" role="alert">{error}</p> : null}
@@ -321,7 +324,7 @@ export function FlashcardTrainer() {
     {customOpen ? <>
       <section className="section"><h2 className="section-title">Quais palavras priorizar?</h2><p className="row-meta">Palavras com revisão vencida sempre entram primeiro; o critério ordena o restante.</p><div className="flashcard-choice-grid"><button className={criterion === "least_used" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("least_used")} type="button"><Layers3 /><div><strong>Menos usadas</strong><span>Reforça palavras com pouca prática</span></div></button><button className={criterion === "oldest" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("oldest")} type="button"><Clock3 /><div><strong>Há mais tempo sem usar</strong><span>Recupera vocabulário esquecido</span></div></button></div></section>
       <section className="section"><div className="top-row"><h2 className="section-title">Quantidade de palavras</h2><strong>{count}</strong></div><input aria-label="Quantidade de palavras" className="flashcard-range" min="2" max="30" onChange={(event) => setCount(Number(event.target.value))} step="1" type="range" value={count} /><div className="top-row row-meta"><span>2</span><span>30</span></div></section>
-      <div className="soft-card"><Sparkles /><div><strong>Como funciona</strong><p className="row-meta">Digite ou fale sua tentativa. A resposta só aparece depois, e o treino agenda a próxima revisão pelo seu acerto e tempo de resposta.</p></div></div>
+      <div className="soft-card"><Sparkles /><div><strong>Como funciona</strong><p className="row-meta">Digite ou fale sua tentativa. A resposta só aparece depois; então você diz se foi difícil ou fácil, e o treino agenda a próxima revisão pelo seu acerto, ritmo e dificuldade.</p></div></div>
       <button className="green-button full-button" disabled={busy} onClick={() => void start("custom")} type="button">{busy ? <Loader2 className="spin" /> : <Brain />} Montar treino com {count} palavras</button>
     </> : null}
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
@@ -339,15 +342,12 @@ function matchLabel(match: AnswerMatch) {
   if (match === "exact") return "Resposta exata";
   if (match === "acceptable") return "Resposta aceita";
   if (match === "minor_error") return "Quase correta — confira acento ou artigo";
-  if (match === "unknown") return "Variação não reconhecida — conta como Difícil";
+  if (match === "unknown") return "Variação não reconhecida — vamos repetir nesta sessão";
   return "Resposta diferente da esperada";
 }
 
-function ratingExplanation(revealed: { forgot: boolean; match: AnswerMatch; inferredRating: RecallRating }) {
-  if (revealed.forgot || revealed.match === "incorrect") return "Se você sabia e só errou na digitação, marque Lembrei — conta como Difícil.";
-  if (revealed.inferredRating === "easy") return "Resposta rápida — conta como Fácil.";
-  if (revealed.inferredRating === "hard") return "Quase lá — conta como Difícil.";
-  return "Resposta correta.";
+function isAutoForgot(revealed: { forgot: boolean; match: AnswerMatch }) {
+  return revealed.forgot || revealed.match === "incorrect" || revealed.match === "unknown";
 }
 
 function formatAccuracy(value: number | null | undefined) { return typeof value === "number" ? `${value}%` : "—"; }
