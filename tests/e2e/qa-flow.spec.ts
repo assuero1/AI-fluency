@@ -73,11 +73,11 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
   });
   await page.route("**/api/practice/flashcards/preview", async (route) => {
     const body = route.request().postDataJSON() as { forgot?: boolean };
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, match: body.forgot ? "incorrect" : "exact", inferredRating: body.forgot ? "forgot" : "good", forgotDays: 1, rememberedDays: 7 }) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, match: body.forgot ? "incorrect" : "exact", forgotDays: 1, hardDays: 3, easyDays: 7 }) });
   });
   await page.route("**/api/practice/flashcards/attempt", async (route) => {
     const body = route.request().postDataJSON() as Record<string, unknown>;
-    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, attempt: { ...body, matchResult: body.forgot ? "incorrect" : "exact", rating: body.forgot ? "forgot" : body.remembered ? "good" : "hard" } }) });
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, attempt: { ...body, matchResult: body.forgot ? "incorrect" : "exact", rating: body.forgot ? "forgot" : body.difficulty === "hard" ? "hard" : "good" } }) });
   });
   await page.route("**/api/practice/flashcards/complete", async (route) => {
     completionBodies.push(route.request().postDataJSON() as { clientCompletionId?: string; answers?: unknown[] });
@@ -97,17 +97,17 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
   await page.keyboard.press("Enter");
   await expect(page.getByText("Resposta exata")).toBeVisible();
   await expect(page.getByText("→ 7 dias")).toBeVisible();
-  await expect(page.getByText("→ 1 dia")).toBeVisible();
-  await page.getByRole("button", { name: /^Lembrei/ }).click();
+  await expect(page.getByText("→ 3 dias")).toBeVisible();
+  await page.getByRole("button", { name: /^Fácil/ }).click();
   await expect(page.getByText("bom dia", { exact: true })).toBeVisible();
   await expect(page.getByText("buen día", { exact: true })).toHaveCount(0);
   await page.getByRole("button", { name: "Não lembro" }).click();
   await expect(page.getByText("buen día", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /^Não lembrei/ }).click();
+  await page.getByRole("button", { name: "Continuar" }).click();
   await expect(page.getByText("bom dia", { exact: true })).toBeVisible();
   await page.getByRole("textbox", { name: "Resposta esperada em Espanhol" }).fill("buen día");
   await page.getByRole("button", { name: "Responder" }).click();
-  await page.getByRole("button", { name: /^Lembrei/ }).click();
+  await page.getByRole("button", { name: /^Fácil/ }).click();
 
   await expect(page.getByRole("heading", { name: "100% de acerto" })).toBeVisible();
   await expect(page.getByText("Produção")).toBeVisible();
@@ -142,7 +142,7 @@ test("sense-targeted flashcard presents the exercised meaning and completes", as
     });
   });
   await page.route("**/api/practice/flashcards/preview", async (route) => {
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, match: "exact", inferredRating: "good", forgotDays: 1, rememberedDays: 7 }) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, match: "exact", forgotDays: 1, hardDays: 3, easyDays: 7 }) });
   });
   await page.route("**/api/practice/flashcards/attempt", async (route) => {
     const body = route.request().postDataJSON() as Record<string, unknown>;
@@ -166,7 +166,7 @@ test("sense-targeted flashcard presents the exercised meaning and completes", as
   await page.keyboard.press("Enter");
   await expect(page.getByText("Resposta exata")).toBeVisible();
   await expect(page.getByText("→ 7 dias")).toBeVisible();
-  await page.getByRole("button", { name: /^Lembrei/ }).click();
+  await page.getByRole("button", { name: /^Fácil/ }).click();
 
   await expect(page.getByRole("heading", { name: "100% de acerto" })).toBeVisible();
   expect(attemptBodies).toHaveLength(1);
@@ -227,13 +227,13 @@ test("listening card plays audio prompt and shows interval hints", async ({ page
         languageCode: "es",
         languageName: "Espanhol",
         cards: [
-          { id: "card-listen", sessionId: "session-listen", type: "listening", targetWordId: "word-l", supportingWordIds: [], prompt: "", expectedAnswer: "hola", acceptedAnswers: [], translation: "olá", audioText: "hola", difficulty: 3 }
+          { id: "card-listen", sessionId: "session-listen", type: "listening", targetWordId: "word-l", supportingWordIds: [], prompt: "", expectedAnswer: "olá", acceptedAnswers: [], translation: "olá", audioText: "hola", difficulty: 3 }
         ]
       })
     });
   });
   await page.route("**/api/practice/flashcards/preview", async (route) => {
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, match: "exact", inferredRating: "good", forgotDays: 1, rememberedDays: 7 }) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, match: "exact", forgotDays: 1, hardDays: 3, easyDays: 7 }) });
   });
 
   await page.goto("/palavras/treino");
@@ -909,4 +909,93 @@ test("release visual matrix has no horizontal overflow or clipped navigation", a
       });
     }
   }
+});
+
+test("wrong typed answer requeues the card without a difficulty choice", async ({ page }) => {
+  const attemptBodies: Array<Record<string, unknown>> = [];
+  await page.route("**/api/practice/flashcards", async (route) => {
+    if (route.request().method() === "GET") {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, activeSession: null }) });
+      return;
+    }
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, sessionId: "wrong-session", languageCode: "es", languageName: "Espanhol", cards: [
+      { id: "wrong-card", sessionId: "wrong-session", type: "native_to_target", targetWordId: "word-a", supportingWordIds: [], prompt: "olá", expectedAnswer: "hola", acceptedAnswers: [], translation: "olá", difficulty: 2 }
+    ] }) });
+  });
+  await page.route("**/api/practice/flashcards/preview", async (route) => {
+    const body = route.request().postDataJSON() as { userAnswer?: string };
+    const correct = body.userAnswer === "hola";
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, match: correct ? "exact" : "incorrect", forgotDays: 1, hardDays: 3, easyDays: 7 }) });
+  });
+  await page.route("**/api/practice/flashcards/attempt", async (route) => {
+    const body = route.request().postDataJSON() as Record<string, unknown>;
+    attemptBodies.push(body);
+    await route.fulfill({ status: 201, contentType: "application/json", body: JSON.stringify({ ok: true, attempt: { ...body, matchResult: body.userAnswer === "hola" ? "exact" : "incorrect", rating: body.userAnswer === "hola" ? "good" : "forgot" } }) });
+  });
+  await page.route("**/api/practice/flashcards/complete", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, score: 100, correctCards: 1, wrongCards: 0, totalCards: 1, reviewedWords: 1, uniqueCardCount: 1, presentationCount: 2, firstAttemptCorrect: 0, recoveredCards: 1, productionAccuracy: 100, listeningAccuracy: null }) });
+  });
+
+  await page.goto("/palavras/treino");
+  await page.getByRole("button", { name: "Sessão custom" }).click();
+  await page.getByRole("button", { name: /Montar treino/ }).click();
+  const answer = page.getByRole("textbox", { name: "Resposta esperada em Espanhol" });
+  await answer.fill("olla");
+  await page.getByRole("button", { name: "Responder" }).click();
+  await expect(page.getByText("Resposta diferente da esperada")).toBeVisible();
+  await expect(page.getByText("Sem problema — este card volta ainda nesta sessão.")).toBeVisible();
+  await expect(page.getByRole("button", { name: /^Difícil/ })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^Fácil/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Continuar" }).click();
+
+  // O card reapresenta (rating forgot reagenda); agora a resposta correta libera Difícil/Fácil.
+  await answer.fill("hola");
+  await page.getByRole("button", { name: "Responder" }).click();
+  await expect(page.getByText("Resposta exata")).toBeVisible();
+  await page.getByRole("button", { name: /^Fácil/ }).click();
+  await expect(page.getByRole("heading", { name: "100% de acerto" })).toBeVisible();
+
+  expect(attemptBodies[0]).not.toHaveProperty("difficulty");
+  expect(attemptBodies[0]).toMatchObject({ presentationNumber: 1, userAnswer: "olla", forgot: false });
+  expect(attemptBodies[1]).toMatchObject({ presentationNumber: 2, userAnswer: "hola", difficulty: "easy" });
+});
+
+test("listening card dictates the answer in Portuguese", async ({ page }) => {
+  await page.addInitScript(() => {
+    class MockRecognition {
+      lang = "";
+      interimResults = false;
+      continuous = false;
+      onresult: ((event: unknown) => void) | null = null;
+      onerror: (() => void) | null = null;
+      onend: (() => void) | null = null;
+      constructor() { (window as unknown as { __flashcardRecognition: MockRecognition }).__flashcardRecognition = this; }
+      start() {}
+      stop() { this.onend?.(); }
+      abort() { this.onend?.(); }
+    }
+    Object.defineProperty(window, "SpeechRecognition", { configurable: true, value: MockRecognition });
+    Object.defineProperty(window, "webkitSpeechRecognition", { configurable: true, value: MockRecognition });
+  });
+  await page.route("**/api/voice/synthesize", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, audioUrl: "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=" }) });
+  });
+  await page.route("**/api/practice/flashcards", async (route) => route.fulfill({
+    status: route.request().method() === "GET" ? 200 : 201,
+    contentType: "application/json",
+    body: JSON.stringify(route.request().method() === "GET" ? { ok: true, activeSession: null } : { ok: true, sessionId: "listening-speech", languageCode: "es", languageName: "Espanhol", cards: [
+      { id: "listening-card", sessionId: "listening-speech", type: "listening", targetWordId: "word-a", supportingWordIds: [], prompt: "", expectedAnswer: "olá", acceptedAnswers: [], translation: "olá", audioText: "hola", difficulty: 3 }
+    ] })
+  }));
+
+  await page.goto("/palavras/treino");
+  await page.getByRole("button", { name: "Sessão custom" }).click();
+  await page.getByRole("button", { name: /Montar treino/ }).click();
+  await page.getByRole("button", { name: "Falar resposta" }).click();
+  await page.evaluate(() => {
+    const recognition = (window as unknown as { __flashcardRecognition: { lang: string; onresult: ((event: unknown) => void) | null } }).__flashcardRecognition;
+    if (recognition.lang !== "pt-BR") throw new Error(`Unexpected recognition language: ${recognition.lang}`);
+    recognition.onresult?.({ results: [{ isFinal: true, 0: { transcript: "olá" } }] });
+  });
+  await expect(page.getByRole("textbox", { name: "Resposta esperada em português" })).toHaveValue("olá");
 });
