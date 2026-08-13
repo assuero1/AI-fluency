@@ -1,4 +1,4 @@
-import type { AnswerMatch, Flashcard, QueueItem, RecallRating } from "./flashcard-contracts";
+import type { AnswerMatch, Flashcard, FlashcardDifficulty, QueueItem, RecallRating } from "./flashcard-contracts";
 
 export function createFlashcardQueue(cards: Flashcard[]): QueueItem[] {
   return cards.map((card) => ({ cardId: card.id, presentationNumber: 1, dueAfterIndex: 0 }));
@@ -16,6 +16,15 @@ export function inferRecallRating(input: { match: AnswerMatch; forgot: boolean; 
 export function resolveBinaryRating(input: { remembered: boolean; match: AnswerMatch; forgot: boolean; responseTimeMs: number; cardType: Flashcard["type"] }): RecallRating {
   if (!input.remembered) return "forgot";
   if (input.forgot || input.match === "incorrect") return "hard";
+  return inferRecallRating(input);
+}
+
+// Difficulty UI: after a correct-enough typed answer the user self-reports effort
+// ("Difícil"/"Fácil"). A wrong/unknown/forgotten answer is always "forgot" — the
+// self-report never overrides it, so there is no "I knew it" inflation path.
+export function resolveDifficultyRating(input: { difficulty: FlashcardDifficulty; match: AnswerMatch; forgot: boolean; responseTimeMs: number; cardType: Flashcard["type"] }): RecallRating {
+  if (input.forgot || input.match === "incorrect" || input.match === "unknown") return "forgot";
+  if (input.difficulty === "hard") return "hard";
   return inferRecallRating(input);
 }
 

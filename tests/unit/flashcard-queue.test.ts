@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advanceFlashcardQueue, createFlashcardQueue, inferRecallRating, rebuildFlashcardQueue, resolveBinaryRating, selectNextQueueItem } from "../../lib/learning/flashcard-queue";
+import { advanceFlashcardQueue, createFlashcardQueue, inferRecallRating, rebuildFlashcardQueue, resolveBinaryRating, resolveDifficultyRating, selectNextQueueItem } from "../../lib/learning/flashcard-queue";
 import type { Flashcard } from "../../lib/learning/flashcard-contracts";
 
 const cards = ["a", "b", "c", "d", "e", "f"].map((id) => ({ id } as Flashcard));
@@ -20,6 +20,18 @@ describe("flashcard pedagogical queue", () => {
     expect(resolveBinaryRating({ ...base, remembered: true, match: "minor_error", forgot: false })).toBe("hard");
     expect(resolveBinaryRating({ ...base, remembered: true, match: "exact", forgot: false })).toBe("easy");
     expect(resolveBinaryRating({ ...base, remembered: true, match: "exact", forgot: false, responseTimeMs: 9000 })).toBe("good");
+  });
+
+  it("resolves the difficulty choice into a 4-value rating", () => {
+    const base = { responseTimeMs: 1000, cardType: "native_to_target" } as const;
+    expect(resolveDifficultyRating({ ...base, difficulty: "hard", match: "exact", forgot: false })).toBe("hard");
+    expect(resolveDifficultyRating({ ...base, difficulty: "hard", match: "minor_error", forgot: false })).toBe("hard");
+    expect(resolveDifficultyRating({ ...base, difficulty: "easy", match: "exact", forgot: false })).toBe("easy");
+    expect(resolveDifficultyRating({ ...base, difficulty: "easy", match: "exact", forgot: false, responseTimeMs: 9000 })).toBe("good");
+    expect(resolveDifficultyRating({ ...base, difficulty: "easy", match: "minor_error", forgot: false })).toBe("hard");
+    expect(resolveDifficultyRating({ ...base, difficulty: "easy", match: "incorrect", forgot: false })).toBe("forgot");
+    expect(resolveDifficultyRating({ ...base, difficulty: "easy", match: "unknown", forgot: false })).toBe("forgot");
+    expect(resolveDifficultyRating({ ...base, difficulty: "hard", match: "exact", forgot: true })).toBe("forgot");
   });
 
   it("returns forgotten cards after three other presentations", () => {

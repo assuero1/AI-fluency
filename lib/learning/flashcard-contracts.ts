@@ -8,6 +8,9 @@ export type FlashcardType = "target_to_native" | "native_to_target" | "cloze" | 
 export type AnswerMatch = "exact" | "acceptable" | "minor_error" | "incorrect" | "unknown";
 export type RecallRating = "forgot" | "hard" | "good" | "easy";
 
+export const flashcardDifficulties = ["hard", "easy"] as const;
+export type FlashcardDifficulty = (typeof flashcardDifficulties)[number];
+
 export type QueueItem = {
   cardId: string;
   presentationNumber: number;
