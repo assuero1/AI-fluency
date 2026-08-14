@@ -115,6 +115,8 @@ export function ChatConversation({
   const retryRequestRef = useRef<{ text: string; id: string } | null>(null);
   const pausedMsRef = useRef(0);
   const hiddenSinceRef = useRef<number | null>(null);
+  const finalizedRef = useRef(false);
+  const discardTimerRef = useRef<number | null>(null);
   const latestAssistantMessageId = findLatestAssistantMessageId(messages);
   const correctionsByMessageId = useMemo(() => {
     const grouped = new Map<string, TeableRecord<CorrectionFields>[]>();
@@ -174,6 +176,27 @@ export function ChatConversation({
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
   }, [readOnly]);
+
+  useEffect(() => {
+    if (readOnly) return;
+    // StrictMode (dev) monta/desmonta o efeito uma vez na montagem; o setup
+    // cancela um descarte pendente, então só uma desmontagem real dispara.
+    if (discardTimerRef.current !== null) {
+      window.clearTimeout(discardTimerRef.current);
+      discardTimerRef.current = null;
+    }
+    const handlePageHide = () => {
+      if (!finalizedRef.current) discardActiveTraining(conversation.id);
+    };
+    window.addEventListener("pagehide", handlePageHide);
+    return () => {
+      window.removeEventListener("pagehide", handlePageHide);
+      discardTimerRef.current = window.setTimeout(() => {
+        discardTimerRef.current = null;
+        if (!finalizedRef.current) discardActiveTraining(conversation.id);
+      }, 300);
+    };
+  }, [conversation.id, readOnly]);
 
   useEffect(() => {
     const chatStack = chatStackRef.current;
@@ -335,6 +358,7 @@ export function ChatConversation({
       });
       const data = (await response.json()) as { ok?: boolean; error?: string; redirectTo?: string };
       if (!response.ok || !data.ok) throw new Error(data.error ?? "Não foi possível finalizar a conversa.");
+      finalizedRef.current = true;
       router.push(data.redirectTo ?? `/resumo?conversationId=${conversation.id}`);
     } catch (finishError) {
       setError(normalizeChatError(finishError, "Não foi possível finalizar a conversa agora. Tente novamente."));
@@ -352,6 +376,7 @@ export function ChatConversation({
       const response = await fetch(`/api/conversations/${conversation.id}/abandon`, { method: "POST" });
       const data = (await response.json()) as { ok?: boolean; error?: string; redirectTo?: string };
       if (!response.ok || !data.ok) throw new Error(data.error ?? "Não foi possível abandonar o treino.");
+      finalizedRef.current = true;
       router.push(data.redirectTo ?? "/");
       router.refresh();
     } catch (abandonError) {
@@ -816,6 +841,16 @@ function ElapsedTimePill({ startedAt, readOnly, getPausedMs }: { startedAt: stri
 function createClientRequestId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) return crypto.randomUUID();
   return `message-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function discardActiveTraining(conversationId: string) {
+  const url = `/api/conversations/${conversationId}/abandon`;
+  try {
+    if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function" && navigator.sendBeacon(url)) return;
+  } catch {
+    // Cai para o fetch keepalive abaixo.
+  }
+  void fetch(url, { method: "POST", keepalive: true }).catch(() => undefined);
 }
 
 function formatElapsedTime(totalSeconds: number) {
