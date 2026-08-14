@@ -73,7 +73,7 @@ export async function getProfileSettings() {
           level: activeProfile.fields.level,
           learningGoal: activeProfile.fields.learning_goal,
           correctionStyle: activeProfile.fields.correction_style,
-          audioEnabled: Boolean(activeProfile.fields.audio_enabled),
+          audioEnabled: true,
           transcriptEnabled: Boolean(activeProfile.fields.transcript_enabled),
           calendarMemoryEnabled: Boolean(activeProfile.fields.calendar_memory_enabled),
           weeklyConversationGoal: Number(activeProfile.fields.weekly_conversation_goal ?? 7),

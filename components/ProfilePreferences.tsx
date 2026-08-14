@@ -1,7 +1,6 @@
 "use client";
 
-import { Check, Download, KeyRound, Loader2, Mic, Server, ShieldAlert, Trash2, UserRound } from "lucide-react";
-import Link from "next/link";
+import { Check, Download, Loader2, ShieldAlert, Trash2, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 import { IconBubble } from "./IconBubble";
@@ -18,16 +17,10 @@ type ProfilePreferencesProps = {
       languageName: string;
       level: string;
       correctionStyle: string;
-      audioEnabled: boolean;
       transcriptEnabled: boolean;
       calendarMemoryEnabled: boolean;
     } | null;
     languageProfiles: Array<{ id: string; languageName: string; level: string }>;
-    connections: {
-      ai: { configured: boolean };
-      supabase: { configured: boolean };
-      kokoro: { configured: boolean };
-    };
   };
   streak: number;
 };
@@ -45,7 +38,6 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
   const [preferences, setPreferences] = useState({
     level: initial.activeProfile?.level ?? DEFAULT_LANGUAGE_LEVEL,
     correctionStyle: initial.activeProfile?.correctionStyle ?? "Corrigir sempre",
-    audioEnabled: initial.activeProfile?.audioEnabled ?? true,
     transcriptEnabled: initial.activeProfile?.transcriptEnabled ?? true,
     calendarMemoryEnabled: initial.activeProfile?.calendarMemoryEnabled ?? true
   });
@@ -193,18 +185,8 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
       <section className="section">
         <h2 className="section-title">Áudio e aprendizagem</h2>
         <div className="settings-card">
-          <ToggleRow checked={preferences.audioEnabled} label="Ouvir respostas da IA" onChange={(checked) => savePreference({ audioEnabled: checked })} />
           <ToggleRow checked={preferences.transcriptEnabled} label="Mostrar transcrição" onChange={(checked) => savePreference({ transcriptEnabled: checked })} />
           <ToggleRow checked={preferences.calendarMemoryEnabled} label="Usar memória do calendário" onChange={(checked) => savePreference({ calendarMemoryEnabled: checked })} />
-        </div>
-      </section>
-
-      <section className="section">
-        <h2 className="section-title">Conexões</h2>
-        <div className="settings-list">
-          <ConnectionLink connected={initial.connections.ai.configured} Icon={KeyRound} label="IA e modelos" tone="primary" />
-          <ConnectionLink connected={initial.connections.supabase.configured} Icon={Server} label="Supabase" tone="info" />
-          <ConnectionLink connected={initial.connections.kokoro.configured} Icon={Mic} label="Kokoro voz" tone="warning" />
         </div>
       </section>
 
@@ -256,15 +238,6 @@ function ToggleRow({ checked, label, onChange }: { checked: boolean; label: stri
       <span><strong>{label}</strong></span>
       <input checked={checked} onChange={(event) => onChange(event.target.checked)} type="checkbox" />
     </label>
-  );
-}
-
-function ConnectionLink({ connected, Icon, label, tone }: { connected: boolean; Icon: typeof KeyRound; label: string; tone: "primary" | "warning" | "info" }) {
-  return (
-    <Link className="settings-row" href="/settings/connections">
-      <span className="selector-item"><Icon color={tone === "primary" ? "#2f9d4a" : tone === "info" ? "#2f7edb" : "#e6a400"} /> {label}</span>
-      <span className={connected ? "status-dot" : "status-dot warning-status"}>{connected ? "Configurado" : "Configurar"}</span>
-    </Link>
   );
 }
 

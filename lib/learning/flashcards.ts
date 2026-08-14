@@ -269,7 +269,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
     resolveDueSenses(selected, sensesByWord).map(({ word, sense }) => ({ id: word.id, fields: { review_state: sense.fields.review_state } })),
     {
       seed: `${user.id}:${profile.id}:${Date.now()}`,
-      audioEnabled: Boolean(profile.fields.audio_enabled),
+      audioEnabled: true,
       flags: getCardTypeFlags()
     }
   );

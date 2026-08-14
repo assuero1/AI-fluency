@@ -46,7 +46,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       <ChatConversation
         corrections={context.corrections}
         conversation={context.conversation}
-        audioEnabled={Boolean(context.profile?.fields.audio_enabled)}
+        audioEnabled={true}
         speechLanguage={context.profile?.fields.language_code}
         messages={context.messages}
         transcriptEnabled={Boolean(context.profile?.fields.transcript_enabled)}
