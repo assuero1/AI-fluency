@@ -60,6 +60,9 @@ export async function updatePassword(_prev: AuthFormState, formData: FormData): 
 
 export async function logout() {
   const supabase = await getRequestSupabaseClient();
-  await supabase.auth.signOut();
+  // Escopo local: encerra só esta sessão/dispositivo. O default ("global")
+  // revoga TODAS as sessões do usuário — inclusive outras sessões legítimas
+  // (ex.: outro dispositivo, ou a sessão compartilhada do harness e2e).
+  await supabase.auth.signOut({ scope: "local" });
   redirect("/login");
 }
