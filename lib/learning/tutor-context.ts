@@ -74,11 +74,11 @@ async function loadTutorKnowledge(
   profileId: string | undefined,
   calendarMemoryEnabled: boolean
 ): Promise<TutorKnowledge> {
-  // words/conversations carry a user_id field, so they can be filtered
-  // server-side; corrections/topics/feedbacks still need broader reads.
+  // Todas as tabelas carregam user_id; RLS já restringe ao usuário da sessão e
+  // o filtro por perfil ativo permanece em memória (language_profile_id).
   const [words, corrections, conversations, topics, feedbacks] = await Promise.all([
     client.listRecordsWhere<WordFields>("words", "user_id", userId),
-    client.listAllRecords<CorrectionFields>("corrections"),
+    client.listRecordsWhere<CorrectionFields>("corrections", "user_id", userId),
     client.listRecordsWhere<ConversationFields>("conversations", "user_id", userId),
     client.listRecords<TopicFields>("topics", 150),
     client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 90)

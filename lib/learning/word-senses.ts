@@ -37,6 +37,7 @@ export function synthesizeLegacySense(word: TeableRecord<WordFields>): WordSense
   const fields = word.fields;
   const translation = fields.translation ?? "";
   return {
+    user_id: fields.user_id,
     word_id: word.id,
     ...(translation.trim() ? { sense_key: canonicalSenseKey(fields.user_id, fields.language_profile_id, fields.lemma, translation) } : {}),
     translation,
@@ -163,8 +164,8 @@ export async function listSensesByWordIds(wordIds: string[]): Promise<Map<string
   return byWord;
 }
 
-export async function findSenseByKey(senseKey: string): Promise<TeableRecord<WordSenseFields> | undefined> {
-  const senses = await getTeableClient().listAllRecords<WordSenseFields>("wordSenses");
+export async function findSenseByKey(senseKey: string, userId: string): Promise<TeableRecord<WordSenseFields> | undefined> {
+  const senses = await getTeableClient().listRecordsWhereAll<WordSenseFields>("wordSenses", [{ field: "user_id", value: userId }]);
   return senses.find((sense) => matchesCanonicalSenseKey(sense.fields.sense_key, senseKey));
 }
 
@@ -195,7 +196,7 @@ export async function createWordSense(fields: WordSenseFields): Promise<TeableRe
     // uniqueness conflict on sense_key means a concurrent write won; re-read
     // and return the existing sense instead of failing.
     if (!(error instanceof TeableRequestError) || ![400, 409, 422].includes(error.status) || !fields.sense_key) throw error;
-    const existing = await findSenseByKey(fields.sense_key);
+    const existing = await findSenseByKey(fields.sense_key, fields.user_id);
     if (!existing) throw error;
     return existing;
   }

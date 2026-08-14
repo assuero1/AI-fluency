@@ -7,7 +7,6 @@ import type { DailyFeedbackFields, TopicFields } from "./home";
 import type { FlashcardAttemptFields, FlashcardFields } from "./flashcards";
 import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser, LanguageProfileFields, UserFields } from "./profile";
 import { isLanguageLevel } from "./levels";
-import { matchesLearningScope } from "./scope";
 import { PERSONAL_DATA_EXPORT_SCHEMA_VERSION } from "./export";
 
 const DELETE_PHRASE = "LIMPAR HISTORICO";
@@ -209,7 +208,7 @@ export async function deleteLearningHistory(input: { confirmationToken?: string;
   const client = getTeableClient();
   const data = await getScopedLearningData();
   if (!data.profile) throw new AccountValidationError("Crie um perfil de idioma antes de limpar o histórico.");
-  const events = await client.listRecords<LearningHistoryEventFields>("appEvents", 400);
+  const events = await client.listRecordsWhereAll<LearningHistoryEventFields>("appEvents", [{ field: "user_id", value: data.user.id }]);
   const challenge = events.find((event) => {
     if (event.fields.user_id !== data.user.id || event.fields.event_name !== DELETE_EVENT) return false;
     const payload = parsePayload(event.fields.payload);
@@ -289,55 +288,46 @@ async function getScopedLearningData() {
   const client = getTeableClient();
   const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
+  const userFilter = [{ field: "user_id", value: user.id }];
+  const profileFilters = profile ? [...userFilter, { field: "language_profile_id", value: profile.id }] : null;
+  const profileScoped = async <TFields extends Record<string, unknown>>(tableKey: TeableTableKey) =>
+    profileFilters ? client.listRecordsWhereAll<TFields>(tableKey, profileFilters) : ([] as TeableRecord<TFields>[]);
   const [profiles, conversations, messages, corrections, words, wordOccurrences, wordUsageSummaries, dailyFeedbacks, topics, practiceSessions, flashcards, flashcardAttempts] = await Promise.all([
-    client.listAllRecords<LanguageProfileFields>("languageProfiles"),
-    client.listAllRecords<ConversationFields>("conversations"),
-    client.listAllRecords<MessageFields>("messages"),
-    client.listAllRecords<CorrectionFields>("corrections"),
-    client.listAllRecords<WordFields>("words"),
-    client.listAllRecords<WordOccurrenceFields>("wordOccurrences"),
-    client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries"),
-    client.listAllRecords<DailyFeedbackFields>("dailyFeedbacks"),
-    client.listAllRecords<TopicFields>("topics"),
-    client.listAllRecords<Record<string, unknown>>("practiceSessions"),
-    client.listAllRecords<FlashcardFields>("flashcards"),
-    client.listAllRecords<FlashcardAttemptFields>("flashcardAttempts")
+    client.listRecordsWhereAll<LanguageProfileFields>("languageProfiles", userFilter),
+    profileScoped<ConversationFields>("conversations"),
+    client.listRecordsWhereAll<MessageFields>("messages", userFilter),
+    client.listRecordsWhereAll<CorrectionFields>("corrections", userFilter),
+    profileScoped<WordFields>("words"),
+    client.listRecordsWhereAll<WordOccurrenceFields>("wordOccurrences", userFilter),
+    client.listRecordsWhereAll<WordUsageSummaryFields>("wordUsageSummaries", userFilter),
+    profileScoped<DailyFeedbackFields>("dailyFeedbacks"),
+    profileScoped<TopicFields>("topics"),
+    profileScoped<Record<string, unknown>>("practiceSessions"),
+    client.listRecordsWhereAll<FlashcardFields>("flashcards", userFilter),
+    client.listRecordsWhereAll<FlashcardAttemptFields>("flashcardAttempts", userFilter)
   ]);
-  const profileId = profile?.id;
-  const ownProfiles = profiles.filter((item) => item.fields.user_id === user.id);
-  const scopedConversations = conversations.filter((item) => inScope(item, user.id, profileId));
-  const conversationIds = new Set(scopedConversations.map((item) => item.id));
-  const scopedWords = words.filter((item) => inScope(item, user.id, profileId));
-  const wordIds = new Set(scopedWords.map((item) => item.id));
-  const scopedPracticeSessions = practiceSessions.filter((item) => inScope(item, user.id, profileId));
-  const practiceSessionIds = new Set(scopedPracticeSessions.map((item) => item.id));
+  const conversationIds = new Set(conversations.map((item) => item.id));
+  const wordIds = new Set(words.map((item) => item.id));
+  const practiceSessionIds = new Set(practiceSessions.map((item) => item.id));
   const scopedFlashcards = flashcards.filter((item) => practiceSessionIds.has(item.fields.practice_session_id));
   const flashcardIds = new Set(scopedFlashcards.map((item) => item.id));
 
   return {
     user,
     profile,
-    profiles: ownProfiles,
-    conversations: scopedConversations,
+    profiles,
+    conversations,
     messages: messages.filter((item) => isConversationMessageInScope(item, conversationIds)),
     corrections: corrections.filter((item) => conversationIds.has(item.fields.conversation_id)),
-    words: scopedWords,
+    words,
     wordOccurrences: wordOccurrences.filter((item) => wordIds.has(item.fields.word_id) || conversationIds.has(item.fields.conversation_id)),
     wordUsageSummaries: wordUsageSummaries.filter((item) => wordIds.has(item.fields.word_id) || conversationIds.has(item.fields.conversation_id)),
-    dailyFeedbacks: dailyFeedbacks.filter((item) => inScope(item, user.id, profileId)),
-    topics: topics.filter((item) => inScope(item, user.id, profileId)),
-    practiceSessions: scopedPracticeSessions,
+    dailyFeedbacks,
+    topics,
+    practiceSessions,
     flashcards: scopedFlashcards,
     flashcardAttempts: flashcardAttempts.filter((item) => practiceSessionIds.has(item.fields.practice_session_id) || flashcardIds.has(item.fields.flashcard_id))
   };
-}
-
-function inScope<T extends { user_id?: string; language_profile_id?: string }>(
-  record: TeableRecord<T>,
-  userId: string,
-  profileId?: string
-) {
-  return matchesLearningScope(record.fields, { userId, profileId });
 }
 
 function clampGoal(value: number, min: number, max: number) {

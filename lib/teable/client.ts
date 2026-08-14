@@ -281,8 +281,11 @@ export class TeableClient {
   }
 
   async createEvent(userId: string | undefined, eventName: string, payload: Record<string, unknown>) {
+    // Mesmo invariante do adapter Supabase: evento sem usuário autenticado
+    // violaria a policy de insert quando RLS estiver ativo.
+    if (!userId) throw new TeableRequestError("createEvent requires an authenticated user id.", 400, { eventName });
     return this.createRecord("appEvents", {
-      user_id: userId ?? "",
+      user_id: userId,
       event_name: eventName,
       payload: JSON.stringify(payload),
       created_at: new Date().toISOString()

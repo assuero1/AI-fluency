@@ -6,7 +6,6 @@ import { getEnv } from "@/lib/env";
 import { LearningStateError } from "./access";
 import { WordFields, WordSenseFields } from "./conversations";
 import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser } from "./profile";
-import { matchesLearningScope } from "./scope";
 import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, summarizeDailyQueue } from "./daily-queue";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
 import { isRatingCorrect, rebuildFlashcardQueue, inferRecallRating, resolveBinaryRating, resolveDifficultyRating } from "./flashcard-queue";
@@ -55,6 +54,7 @@ export type PracticeSessionFields = {
 };
 
 export type FlashcardFields = {
+  user_id: string;
   practice_session_id: string;
   target_word_id: string;
   target_sense_id?: string;
@@ -74,6 +74,7 @@ export type FlashcardFields = {
 };
 
 export type FlashcardAttemptFields = {
+  user_id: string;
   practice_session_id: string;
   flashcard_id: string;
   word_id: string;
@@ -215,17 +216,21 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
   const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Configure um idioma antes de iniciar o treino.", 409);
+  const scopeFilters = [
+    { field: "user_id", value: user.id },
+    { field: "language_profile_id", value: profile.id }
+  ];
   const [allWords, sessions] = await Promise.all([
-    client.listRecords<WordFields>("words", 500),
-    client.listAllRecords<PracticeSessionFields>("practiceSessions")
+    client.listRecordsWhereAll<WordFields>("words", scopeFilters),
+    client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters)
   ]);
-  const active = sessions.find((session) => session.fields.user_id === user.id && session.fields.language_profile_id === profile.id && session.fields.type === "flashcards" && (session.fields.status === "active" || session.fields.status === "preparing"));
+  const active = sessions.find((session) => session.fields.type === "flashcards" && (session.fields.status === "active" || session.fields.status === "preparing"));
   if (active) throw new LearningStateError("Você já possui um treino ativo. Continue a sessão antes de iniciar outra.", 409);
-  const scoped = allWords.filter((word) => matchesLearningScope(word.fields, { userId: user.id, profileId: profile.id }));
+  const scoped = allWords;
   const requestedWordIds = Array.isArray(input.wordIds) ? new Set(input.wordIds.filter((id): id is string => typeof id === "string")) : null;
   if (requestedWordIds && requestedWordIds.size > 30) throw new LearningStateError("O treino aceita no máximo 30 palavras.", 422);
   if (requestedWordIds && [...requestedWordIds].some((id) => !scoped.some((word) => word.id === id))) throw new LearningStateError("Uma ou mais palavras não pertencem ao perfil ativo.", 404);
-  if (typeof input.parentSessionId === "string" && input.parentSessionId && !sessions.some((item) => item.id === input.parentSessionId && item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards" && item.fields.status === "completed")) throw new LearningStateError("Sessão de origem do retreino não encontrada.", 404);
+  if (typeof input.parentSessionId === "string" && input.parentSessionId && !sessions.some((item) => item.id === input.parentSessionId && item.fields.type === "flashcards" && item.fields.status === "completed")) throw new LearningStateError("Sessão de origem do retreino não encontrada.", 404);
   const queueKind: FlashcardQueueKind = normalizeFlashcardQueueKind(input.queueKind)
     ?? (requestedWordIds?.size || input.criterion !== undefined || input.count !== undefined ? "custom" : "daily");
   const timeZone = user.fields.timezone ?? "UTC";
@@ -310,7 +315,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
     deck = await buildDeck(selected, profile.fields.language_name || profile.fields.language_code, profile.fields.level || "intermediário", deckSeed, desiredTypes, sensesByWord);
     cards = [];
     for (const [index, provisional] of deck.cards.entries()) {
-      const record = await client.createRecord<FlashcardFields>("flashcards", flashcardToRecord(provisional, session.id, index, now));
+      const record = await client.createRecord<FlashcardFields>("flashcards", flashcardToRecord(provisional, session.id, user.id, index, now));
       cards.push({ ...provisional, id: record.id, sessionId: session.id });
     }
     await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, {
@@ -337,13 +342,17 @@ export async function createFlashcardRetraining(sourceSessionId: string, mode: u
   const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
+  const scopeFilters = [
+    { field: "user_id", value: user.id },
+    { field: "language_profile_id", value: profile.id }
+  ];
   const [sessions, words, cardRecords, attemptRecords] = await Promise.all([
-    client.listRecords<PracticeSessionFields>("practiceSessions", 300),
-    client.listRecords<WordFields>("words", 500),
-    client.listRecords<FlashcardFields>("flashcards", 500),
-    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000)
+    client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters),
+    client.listRecordsWhereAll<WordFields>("words", scopeFilters),
+    client.listRecordsWhere<FlashcardFields>("flashcards", "user_id", user.id),
+    client.listRecordsWhere<FlashcardAttemptFields>("flashcardAttempts", "user_id", user.id)
   ]);
-  const source = sessions.find((session) => session.id === sourceSessionId && session.fields.user_id === user.id && session.fields.language_profile_id === profile.id && session.fields.type === "flashcards" && session.fields.status === "completed");
+  const source = sessions.find((session) => session.id === sourceSessionId && session.fields.type === "flashcards" && session.fields.status === "completed");
   if (!source) throw new LearningStateError("Sessão concluída não encontrada.", 404);
   const cards = cardRecords.filter((record) => record.fields.practice_session_id === source.id).map(flashcardRecordToCard);
   const attemptsByCard = new Map<string, FlashcardAnswer[]>();
@@ -351,7 +360,7 @@ export async function createFlashcardRetraining(sourceSessionId: string, mode: u
     const answer = attemptRecordToAnswer(record);
     attemptsByCard.set(answer.cardId, [...(attemptsByCard.get(answer.cardId) ?? []), answer]);
   }
-  const difficultWords = new Set(words.filter((word) => matchesLearningScope(word.fields, { userId: user.id, profileId: profile.id }) && word.fields.review_state === "difficult").map((word) => word.id));
+  const difficultWords = new Set(words.filter((word) => word.fields.review_state === "difficult").map((word) => word.id));
   const selectedCards = cards.filter((card) => {
     const attempts = attemptsByCard.get(card.id) ?? [];
     const final = attempts.at(-1);
@@ -370,14 +379,17 @@ export async function getActiveFlashcardPractice() {
   const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) return null;
-  const sessions = await client.listRecords<PracticeSessionFields>("practiceSessions", 300);
+  const sessions = await client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", [
+    { field: "user_id", value: user.id },
+    { field: "language_profile_id", value: profile.id }
+  ]);
   const session = sessions
-    .filter((item) => item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards" && item.fields.status === "active")
+    .filter((item) => item.fields.type === "flashcards" && item.fields.status === "active")
     .sort((a, b) => dateValue(b.fields.started_at || b.fields.created_at) - dateValue(a.fields.started_at || a.fields.created_at))[0];
   if (!session) return null;
   const [cardRecords, attemptRecords] = await Promise.all([
-    client.listRecords<FlashcardFields>("flashcards", 500),
-    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000)
+    client.listRecordsWhere<FlashcardFields>("flashcards", "user_id", user.id),
+    client.listRecordsWhere<FlashcardAttemptFields>("flashcardAttempts", "user_id", user.id)
   ]);
   const cards = cardRecords.filter((record) => record.fields.practice_session_id === session.id).sort((a, b) => a.fields.initial_position - b.fields.initial_position).map(flashcardRecordToCard);
   const attempts = attemptRecords.filter((record) => record.fields.practice_session_id === session.id && !record.fields.undone_at).sort(compareAttemptRecords).map((record) => ({ id: record.id, ...attemptRecordToAnswer(record) }));
@@ -402,11 +414,15 @@ export async function getDailyQueueSummary() {
   const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) return null;
+  const scopeFilters = [
+    { field: "user_id", value: user.id },
+    { field: "language_profile_id", value: profile.id }
+  ];
   const [allWords, sessions] = await Promise.all([
-    client.listRecords<WordFields>("words", 500),
-    client.listAllRecords<PracticeSessionFields>("practiceSessions")
+    client.listRecordsWhereAll<WordFields>("words", scopeFilters),
+    client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters)
   ]);
-  const scoped = allWords.filter((word) => matchesLearningScope(word.fields, { userId: user.id, profileId: profile.id }));
+  const scoped = allWords;
   return summarizeDailyQueue(scoped, sessions, { userId: user.id, profileId: profile.id }, {
     quota: getDailyNewCardsQuota(user),
     timeZone: user.fields.timezone ?? "UTC"
@@ -419,8 +435,11 @@ export async function abandonFlashcardPractice(sessionId: string) {
   const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
-  const sessions = await client.listRecords<PracticeSessionFields>("practiceSessions", 300);
-  const session = sessions.find((item) => item.id === sessionId && item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards" && (item.fields.status === "active" || item.fields.status === "preparing"));
+  const sessions = await client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", [
+    { field: "user_id", value: user.id },
+    { field: "language_profile_id", value: profile.id }
+  ]);
+  const session = sessions.find((item) => item.id === sessionId && item.fields.type === "flashcards" && (item.fields.status === "active" || item.fields.status === "preparing"));
   if (!session) throw new LearningStateError("Sessão ativa de treino não encontrada.", 404);
   const endedAt = new Date();
   await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, {
@@ -457,13 +476,17 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
   const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
+  const scopeFilters = [
+    { field: "user_id", value: user.id },
+    { field: "language_profile_id", value: profile.id }
+  ];
   const [sessions, cardRecords, attemptRecords, words] = await Promise.all([
-    client.listRecords<PracticeSessionFields>("practiceSessions", 300),
-    client.listRecords<FlashcardFields>("flashcards", 500),
-    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000),
-    client.listRecords<WordFields>("words", 500)
+    client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters),
+    client.listRecordsWhere<FlashcardFields>("flashcards", "user_id", user.id),
+    client.listRecordsWhere<FlashcardAttemptFields>("flashcardAttempts", "user_id", user.id),
+    client.listRecordsWhereAll<WordFields>("words", scopeFilters)
   ]);
-  const session = sessions.find((item) => item.id === sessionId && item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards" && item.fields.status === "active");
+  const session = sessions.find((item) => item.id === sessionId && item.fields.type === "flashcards" && item.fields.status === "active");
   if (!session) throw new LearningStateError("Sessão ativa de treino não encontrada.", 404);
   const existing = attemptRecords.find((record) => record.fields.practice_session_id === sessionId && record.fields.client_attempt_id === clientAttemptId);
   if (existing) {
@@ -496,6 +519,7 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
       : forgot || matchResult === "incorrect" || matchResult === "unknown" ? "forgot" : inferredRating;
   const now = new Date().toISOString();
   const record = await client.createRecord<FlashcardAttemptFields>("flashcardAttempts", {
+    user_id: user.id,
     practice_session_id: sessionId,
     flashcard_id: card.id,
     word_id: card.targetWordId,
@@ -521,7 +545,7 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
   if (input.audioFailed === true) await client.createEvent(user.id, "flashcard_audio_fallback_activated", { session_id: sessionId, flashcard_id: card.id });
   await client.updateRecord<PracticeSessionFields>("practiceSessions", sessionId, { presentation_count: priorAttempts.length + 1, updated_at: now });
   const attemptWordIds = [card.targetWordId, ...card.supportingWordIds];
-  const reviewableWords = words.filter((item) => attemptWordIds.includes(item.id) && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
+  const reviewableWords = words.filter((item) => attemptWordIds.includes(item.id));
   if (reviewableWords.length && !(card.type === "listening" && input.audioFailed === true)) {
     // A card frozen with target_sense_id reviews that sense (and re-aggregates the
     // word cache); legacy cards without it keep updating the word directly.
@@ -616,13 +640,17 @@ export async function previewFlashcardAttemptIntervals(input: { sessionId?: unkn
   const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
+  const scopeFilters = [
+    { field: "user_id", value: user.id },
+    { field: "language_profile_id", value: profile.id }
+  ];
   const [sessions, cardRecords, attemptRecords, words] = await Promise.all([
-    client.listRecords<PracticeSessionFields>("practiceSessions", 300),
-    client.listRecords<FlashcardFields>("flashcards", 500),
-    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000),
-    client.listRecords<WordFields>("words", 500)
+    client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters),
+    client.listRecordsWhere<FlashcardFields>("flashcards", "user_id", user.id),
+    client.listRecordsWhere<FlashcardAttemptFields>("flashcardAttempts", "user_id", user.id),
+    client.listRecordsWhereAll<WordFields>("words", scopeFilters)
   ]);
-  const session = sessions.find((item) => item.id === sessionId && item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards" && item.fields.status === "active");
+  const session = sessions.find((item) => item.id === sessionId && item.fields.type === "flashcards" && item.fields.status === "active");
   if (!session) throw new LearningStateError("Sessão ativa de treino não encontrada.", 404);
   const cards = cardRecords.filter((record) => record.fields.practice_session_id === sessionId).sort((a, b) => a.fields.initial_position - b.fields.initial_position).map(flashcardRecordToCard);
   const priorAttempts = attemptRecords.filter((record) => record.fields.practice_session_id === sessionId && !record.fields.undone_at).sort(compareAttemptRecords).map(attemptRecordToAnswer);
@@ -638,7 +666,7 @@ export async function previewFlashcardAttemptIntervals(input: { sessionId?: unkn
   if (!forgot && !userAnswer) throw new LearningStateError("Informe uma resposta ou marque que não lembra.", 422);
   const match = forgot ? "incorrect" as const : compareAnswerForCard(card, userAnswer);
   const responseTimeMs = Math.max(0, Math.min(300_000, Math.round(Number(input.responseTimeMs) || 0)));
-  const word = words.find((item) => item.id === card.targetWordId && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
+  const word = words.find((item) => item.id === card.targetWordId);
   if (!word) throw new LearningStateError("Palavra do card não encontrada.", 404);
   // Sense-frozen cards project the hints from the sense's own schedule, matching
   // what the review will actually write; legacy cards keep the word-level cache.
@@ -665,12 +693,16 @@ export async function undoFlashcardAttempt(sessionId: string) {
   const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
+  const scopeFilters = [
+    { field: "user_id", value: user.id },
+    { field: "language_profile_id", value: profile.id }
+  ];
   const [sessions, attemptRecords, words] = await Promise.all([
-    client.listRecords<PracticeSessionFields>("practiceSessions", 300),
-    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000),
-    client.listRecords<WordFields>("words", 500)
+    client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters),
+    client.listRecordsWhere<FlashcardAttemptFields>("flashcardAttempts", "user_id", user.id),
+    client.listRecordsWhereAll<WordFields>("words", scopeFilters)
   ]);
-  const session = sessions.find((item) => item.id === sessionId && item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards" && item.fields.status === "active");
+  const session = sessions.find((item) => item.id === sessionId && item.fields.type === "flashcards" && item.fields.status === "active");
   if (!session) throw new LearningStateError("Sessão ativa de treino não encontrada.", 404);
   const liveAttempts = attemptRecords.filter((record) => record.fields.practice_session_id === session.id && !record.fields.undone_at).sort(compareAttemptRecords);
   const last = liveAttempts.at(-1);
@@ -678,7 +710,7 @@ export async function undoFlashcardAttempt(sessionId: string) {
   const snapshot = parseJson(last.fields.review_snapshot ?? "") as Record<string, Record<string, unknown>>;
   for (const [wordId, fields] of Object.entries(snapshot)) {
     if (wordId.startsWith("sense:")) continue;
-    const word = words.find((item) => item.id === wordId && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
+    const word = words.find((item) => item.id === wordId);
     if (word) await client.updateRecord<WordFields>("words", wordId, fields as Partial<WordFields>);
   }
   // Sense entries (key `sense:{id}`, written by sense-frozen cards) restore the
@@ -686,7 +718,7 @@ export async function undoFlashcardAttempt(sessionId: string) {
   // state. Legacy snapshots have no sense entries and restore words only.
   const senseEntries = Object.entries(snapshot).filter(([key]) => key.startsWith("sense:"));
   if (senseEntries.length) {
-    const scopedWordIds = words.filter((item) => matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id })).map((item) => item.id);
+    const scopedWordIds = words.map((item) => item.id);
     const knownSenseIds = new Set([...(await listSensesByWordIds(scopedWordIds)).values()].flat().map((sense) => sense.id));
     for (const [key, fields] of senseEntries) {
       const senseId = key.slice("sense:".length);
@@ -715,13 +747,17 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
   const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
+  const scopeFilters = [
+    { field: "user_id", value: user.id },
+    { field: "language_profile_id", value: profile.id }
+  ];
   const [sessions, words, cardRecords, attemptRecords] = await Promise.all([
-    client.listRecords<PracticeSessionFields>("practiceSessions", 300),
-    client.listRecords<WordFields>("words", 500),
-    client.listRecords<FlashcardFields>("flashcards", 500),
-    client.listRecords<FlashcardAttemptFields>("flashcardAttempts", 1000)
+    client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters),
+    client.listRecordsWhereAll<WordFields>("words", scopeFilters),
+    client.listRecordsWhere<FlashcardFields>("flashcards", "user_id", user.id),
+    client.listRecordsWhere<FlashcardAttemptFields>("flashcardAttempts", "user_id", user.id)
   ]);
-  const session = sessions.find((item) => item.id === sessionId && item.fields.user_id === user.id && item.fields.language_profile_id === profile.id && item.fields.type === "flashcards");
+  const session = sessions.find((item) => item.id === sessionId && item.fields.type === "flashcards");
   if (!session) throw new LearningStateError("Sessão de treino não encontrada.", 404);
   const focus = parseFocus(session.fields.focus);
   if (focus.completed || session.fields.status === "completed") {
@@ -774,7 +810,7 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
   }
   const sensesByWord = senseIdByWordId.size ? await listSensesByWordIds([...senseIdByWordId.keys()]) : new Map<string, TeableRecord<WordSenseFields>[]>();
   for (const wordId of reviewAttemptsByWord.keys()) {
-    const word = words.find((item) => item.id === wordId && matchesLearningScope(item.fields, { userId: user.id, profileId: profile.id }));
+    const word = words.find((item) => item.id === wordId);
     if (!word) continue;
     const wordAttempts = reviewAttemptsByWord.get(wordId) ?? [];
     const senseId = senseIdByWordId.get(wordId);
@@ -952,8 +988,9 @@ function isStoredFlashcard(value: unknown): value is Flashcard {
   return typeof card.id === "string" && typeof card.sessionId === "string" && ["target_to_native", "native_to_target", "cloze", "listening"].includes(card.type ?? "") && typeof card.targetWordId === "string" && Array.isArray(card.supportingWordIds) && typeof card.prompt === "string" && typeof card.expectedAnswer === "string" && Array.isArray(card.acceptedAnswers) && typeof card.translation === "string" && typeof card.difficulty === "number";
 }
 
-export function flashcardToRecord(card: Flashcard, sessionId: string, initialPosition: number, createdAt: string): FlashcardFields {
+export function flashcardToRecord(card: Flashcard, sessionId: string, userId: string, initialPosition: number, createdAt: string): FlashcardFields {
   return {
+    user_id: userId,
     practice_session_id: sessionId,
     target_word_id: card.targetWordId,
     // Blank on legacy/synthetic-sense cards: their reviews update the word directly.

@@ -136,6 +136,7 @@ describe("synthesizeLegacySense", () => {
 
   it("builds a synthetic primary sense from the word, copying the SRS state", () => {
     expect(synthesizeLegacySense(word)).toEqual({
+      user_id: "user-1",
       word_id: "word-1",
       sense_key: canonicalSenseKey("user-1", "profile-1", "banco", "bank"),
       translation: "bank",
@@ -168,7 +169,7 @@ describe("synthesizeLegacySense", () => {
 describe("aggregateSenseReviewToWordFields", () => {
   const sense = (id: string, fields: Partial<WordSenseFields>): TeableRecord<WordSenseFields> => ({
     id,
-    fields: { word_id: "word-1", translation: `tr-${id}`, ...fields }
+    fields: { user_id: "user-1", word_id: "word-1", translation: `tr-${id}`, ...fields }
   });
 
   it("returns an empty partial for a word without senses", () => {
@@ -250,7 +251,7 @@ describe("word senses access layer", () => {
 
   const senseRecord = (id: string, fields: Partial<WordSenseFields>): TeableRecord<WordSenseFields> => ({
     id,
-    fields: { word_id: "word-1", translation: `tr-${id}`, ...fields }
+    fields: { user_id: "user-1", word_id: "word-1", translation: `tr-${id}`, ...fields }
   });
 
   beforeEach(() => {
@@ -331,11 +332,11 @@ describe("word senses access layer", () => {
       })
     );
 
-    const found = await findSenseByKey(canonicalSenseKey("user-1", "profile-1", "cafe", "bank"));
+    const found = await findSenseByKey(canonicalSenseKey("user-1", "profile-1", "cafe", "bank"), "user-1");
     expect(found?.id).toBe("s1");
 
     fetchMock.mockResolvedValue(jsonResponse({ records: [] }));
-    await expect(findSenseByKey(canonicalSenseKey("user-1", "profile-1", "cafe", "bank"))).resolves.toBeUndefined();
+    await expect(findSenseByKey(canonicalSenseKey("user-1", "profile-1", "cafe", "bank"), "user-1")).resolves.toBeUndefined();
   });
 
   it("returns the primary sense, falling back to the lowest sense_order", async () => {
@@ -352,13 +353,13 @@ describe("word senses access layer", () => {
   it("creates a sense and returns the created record", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ records: [senseRecord("s1", { translation: "bank" })] }));
 
-    const created = await createWordSense({ word_id: "word-1", translation: "bank", is_primary: true });
+    const created = await createWordSense({ user_id: "user-1", word_id: "word-1", translation: "bank", is_primary: true });
 
     expect(created.id).toBe("s1");
     const [url, init] = fetchMock.mock.calls[0] as [string, RequestInit];
     expect(url).toContain("/api/table/tblWordSenses/record?fieldKeyType=name");
     expect(init.method).toBe("POST");
-    expect(JSON.parse(String(init.body))).toEqual({ records: [{ fields: { word_id: "word-1", translation: "bank", is_primary: true } }] });
+    expect(JSON.parse(String(init.body))).toEqual({ records: [{ fields: { user_id: "user-1", word_id: "word-1", translation: "bank", is_primary: true } }] });
   });
 
   it("re-reads by sense_key and returns the existing sense on a uniqueness conflict", async () => {
@@ -367,7 +368,7 @@ describe("word senses access layer", () => {
       .mockResolvedValueOnce(jsonResponse({ message: "duplicate" }, 409))
       .mockResolvedValueOnce(jsonResponse({ records: [senseRecord("s-existing", { sense_key: key })] }));
 
-    const created = await createWordSense({ word_id: "word-1", sense_key: key, translation: "bank" });
+    const created = await createWordSense({ user_id: "user-1", word_id: "word-1", sense_key: key, translation: "bank" });
 
     expect(created.id).toBe("s-existing");
     expect(fetchMock).toHaveBeenCalledTimes(2);
@@ -379,13 +380,13 @@ describe("word senses access layer", () => {
       .mockResolvedValueOnce(jsonResponse({ message: "duplicate" }, 422))
       .mockResolvedValueOnce(jsonResponse({ records: [] }));
 
-    await expect(createWordSense({ word_id: "word-1", sense_key: key, translation: "bank" })).rejects.toMatchObject({ status: 422 });
+    await expect(createWordSense({ user_id: "user-1", word_id: "word-1", sense_key: key, translation: "bank" })).rejects.toMatchObject({ status: 422 });
   });
 
   it("rethrows non-conflict create errors without re-reading", async () => {
     fetchMock.mockResolvedValue(jsonResponse({ message: "boom" }, 500));
 
-    await expect(createWordSense({ word_id: "word-1", translation: "bank" })).rejects.toMatchObject({ status: 500 });
+    await expect(createWordSense({ user_id: "user-1", word_id: "word-1", translation: "bank" })).rejects.toMatchObject({ status: 500 });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 

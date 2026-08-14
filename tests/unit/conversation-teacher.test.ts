@@ -51,6 +51,7 @@ const context = {
     {
       id: "p1",
       fields: {
+        user_id: "user-1",
         conversation_id: "conv-1",
         role: "user" as const,
         text: "I would like a coffee",
@@ -66,6 +67,7 @@ const context = {
     {
       id: "c1",
       fields: {
+        user_id: "user-1",
         conversation_id: "conv-1",
         message_id: "p1",
         original_text: "I would like",

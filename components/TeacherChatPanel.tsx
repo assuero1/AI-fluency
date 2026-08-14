@@ -75,6 +75,8 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
     const optimisticMessage: TeacherMessage = {
       id: optimisticId,
       fields: {
+        // Optimistic local message — never persisted, so no real user id exists here.
+        user_id: "",
         conversation_id: conversationId,
         role: "user",
         text: cleanText,

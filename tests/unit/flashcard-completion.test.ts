@@ -14,6 +14,7 @@ const createEvent = vi.fn();
 const listRecords = vi.fn();
 const listAllRecords = vi.fn();
 const listRecordsWhere = vi.fn();
+const listRecordsWhereAll = vi.fn();
 
 vi.mock("../../lib/ai/client", () => ({ createChatCompletion: vi.fn() }));
 vi.mock("../../lib/learning/profile", () => ({
@@ -21,7 +22,7 @@ vi.mock("../../lib/learning/profile", () => ({
   getActiveLanguageProfile: vi.fn(async () => profile)
 }));
 vi.mock("../../lib/teable/client", () => ({
-  getTeableClient: () => ({ listRecords, listAllRecords, listRecordsWhere, updateRecord, createEvent })
+  getTeableClient: () => ({ listRecords, listAllRecords, listRecordsWhere, listRecordsWhereAll, updateRecord, createEvent })
 }));
 
 describe("flashcard completion persistence", () => {
@@ -44,15 +45,25 @@ describe("flashcard completion persistence", () => {
     listRecords.mockImplementation(async (table: string) => {
       if (table === "practiceSessions") return [session];
       if (table === "flashcardAttempts") return attemptRecords;
-      return words;
+      if (table === "words") return words;
+      return [];
     });
+    // Scoped reads (RLS era): delegate to the per-test listRecords data,
+    // applying the filters the query would apply.
+    listRecordsWhere.mockImplementation(async (table: string, field: string, value: string) =>
+      ((await listRecords(table)) as Array<{ fields: Record<string, unknown> }>).filter((record) => String(record.fields[field] ?? "") === value)
+    );
+    listRecordsWhereAll.mockImplementation(async (table: string, filters: Array<{ field: string; value: string }>) =>
+      ((await listRecords(table)) as Array<{ fields: Record<string, unknown> }>).filter((record) =>
+        filters.every((filter) => String(record.fields[filter.field] ?? "") === filter.value)
+      )
+    );
     updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
       if (table === "practiceSessions" && id === session.id) session.fields = { ...session.fields, ...fields };
       return { id, fields };
     });
     createEvent.mockResolvedValue({ id: "event-a", fields: {} });
     listAllRecords.mockResolvedValue([]);
-    listRecordsWhere.mockResolvedValue([]);
   });
 
   it("persists the result and returns it for a retry with the same completion id", async () => {
@@ -159,7 +170,8 @@ describe("flashcard completion persistence", () => {
     ];
     listAllRecords.mockImplementation(async (table: string) => table === "wordSenses" ? senses : []);
     listRecordsWhere.mockImplementation(async (table: string, field: string, value: string) =>
-      table === "wordSenses" ? senses.filter((sense) => String((sense.fields as Record<string, unknown>)[field] ?? "") === value) : []
+      ((table === "wordSenses" ? senses : await listRecords(table)) as Array<{ fields: Record<string, unknown> }>)
+        .filter((record) => String(record.fields[field] ?? "") === value)
     );
     updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
       if (table === "practiceSessions" && id === session.id) session.fields = { ...session.fields, ...fields };
@@ -212,6 +224,7 @@ function appliedAttempt(id: string, cardId: string, wordId: string, clientAttemp
     id,
     createdTime: "2026-07-10T12:00:00.000Z",
     fields: {
+      user_id: user.id,
       practice_session_id: "session-a", flashcard_id: cardId, word_id: wordId,
       presentation_number: 1, client_attempt_id: clientAttemptId,
       user_answer: "resposta", normalized_answer: "resposta", match_result: "exact",

@@ -834,6 +834,8 @@ function createOptimisticUserMessage(
     id,
     fields: {
       Name: text.slice(0, 80),
+      // Optimistic local message — never persisted, so no real user id exists here.
+      user_id: "",
       conversation_id: conversationId,
       role: "user",
       text,

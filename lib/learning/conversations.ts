@@ -35,6 +35,7 @@ export type ConversationFields = {
 
 export type MessageFields = {
   Name?: string;
+  user_id: string;
   conversation_id: string;
   role: "user" | "assistant" | "system";
   text: string;
@@ -49,6 +50,7 @@ export type MessageFields = {
 
 export type CorrectionFields = {
   Name?: string;
+  user_id: string;
   conversation_id: string;
   message_id: string;
   original_text: string;
@@ -91,6 +93,7 @@ export type WordFields = {
 
 export type WordSenseFields = {
   Name?: string;
+  user_id: string;
   word_id: string;
   sense_key?: string;
   translation: string;
@@ -117,6 +120,7 @@ export type WordSenseFields = {
 
 export type WordOccurrenceFields = {
   Name?: string;
+  user_id: string;
   word_id: string;
   occurrence_key?: string;
   conversation_id: string;
@@ -129,6 +133,7 @@ export type WordOccurrenceFields = {
 
 export type WordUsageSummaryFields = {
   Name?: string;
+  user_id: string;
   usage_key: string;
   word_id: string;
   conversation_id: string;
@@ -479,6 +484,7 @@ export async function sendConversationMessage(conversationId: string, text: stri
   const now = new Date().toISOString();
   const userMessage = await client.createRecord<MessageFields>("messages", {
     Name: cleanText.slice(0, 80),
+    user_id: context.user.id,
     conversation_id: context.conversation.id,
     role: "user",
     text: cleanText,
@@ -534,6 +540,7 @@ export async function runConversationQuickAction(conversationId: string, action:
   const now = new Date().toISOString();
   const assistantMessage = await getTeableClient().createRecord<MessageFields>("messages", {
     Name: quickActionReply.slice(0, 80),
+    user_id: context.user.id,
     conversation_id: context.conversation.id,
     role: "assistant",
     text: quickActionReply,
@@ -637,6 +644,7 @@ async function createAnalyzedAssistantTurn(
   const [assistantMessage, corrections] = await Promise.all([
     client.createRecord<MessageFields>("messages", {
       Name: assistantReply.slice(0, 80),
+      user_id: conversation.fields.user_id,
       conversation_id: conversation.id,
       role: "assistant",
       text: assistantReply,
@@ -703,6 +711,7 @@ async function createAssistantMessage(
   const now = new Date().toISOString();
   return client.createRecord<MessageFields>("messages", {
     Name: assistantReply.slice(0, 80),
+    user_id: conversation.fields.user_id,
     conversation_id: conversation.id,
     role: "assistant",
     text: assistantReply,
@@ -941,6 +950,7 @@ async function saveCorrections(
     const corrected = correction.corrected?.trim() ?? "";
     return client.createRecord<CorrectionFields>("corrections", {
       Name: `${original} -> ${corrected}`.slice(0, 80),
+      user_id: conversation.fields.user_id,
       conversation_id: conversation.id,
       message_id: userMessage.id,
       original_text: original,

@@ -10,6 +10,7 @@ const profile = { id: "profile-a", fields: { language_code: "es", language_name:
 const listRecords = vi.fn();
 const listAllRecords = vi.fn();
 const listRecordsWhere = vi.fn();
+const listRecordsWhereAll = vi.fn();
 const createRecord = vi.fn();
 const updateRecord = vi.fn();
 const createEvent = vi.fn();
@@ -20,7 +21,7 @@ vi.mock("../../lib/learning/profile", () => ({
   getDailyNewCardsQuota: vi.fn(() => 10)
 }));
 vi.mock("../../lib/teable/client", () => ({
-  getTeableClient: () => ({ listRecords, listAllRecords, listRecordsWhere, createRecord, updateRecord, createEvent }),
+  getTeableClient: () => ({ listRecords, listAllRecords, listRecordsWhere, listRecordsWhereAll, createRecord, updateRecord, createEvent }),
   TeableRequestError: class TeableRequestError extends Error {
     constructor(public status: number, message: string) {
       super(message);
@@ -51,6 +52,7 @@ const bancoWord: TeableRecord<WordFields> = {
 const bancoUsage: TeableRecord<WordUsageSummaryFields> = {
   id: "usage-banco",
   fields: {
+    user_id: user.id,
     usage_key: "usage-banco",
     word_id: "word-banco",
     conversation_id: "conv-1",
@@ -68,6 +70,7 @@ const bancoSenses: TeableRecord<WordSenseFields>[] = [
   {
     id: "sense-bank",
     fields: {
+      user_id: user.id,
       word_id: "word-banco",
       translation: "banco (instituição)",
       part_of_speech: "noun",
@@ -83,6 +86,7 @@ const bancoSenses: TeableRecord<WordSenseFields>[] = [
   {
     id: "sense-seat",
     fields: {
+      user_id: user.id,
       word_id: "word-banco",
       translation: "banco (assento)",
       part_of_speech: "noun",
@@ -108,6 +112,9 @@ function mockWordEnvironment(words: TeableRecord<WordFields>[], senses: TeableRe
   listAllRecords.mockImplementation(async (table: string) => tableData(table));
   listRecordsWhere.mockImplementation(async (table: string, field: string, value: string) =>
     tableData(table).filter((record) => String(record.fields[field] ?? "") === value)
+  );
+  listRecordsWhereAll.mockImplementation(async (table: string, filters: Array<{ field: string; value: string }>) =>
+    tableData(table).filter((record) => filters.every((filter) => String(record.fields[filter.field] ?? "") === filter.value))
   );
 }
 
@@ -179,6 +186,7 @@ describe("getWordDetail with senses", () => {
     mockWordEnvironment([bancoWord], [{
       id: "sense-suspended",
       fields: {
+        user_id: user.id,
         word_id: "word-banco",
         translation: "banco (assento)",
         is_primary: true,
@@ -227,6 +235,7 @@ describe("addManualWordSense", () => {
     const [table, fields] = createRecord.mock.calls[0] as [string, Record<string, unknown>];
     expect(table).toBe("wordSenses");
     expect(fields).toMatchObject({
+      user_id: user.id,
       word_id: "word-banco",
       sense_key: canonicalSenseKey(user.id, profile.id, "banco", "banco (parque)"),
       translation: "banco (parque)",
@@ -271,6 +280,7 @@ describe("addManualWordSense", () => {
     const legacyKeySenses: TeableRecord<WordSenseFields>[] = [{
       id: "sense-legacy",
       fields: {
+        user_id: user.id,
         word_id: "word-banco",
         sense_key: JSON.stringify([user.id, profile.id, "Bânco", "Banco (Instituição)"]),
         translation: "banco (instituição)",
@@ -297,6 +307,8 @@ describe("addManualWordSense", () => {
     expect((error as LearningStateError).status).toBe(422);
     expect(createRecord).not.toHaveBeenCalled();
     expect(listAllRecords).not.toHaveBeenCalled();
+    expect(listRecordsWhereAll).not.toHaveBeenCalled();
+    expect(listRecordsWhere).not.toHaveBeenCalled();
   });
 
   it("returns 404 for unknown words or words outside the learner's scope", async () => {

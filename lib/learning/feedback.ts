@@ -17,7 +17,6 @@ import {
   hasCompleteConversationSummaryFeedback,
   isMutableConversationStatus
 } from "./conversation-state";
-import { matchesLearningScope } from "./scope";
 import { createTopic } from "./topics";
 import { normalizeStoredInteractionMode } from "./chat-contracts";
 import { listSensesByWordIds } from "./word-senses";
@@ -177,13 +176,7 @@ async function getPersistedCompletion(context: NonNullable<Awaited<ReturnType<ty
   return {
     conversation: context.conversation,
     dailyFeedback,
-    words: words.filter((word) =>
-      wordIds.has(word.id) &&
-      matchesLearningScope(word.fields, {
-        userId: context.conversation.fields.user_id,
-        profileId: context.conversation.fields.language_profile_id
-      })
-    ),
+    words: words.filter((word) => wordIds.has(word.id)),
     corrections: context.corrections,
     redirectTo: `/resumo?conversationId=${encodeURIComponent(context.conversation.id)}`
   };
@@ -238,21 +231,14 @@ export async function getConversationSummary(conversationId: string) {
 
   const conversationUsage = usageSummaries.filter((summary) => summary.fields.conversation_id === context.conversation.id);
   const conversationWords = words.filter((word) =>
-    conversationUsage.some((summary) => summary.fields.word_id === word.id) &&
-    matchesLearningScope(word.fields, {
-      userId: context.conversation.fields.user_id,
-      profileId: context.conversation.fields.language_profile_id
-    })
+    conversationUsage.some((summary) => summary.fields.word_id === word.id)
   );
 
   return withVocabularyUsageStats({
     ...context,
     dailyFeedback: dailyFeedback!,
     words: conversationWords,
-    vocabularyWords: words.filter((word) => matchesLearningScope(word.fields, {
-      userId: context.conversation.fields.user_id,
-      profileId: context.conversation.fields.language_profile_id
-    }))
+    vocabularyWords: words
   });
 }
 
@@ -285,14 +271,13 @@ function buildCompletionSummary(
   words: TeableRecord<WordFields>[]
 ) {
   const conversationUsage = usageSummaries.filter((summary) => summary.fields.conversation_id === conversation.id);
-  const scope = { userId: conversation.fields.user_id, profileId: conversation.fields.language_profile_id };
   const wordIds = new Set(conversationUsage.map((summary) => summary.fields.word_id));
   return {
     ...context,
     conversation,
     dailyFeedback,
-    words: words.filter((word) => wordIds.has(word.id) && matchesLearningScope(word.fields, scope)),
-    vocabularyWords: words.filter((word) => matchesLearningScope(word.fields, scope))
+    words: words.filter((word) => wordIds.has(word.id)),
+    vocabularyWords: words
   };
 }
 
@@ -315,20 +300,28 @@ export async function addSavedWordsToDailyFeedback(conversation: TeableRecord<Co
 
 export async function getCalendarData(monthInput?: string) {
   const client = getTeableClient();
-  const [user, dailyFeedbacks, conversations, practiceSessions] = await Promise.all([
-    getSessionUser(),
-    client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
-    client.listRecords<ConversationFields>("conversations", 400),
-    client.listRecords<PracticeSessionFields>("practiceSessions", 400)
-  ]);
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
+  const scopeFilters = profile
+    ? [
+        { field: "user_id", value: user.id },
+        { field: "language_profile_id", value: profile.id }
+      ]
+    : null;
+  const [dailyFeedbacks, conversations, practiceSessions] = scopeFilters
+    ? await Promise.all([
+        client.listRecordsWhereAll<DailyFeedbackFields>("dailyFeedbacks", scopeFilters),
+        client.listRecordsWhereAll<ConversationFields>("conversations", scopeFilters),
+        client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters)
+      ])
+    : [[], [], []];
   const { year, month, key } = normalizeCalendarMonth(monthInput);
-  const scoped = dailyFeedbacks.filter((feedback) => matchesFeedbackScope(feedback, user.id, profile?.id));
+  const scoped = dailyFeedbacks;
   const validFeedbacks = scoped.filter((feedback) => safeDateKey(feedback.fields.date || feedback.fields.created_at));
   const sorted = sortFeedbacks(validFeedbacks);
   const feedbackByDate = new Map<string, TeableRecord<DailyFeedbackFields>>();
   const flashcardsByDate = new Map<string, { minutes: number; words: number; correct: number }>();
-  for (const session of practiceSessions.filter((item) => item.fields.type === "flashcards" && item.fields.status === "completed" && matchesLearningScope(item.fields, { userId: user.id, profileId: profile?.id }))) {
+  for (const session of practiceSessions.filter((item) => item.fields.type === "flashcards" && item.fields.status === "completed")) {
     const date = safeDateKey(session.fields.ended_at || session.fields.started_at);
     if (!date || !date.startsWith(key)) continue;
     const current = flashcardsByDate.get(date) ?? { minutes: 0, words: 0, correct: 0 };
@@ -362,14 +355,12 @@ export async function getCalendarData(monthInput?: string) {
   const latestFeedback = sorted[0] ?? null;
   const monthConversations = conversations.filter((conversation) =>
     conversation.fields.status === "completed" &&
-    matchesLearningScope(conversation.fields, { userId: user.id, profileId: profile?.id }) &&
     safeDateKey(conversation.fields.ended_at || conversation.fields.started_at)?.startsWith(key)
   );
   const totalPracticeSeconds = monthConversations.reduce((sum, item) => sum + Number(item.fields.duration_seconds ?? 0), 0) + [...flashcardsByDate.values()].reduce((sum, item) => sum + item.minutes * 60, 0);
   const sevenDaysAgo = Date.now() - 7 * 86400000;
   const weekPracticeSeconds = conversations
     .filter((conversation) => conversation.fields.status === "completed" &&
-      matchesLearningScope(conversation.fields, { userId: user.id, profileId: profile?.id }) &&
       new Date(conversation.fields.ended_at || conversation.fields.started_at).getTime() >= sevenDaysAgo)
     .reduce((sum, item) => sum + Number(item.fields.duration_seconds ?? 0), 0);
 
@@ -395,22 +386,29 @@ export async function getDailyFeedback(date: string) {
   if (!isDateKey(date)) return null;
 
   const client = getTeableClient();
-  const [user, dailyFeedbacks, conversations] = await Promise.all([
-    getSessionUser(),
-    client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
-    client.listRecords<ConversationFields>("conversations", 220)
-  ]);
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
+  const scopeFilters = profile
+    ? [
+        { field: "user_id", value: user.id },
+        { field: "language_profile_id", value: profile.id }
+      ]
+    : null;
+  const [dailyFeedbacks, conversations] = scopeFilters
+    ? await Promise.all([
+        client.listRecordsWhereAll<DailyFeedbackFields>("dailyFeedbacks", scopeFilters),
+        client.listRecordsWhereAll<ConversationFields>("conversations", scopeFilters)
+      ])
+    : [[], []];
   const feedback = sortFeedbacks(
     dailyFeedbacks.filter(
-      (item) => matchesFeedbackScope(item, user.id, profile?.id) && safeDateKey(item.fields.date || item.fields.created_at) === date
+      (item) => safeDateKey(item.fields.date || item.fields.created_at) === date
     )
   )[0] ?? null;
   const completedConversations = conversations
     .filter((conversation) => {
       const day = safeDateKey(conversation.fields.ended_at || conversation.fields.started_at);
-      return matchesLearningScope(conversation.fields, { userId: user.id, profileId: profile?.id }) &&
-        conversation.fields.status === "completed" && day === date;
+      return conversation.fields.status === "completed" && day === date;
     })
     .sort((a, b) => new Date(b.fields.ended_at || b.fields.started_at).getTime() - new Date(a.fields.ended_at || a.fields.started_at).getTime())
     .map((conversation) => ({
@@ -678,10 +676,6 @@ export function normalizeCalendarMonth(value: string | undefined) {
   const validMonth = month >= 1 && month <= 12 ? month : now.getUTCMonth() + 1;
   const validYear = year >= 2000 && year <= 2100 ? year : now.getUTCFullYear();
   return { year: validYear, month: validMonth, key: `${validYear}-${String(validMonth).padStart(2, "0")}` };
-}
-
-function matchesFeedbackScope(feedback: TeableRecord<DailyFeedbackFields>, userId: string, profileId?: string) {
-  return matchesLearningScope(feedback.fields, { userId, profileId });
 }
 
 function sortFeedbacks(feedbacks: TeableRecord<DailyFeedbackFields>[]) {

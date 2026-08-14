@@ -212,8 +212,11 @@ export class SupabaseTeableClient {
   }
 
   async createEvent(userId: string | undefined, eventName: string, payload: Record<string, unknown>) {
+    // RLS on app_events requires user_id = current_user_id(); writing "" (null
+    // after the adapter) would fail at runtime, so reject early and loudly.
+    if (!userId) throw new TeableRequestError("createEvent requires an authenticated user id.", 400, { eventName });
     return this.createRecord("appEvents", {
-      user_id: userId ?? "",
+      user_id: userId,
       event_name: eventName,
       payload: JSON.stringify(payload),
       created_at: new Date().toISOString()

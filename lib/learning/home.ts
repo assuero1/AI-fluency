@@ -1,7 +1,6 @@
 import { getConnectionStatus } from "@/lib/settings/status";
 import { getTeableClient, TeableRecord } from "@/lib/teable/client";
-import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser, LanguageProfileFields, UserFields } from "./profile";
-import { matchesLearningScope } from "./scope";
+import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser } from "./profile";
 import type { ConversationFields } from "./conversations";
 import { getPracticeActivity } from "./practice-activity";
 import { summarizeDailyQueue, type DailyQueueSessionFields } from "./daily-queue";
@@ -67,23 +66,31 @@ export async function getHomeData() {
   const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
 
-  const [topics, feedbacks, words, conversations, sessions] = await Promise.all([
-    client.listAllRecords<TopicFields>("topics"),
-    client.listAllRecords<DailyFeedbackFields>("dailyFeedbacks"),
-    client.listAllRecords<WordFields>("words"),
-    client.listAllRecords<ConversationFields>("conversations"),
-    client.listAllRecords<DailyQueueSessionFields>("practiceSessions")
-  ]);
+  const scopeFilters = profile
+    ? [
+        { field: "user_id", value: user.id },
+        { field: "language_profile_id", value: profile.id }
+      ]
+    : null;
+  const [topics, feedbacks, words, conversations, sessions] = scopeFilters
+    ? await Promise.all([
+        client.listRecordsWhereAll<TopicFields>("topics", scopeFilters),
+        client.listRecordsWhereAll<DailyFeedbackFields>("dailyFeedbacks", scopeFilters),
+        client.listRecordsWhereAll<WordFields>("words", scopeFilters),
+        client.listRecordsWhereAll<ConversationFields>("conversations", scopeFilters),
+        client.listRecordsWhereAll<DailyQueueSessionFields>("practiceSessions", scopeFilters)
+      ])
+    : [[], [], [], [], []];
 
-  const profileTopics = filterByProfile(topics, user, profile);
-  const profileFeedbacks = filterByProfile(feedbacks, user, profile);
-  const profileWords = filterByProfile(words, user, profile);
+  const profileTopics = topics;
+  const profileFeedbacks = feedbacks;
+  const profileWords = words;
   const recentFeedback = [...profileFeedbacks].sort((a, b) => dateValue(b.fields.date || b.fields.created_at) - dateValue(a.fields.date || a.fields.created_at))[0] ?? null;
   const topWord = [...profileWords].sort((a, b) => dateValue(b.fields.last_used_at) - dateValue(a.fields.last_used_at))[0];
   const weeklyNewWords = profileWords.filter((word) => isWithinDays(word.fields.first_used_at, 7)).length;
   const practice = getPracticeActivity(
     conversations
-      .filter((conversation) => conversation.fields.status === "completed" && matchesLearningScope(conversation.fields, { userId: user.id, profileId: profile?.id }))
+      .filter((conversation) => conversation.fields.status === "completed")
       .map((conversation) => conversation.fields.ended_at || conversation.fields.started_at),
     { timeZone: user.fields.timezone ?? "UTC" }
   );
@@ -131,15 +138,6 @@ export async function getHomeData() {
     practice,
     readiness: await getConnectionStatus()
   };
-}
-
-function filterByProfile<T extends { user_id?: string; language_profile_id?: string }>(
-  records: TeableRecord<T>[],
-  user: TeableRecord<UserFields>,
-  profile: TeableRecord<LanguageProfileFields> | null
-) {
-  if (!profile) return [];
-  return records.filter((record) => matchesLearningScope(record.fields, { userId: user.id, profileId: profile.id }));
 }
 
 export function buildSuggestions(
