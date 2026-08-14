@@ -135,4 +135,17 @@ describe("endConversation idempotency", () => {
     expect(prompt).toContain("Tipo de interação: simulation");
     expect(prompt).not.toContain("teacher secret");
   });
+
+  it("desconta o tempo pausado da duração gravada", async () => {
+    const { endConversation } = await import("../../lib/learning/feedback");
+    const pausedMs = 10 * 60 * 1000;
+
+    await endConversation("conversation-1", { pausedMs });
+
+    const expected = Math.max(
+      0,
+      Math.round((Date.now() - new Date("2026-07-10T09:00:00.000Z").getTime() - pausedMs) / 1000)
+    );
+    expect(Math.abs(Number(conversation.fields.duration_seconds) - expected)).toBeLessThanOrEqual(1);
+  });
 });

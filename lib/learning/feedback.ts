@@ -1,4 +1,5 @@
 import { createChatCompletion } from "@/lib/ai/client";
+import { clampPausedMs } from "./chat-elapsed";
 import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import {
   ConversationFields,
@@ -57,12 +58,12 @@ const completionCache = new Map<string, { expiresAt: number; value: Awaited<Retu
 
 const conversationEndLocks = new Map<string, Promise<Awaited<ReturnType<typeof finalizeConversation>>>>();
 
-export async function endConversation(conversationId: string) {
+export async function endConversation(conversationId: string, options: { pausedMs?: number } = {}) {
   // Serializes concurrent /end calls for the same conversation: the second call
   // waits for the first, then sees the completed status below and returns the
   // persisted result instead of creating a duplicate daily feedback.
   const previous = conversationEndLocks.get(conversationId) ?? Promise.resolve(undefined);
-  const current = previous.catch(() => undefined).then(() => finalizeConversation(conversationId));
+  const current = previous.catch(() => undefined).then(() => finalizeConversation(conversationId, options));
   conversationEndLocks.set(conversationId, current);
   try {
     return await current;
@@ -71,7 +72,7 @@ export async function endConversation(conversationId: string) {
   }
 }
 
-async function finalizeConversation(conversationId: string) {
+async function finalizeConversation(conversationId: string, options: { pausedMs?: number } = {}) {
   const context = await getConversation(conversationId);
   if (!context) throw new LearningStateError("Conversa não encontrada.", 404);
   if (!isMutableConversationStatus(context.conversation.fields.status)) {
@@ -104,9 +105,10 @@ async function finalizeConversation(conversationId: string) {
   ]);
 
   const conversationWords: TeableRecord<WordFields>[] = [];
+  const pausedMs = clampPausedMs(options.pausedMs ?? 0, context.conversation.fields.started_at);
   const durationSeconds = Math.max(
     0,
-    Math.round((new Date(endedAt).getTime() - new Date(context.conversation.fields.started_at).getTime()) / 1000)
+    Math.round((new Date(endedAt).getTime() - new Date(context.conversation.fields.started_at).getTime() - pausedMs) / 1000)
   );
 
   const [dailyFeedback, completedConversation] = await Promise.all([

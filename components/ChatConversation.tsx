@@ -3,7 +3,7 @@
 import { Bot, CalendarDays, ChevronRight, Clock3, Flame, GraduationCap, Languages, Loader2, LogOut, MessageCircle, Mic, MicOff, Send, Shuffle, Users, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconBubble } from "./IconBubble";
 import { CopyButton } from "./CopyButton";
 import { ConversationGoalProgress } from "./ConversationGoalProgress";
@@ -20,6 +20,7 @@ import type { SelectionExplanation } from "@/lib/learning/selection-explanation"
 import { resolveSelectionState } from "@/lib/learning/selection-ui";
 import { joinSpeechSegments, markMicReleased, speechLanguageName, speechLocale, speechRecognitionErrorMessage } from "@/lib/learning/speech";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
+import { computeActiveElapsedSeconds } from "@/lib/learning/chat-elapsed";
 import type { TeableRecord } from "@/lib/supabase/client";
 import { getMessageGoalProgress, InteractionMode, normalizeStoredInteractionMode } from "@/lib/learning/chat-contracts";
 
@@ -112,6 +113,8 @@ export function ChatConversation({
   const chatStackRef = useRef<HTMLDivElement | null>(null);
   const selectionExplainerRef = useRef<HTMLDivElement | null>(null);
   const retryRequestRef = useRef<{ text: string; id: string } | null>(null);
+  const pausedMsRef = useRef(0);
+  const hiddenSinceRef = useRef<number | null>(null);
   const latestAssistantMessageId = findLatestAssistantMessageId(messages);
   const correctionsByMessageId = useMemo(() => {
     const grouped = new Map<string, TeableRecord<CorrectionFields>[]>();
@@ -152,6 +155,25 @@ export function ChatConversation({
     composer.style.height = "auto";
     composer.style.height = `${Math.min(composer.scrollHeight, 168)}px`;
   }, [text]);
+
+  const currentPausedMs = useCallback(() => {
+    const hiddenSince = hiddenSinceRef.current;
+    return pausedMsRef.current + (hiddenSince === null ? 0 : Date.now() - hiddenSince);
+  }, []);
+
+  useEffect(() => {
+    if (readOnly) return;
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        hiddenSinceRef.current = Date.now();
+      } else if (hiddenSinceRef.current !== null) {
+        pausedMsRef.current += Date.now() - hiddenSinceRef.current;
+        hiddenSinceRef.current = null;
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
+  }, [readOnly]);
 
   useEffect(() => {
     const chatStack = chatStackRef.current;
@@ -306,7 +328,11 @@ export function ChatConversation({
     setError(null);
 
     try {
-      const response = await fetch(`/api/conversations/${conversation.id}/end`, { method: "POST" });
+      const response = await fetch(`/api/conversations/${conversation.id}/end`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pausedMs: currentPausedMs() })
+      });
       const data = (await response.json()) as { ok?: boolean; error?: string; redirectTo?: string };
       if (!response.ok || !data.ok) throw new Error(data.error ?? "Não foi possível finalizar a conversa.");
       router.push(data.redirectTo ?? `/resumo?conversationId=${conversation.id}`);
@@ -513,7 +539,7 @@ export function ChatConversation({
             <CalendarDays />
           </Link>
         )}
-        <ElapsedTimePill readOnly={readOnly} startedAt={conversation.fields.started_at} />
+        <ElapsedTimePill readOnly={readOnly} startedAt={conversation.fields.started_at} getPausedMs={currentPausedMs} />
       </div>
 
       <div className="chat-topic">
@@ -775,20 +801,16 @@ export function ChatConversation({
   );
 }
 
-function ElapsedTimePill({ startedAt, readOnly }: { startedAt: string; readOnly: boolean }) {
-  const [elapsedSeconds, setElapsedSeconds] = useState(() => computeElapsedSeconds(startedAt));
+function ElapsedTimePill({ startedAt, readOnly, getPausedMs }: { startedAt: string; readOnly: boolean; getPausedMs?: () => number }) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(() => computeActiveElapsedSeconds(startedAt, getPausedMs?.() ?? 0));
 
   useEffect(() => {
     if (readOnly) return;
-    const timer = window.setInterval(() => setElapsedSeconds(computeElapsedSeconds(startedAt)), 1000);
+    const timer = window.setInterval(() => setElapsedSeconds(computeActiveElapsedSeconds(startedAt, getPausedMs?.() ?? 0)), 1000);
     return () => window.clearInterval(timer);
-  }, [startedAt, readOnly]);
+  }, [startedAt, readOnly, getPausedMs]);
 
   return <Pill aria-label={`Tempo de conversa: ${formatElapsedTime(elapsedSeconds)}`}><Clock3 size={16} /> {formatElapsedTime(elapsedSeconds)}</Pill>;
-}
-
-function computeElapsedSeconds(startedAt: string) {
-  return Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000));
 }
 
 function createClientRequestId() {
