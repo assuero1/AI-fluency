@@ -51,7 +51,9 @@ const selected = {
   TEABLE_CONVERSATIONS_TABLE_ID: records.TEABLE_CONVERSATIONS_TABLE_ID.filter((record) => conversationIds.has(record.id)),
   TEABLE_TOPICS_TABLE_ID: records.TEABLE_TOPICS_TABLE_ID.filter((record) => userIds.has(record.fields?.user_id)),
   TEABLE_LANGUAGE_PROFILES_TABLE_ID: records.TEABLE_LANGUAGE_PROFILES_TABLE_ID.filter((record) => profileIds.has(record.id)),
-  TEABLE_USERS_TABLE_ID: records.TEABLE_USERS_TABLE_ID.filter((record) => userIds.has(record.id))
+  // Auth-linked users rows (the persistent QA auth user) are never deleted;
+  // only throwaway legacy fixture users are.
+  TEABLE_USERS_TABLE_ID: records.TEABLE_USERS_TABLE_ID.filter((record) => userIds.has(record.id) && !record.fields?.auth_user_id)
 };
 
 for (const [name, rows] of Object.entries(selected)) {

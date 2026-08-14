@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { assertQaEnvironment, readEnv } from "./qa-env.mjs";
-import { dbInsert, getSupabaseAdmin } from "./lib/supabase-admin.mjs";
+import { dbInsert, dbList, getSupabaseAdmin } from "./lib/supabase-admin.mjs";
 import tablesJson from "../lib/supabase/tables.json" with { type: "json" };
 
 const envIndex = process.argv.indexOf("--env");
@@ -20,7 +20,7 @@ function saveManifest() {
   fs.mkdirSync(fixtureDir, { recursive: true });
   fs.writeFileSync(
     manifestPath,
-    JSON.stringify({ runId, namespace: env.QA_RUN_NAMESPACE, createdAt: now, records: created }, null, 2),
+    JSON.stringify({ runId, namespace: env.QA_RUN_NAMESPACE, keepQaUser: true, createdAt: now, records: created }, null, 2),
     { mode: 0o600 }
   );
 }
@@ -35,14 +35,29 @@ async function create(tableEnvName, fields) {
   return record;
 }
 
+// Multiuser era: the app resolves the user from the Supabase session, so the
+// fixture data must belong to the QA auth user (scripts/qa-create-auth-user.mjs)
+// instead of a throwaway users row. The QA users row itself is persistent —
+// it is referenced in the manifest for scoping but never deleted by cleanup.
+async function findQaUser() {
+  const email = env.QA_USER_EMAIL;
+  if (!email) throw new Error("QA_USER_EMAIL is required; run: node scripts/qa-create-auth-user.mjs");
+  const base = env.SUPABASE_URL.replace(/\/+$/, "");
+  const headers = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` };
+  const res = await fetch(`${base}/auth/v1/admin/users?page=1&per_page=1000`, { headers });
+  if (!res.ok) throw new Error(`list auth users failed: ${res.status} ${await res.text()}`);
+  const authUser = (await res.json()).users?.find((entry) => entry.email === email);
+  if (!authUser) throw new Error(`QA auth user ${email} not found; run: node scripts/qa-create-auth-user.mjs`);
+  const users = await dbList(env, "TEABLE_USERS_TABLE_ID");
+  const row = users.find((record) => record.fields?.auth_user_id === authUser.id);
+  if (!row) throw new Error(`No public users row linked to ${email} (auth_user_id ${authUser.id}).`);
+  return row;
+}
+
 const past = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
-const user = await create("TEABLE_USERS_TABLE_ID", {
-  Name: `QA User ${runId}`,
-  avatar_url: "",
-  active_language_id: null,
-  timezone: "America/Sao_Paulo",
-  created_at: now
-});
+const user = await findQaUser();
+created.TEABLE_USERS_TABLE_ID = [user.id];
+saveManifest();
 const profile = await create("TEABLE_LANGUAGE_PROFILES_TABLE_ID", {
   user_id: user.id,
   language_code: "en",
@@ -61,7 +76,10 @@ const profile = await create("TEABLE_LANGUAGE_PROFILES_TABLE_ID", {
 const usersTable = tablesJson.tables.find((table) => table.key === "users").tableName;
 const { error: linkError } = await getSupabaseAdmin(env)
   .from(usersTable)
-  .update({ active_language_id: profile.id })
+  // Name sem runId: o usuário QA é persistente; "QA User" mantém as specs que
+  // referenciam o nome ("Muito bem, QA User") sem acionar o detector de
+  // fixture residual do qa-verify-empty (que procura "QA User qa-").
+  .update({ active_language_id: profile.id, Name: "QA User" })
   .eq("id", user.id);
 if (linkError) throw new Error(`update ${usersTable}.active_language_id: ${linkError.message}`);
 const topic = await create("TEABLE_TOPICS_TABLE_ID", {
@@ -93,6 +111,7 @@ const activeConversation = await create("TEABLE_CONVERSATIONS_TABLE_ID", {
 });
 await create("TEABLE_MESSAGES_TABLE_ID", {
   Name: `QA Active assistant ${runId}`,
+  user_id: user.id,
   conversation_id: activeConversation.id,
   role: "assistant",
   text: "Let's practice with a short answer.",
@@ -148,6 +167,7 @@ await create("TEABLE_WORDS_TABLE_ID", {
 });
 const message = await create("TEABLE_MESSAGES_TABLE_ID", {
   Name: `QA Message ${runId}`,
+  user_id: user.id,
   conversation_id: completedConversation.id,
   role: "user",
   text: "Yesterday I have coffee.",
@@ -160,6 +180,7 @@ const message = await create("TEABLE_MESSAGES_TABLE_ID", {
 });
 await create("TEABLE_CORRECTIONS_TABLE_ID", {
   Name: `QA Correction ${runId}`,
+  user_id: user.id,
   conversation_id: completedConversation.id,
   message_id: message.id,
   original_text: "Yesterday I have coffee.",
@@ -172,6 +193,7 @@ await create("TEABLE_CORRECTIONS_TABLE_ID", {
 });
 await create("TEABLE_WORD_OCCURRENCES_TABLE_ID", {
   Name: `QA Word occurrence ${runId}`,
+  user_id: user.id,
   word_id: word.id,
   conversation_id: completedConversation.id,
   message_id: message.id,
