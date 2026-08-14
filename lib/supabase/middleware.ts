@@ -13,7 +13,21 @@ export async function updateSession(request: NextRequest) {
   const anonKey = process.env.SUPABASE_ANON_KEY?.trim();
   let response = NextResponse.next({ request });
 
-  if (!url || !anonKey) return response;
+  // Fail-closed: sem config do Supabase nenhuma rota protegida passa —
+  // páginas redirecionam para /login e APIs recebem 401 com a causa.
+  if (!url || !anonKey) {
+    const { pathname } = request.nextUrl;
+    if (isPublicPath(pathname)) return response;
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json(
+        { ok: false, error: "Supabase não configurado. Defina SUPABASE_URL e SUPABASE_ANON_KEY." },
+        { status: 401 }
+      );
+    }
+    const loginUrl = request.nextUrl.clone();
+    loginUrl.pathname = "/login";
+    return NextResponse.redirect(loginUrl);
+  }
 
   const supabase = createServerClient(url, anonKey, {
     cookies: {
