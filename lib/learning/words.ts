@@ -13,6 +13,7 @@ import {
 import { normalizeVocabularyToken } from "./vocabulary-selection";
 import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import { summarizeDailyQueue, type DailyQueueSessionFields } from "./daily-queue";
+import { paginateSlice } from "./pagination";
 
 export const wordFilters = ["all", "recent", "review", "corrected"] as const;
 export type WordFilter = (typeof wordFilters)[number];
@@ -129,7 +130,7 @@ export function matchesWordSearch(
   return normalizeSearchText(`${word.displayText} ${word.lemma} ${word.translation}`).includes(normalizedQuery);
 }
 
-export async function getWordsData(filter: WordFilter = "all", query = "") {
+export async function getWordsData(filter: WordFilter = "all", query = "", page?: number) {
   const scope = await getWordScope();
   const [records, sessions] = await Promise.all([
     getWordRecords(scope),
@@ -144,7 +145,15 @@ export async function getWordsData(filter: WordFilter = "all", query = "") {
     (word) => Boolean(word.fields.display_text?.trim() || word.fields.lemma?.trim())
   );
   const now = Date.now();
-  const mapped = scoped.map((word) => toWordListItem(word, records.usageSummaries, now));
+  const summariesByWordId = new Map<string, TeableRecord<WordUsageSummaryFields>[]>();
+  for (const summary of records.usageSummaries) {
+    const wordId = summary.fields.word_id;
+    if (!wordId) continue;
+    const list = summariesByWordId.get(wordId);
+    if (list) list.push(summary);
+    else summariesByWordId.set(wordId, [summary]);
+  }
+  const mapped = scoped.map((word) => toWordListItem(word, summariesByWordId.get(word.id) ?? [], now));
   const normalizedQuery = normalizeWordSearchQuery(query);
   const visibleWords = mapped
     .filter((word) => matchesFilter(word, filter))
@@ -152,6 +161,7 @@ export async function getWordsData(filter: WordFilter = "all", query = "") {
       return matchesWordSearch(word, normalizedQuery);
     })
     .sort((a, b) => dateValue(b.lastUsedAt || b.firstUsedAt) - dateValue(a.lastUsedAt || a.firstUsedAt));
+  const pagination = paginateSlice(visibleWords, page ?? 1);
 
   const weeklyNew = mapped.filter((word) => isWithinDays(word.firstUsedAt, 7)).length;
   const toReview = mapped.filter((word) => word.needsReview).length;
@@ -160,7 +170,10 @@ export async function getWordsData(filter: WordFilter = "all", query = "") {
     filter,
     languageCode: scope.languageCode,
     query: query.trim().slice(0, 80),
-    words: visibleWords,
+    words: page === undefined ? visibleWords : pagination.pageItems,
+    page: pagination.page,
+    totalPages: pagination.totalPages,
+    totalFiltered: pagination.totalItems,
     dailyQueue: scope.profileId
       ? summarizeDailyQueue(scoped, sessions, { userId: scope.userId, profileId: scope.profileId }, { quota: scope.dailyNewCardsQuota, timeZone: scope.timeZone })
       : null,

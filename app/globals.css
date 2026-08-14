@@ -369,6 +369,14 @@ a {
   width: 100%;
 }
 
+.pagination-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 4px 20px;
+}
+
 .bottom-nav {
   position: fixed;
   left: 50%;

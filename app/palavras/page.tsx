@@ -20,13 +20,14 @@ type WordsPageProps = {
   searchParams?: Promise<{
     filter?: string;
     q?: string;
+    page?: string;
   }>;
 };
 
 export default async function WordsPage({ searchParams }: WordsPageProps) {
   const params = await searchParams;
   const filter = normalizeWordFilter(params?.filter);
-  const data = await getWordsData(filter, params?.q ?? "");
+  const data = await getWordsData(filter, params?.q ?? "", Number(params?.page ?? "1"));
   const progress = Math.max(0, Math.min(100, (data.summary.weeklyNew / Math.max(1, data.summary.weeklyGoal)) * 100));
 
   return (
@@ -108,14 +109,26 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
           </div>
         )}
       </section>
+      {data.totalPages > 1 ? (
+        <nav aria-label="Paginação de palavras" className="pagination-row">
+          {data.page > 1 ? (
+            <Link className="outline-button" href={buildWordsHref(filter, data.query, data.page - 1)}>Anterior</Link>
+          ) : <span />}
+          <span className="row-meta">Página {data.page} de {data.totalPages}</span>
+          {data.page < data.totalPages ? (
+            <Link className="outline-button" href={buildWordsHref(filter, data.query, data.page + 1)}>Próxima</Link>
+          ) : <span />}
+        </nav>
+      ) : null}
       <WordPracticeButton />
     </AppShell>
   );
 }
 
-function buildWordsHref(filter: string, query: string) {
+function buildWordsHref(filter: string, query: string, page?: number) {
   const params = new URLSearchParams({ filter });
   if (query) params.set("q", query);
+  if (page && page > 1) params.set("page", String(page));
   return `/palavras?${params.toString()}`;
 }
 
