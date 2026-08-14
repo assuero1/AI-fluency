@@ -22,15 +22,16 @@ Arquivo: `components/LogoutButton.tsx`.
 - Classes Tailwind substituídas por `outline-button full-button` (padrão chunky de `app/globals.css:2463+`: borda 2px, radius 16px, sombra 3D, `:active` afunda). Perfil é seção neutra — `outline-button`, não `danger-button`.
 - Sem mudança de comportamento (`logout()` server action inalterada).
 
-### 2. Palavras — paginação server-side + filtros no banco
+### 2. Palavras — paginação + correção de performance dos filtros
 
-Arquivos: `lib/learning/words.ts`, `app/palavras/page.tsx`.
+Arquivos: `lib/learning/words.ts`, `lib/learning/pagination.ts` (novo), `app/palavras/page.tsx`, `app/globals.css`.
 
-- **Paginação:** query param `?page=N` (default 1), `PAGE_SIZE = 20`. A query de palavras passa a usar paginação no Supabase (`.range()`) e retorna também o total, em vez de baixar a tabela inteira.
-- **Busca no banco:** `matchesWordSearch` (in-memory, `:123-130`) substituída por filtro `ilike` na query; a normalização NFD fica desnecessária no caminho de busca.
-- **Filtros de categoria** (`all/recent/review/corrected`): continuam como `<Link>` com query params (padrão existente). `recent` é traduzível direto para SQL. `review`/`corrected` dependem de `wordUsageSummaries`/`practiceSessions`: resolve-se primeiro o conjunto de word IDs correspondentes via query nessa tabela relacionada, e aplica-se como filtro de IDs na query paginada de palavras — tudo no banco, sem baixar a tabela inteira.
-- **UI:** controles "Anterior"/"Próxima" + "Página X de Y" no padrão visual do app (`outline-button`), renderizados só quando `totalPages > 1`. Busca continua por submit do form (sem debounce — YAGNI), agora barata por rodar no banco.
-- `force-dynamic` permanece; o ganho vem de queries paginadas/filtradas, não de cache.
+- **Decisão revisada na escrita do plano:** o sumário (contadores por estado, meta semanal) e a `dailyQueue` da página precisam do conjunto completo de palavras/usos de qualquer forma, então paginar/filtrar no SQL não eliminaria a carga total e ainda mudaria a semântica dos filtros (ex.: `recent` com fallback de `last_used_at` → `first_used_at`; `review`/`corrected` dependem de join com `wordUsageSummaries`). Os gargalos reais são: (a) mapeamento O(n×m) em `toWordListItem` (`.filter()` de usageSummaries por palavra) e (b) renderização/transmissão da lista inteira. A correção ataca os dois.
+- **Correção O(n×m):** agrupar `usageSummaries` por `word_id` uma única vez (`Map`) antes do mapeamento — O(n+m).
+- **Paginação:** query param `?page=N` (default 1), `WORDS_PAGE_SIZE = 20`. `getWordsData(filter, query, page?)` filtra e ordena como hoje (semântica inalterada), fatia com o helper puro `paginateSlice` (clamp de página) e retorna `page`, `totalPages`, `totalFiltered`. Sem `page` (uso interno de `startWeakWordsPractice`), retorna a lista completa — comportamento atual preservado.
+- **Busca:** continua normalizada em memória (barata após a correção do mapeamento), por submit do form, sem debounce (YAGNI). Nova busca/filtro reseta para a página 1.
+- **UI:** controles "Anterior"/"Próxima" + "Página X de Y" (classe nova `pagination-row` + `outline-button`), renderizados só quando `totalPages > 1`.
+- `force-dynamic` permanece.
 
 ### 3. Chat — pausa do timer + descarte de abandono
 
