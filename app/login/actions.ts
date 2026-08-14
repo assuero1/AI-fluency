@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getRequestSupabaseClient } from "@/lib/supabase/server";
 import { getEnv } from "@/lib/env";
@@ -7,6 +8,20 @@ import { getEnv } from "@/lib/env";
 export type AuthFormState = { error?: string; success?: string };
 
 const GENERIC_ERROR = "Email ou senha inválidos.";
+
+// APP_URL tem prioridade; sem ela, deriva a origin da request para não gerar
+// links relativos silenciosos nos emails de confirmação/reset.
+async function getAuthEmailOrigin(): Promise<string> {
+  const appUrl = getEnv("APP_URL");
+  if (appUrl) return appUrl.replace(/\/+$/, "");
+  const headerList = await headers();
+  const origin = headerList.get("origin");
+  if (origin) return origin.replace(/\/+$/, "");
+  const host = headerList.get("x-forwarded-host") ?? headerList.get("host");
+  if (!host) return "";
+  const proto = headerList.get("x-forwarded-proto") ?? "https";
+  return `${proto}://${host}`;
+}
 
 export async function login(_prev: AuthFormState, formData: FormData): Promise<AuthFormState> {
   const email = String(formData.get("email") ?? "").trim();
@@ -30,7 +45,7 @@ export async function signup(_prev: AuthFormState, formData: FormData): Promise<
   const { error } = await supabase.auth.signUp({
     email,
     password,
-    options: { data: { name }, emailRedirectTo: `${getEnv("APP_URL") ?? ""}/auth/callback` }
+    options: { data: { name }, emailRedirectTo: `${await getAuthEmailOrigin()}/auth/callback` }
   });
   if (error) return { error: "Não foi possível criar a conta. Tente outro email." };
   return { success: "Conta criada! Confira seu email para confirmar o cadastro." };
@@ -42,7 +57,7 @@ export async function requestPasswordReset(_prev: AuthFormState, formData: FormD
 
   const supabase = await getRequestSupabaseClient();
   await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${getEnv("APP_URL") ?? ""}/auth/callback?next=/reset-password`
+    redirectTo: `${await getAuthEmailOrigin()}/auth/callback?next=/reset-password`
   });
   // Mensagem idêntica para emails existentes ou não (não vazar existência).
   return { success: "Se o email estiver cadastrado, você receberá o link de redefinição." };
