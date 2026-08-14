@@ -134,6 +134,9 @@ export async function updatePreferences(input: PreferenceInput) {
     if (!isLanguageLevel(input.level)) throw new AccountValidationError("Nível de conhecimento inválido.");
     fields.level = input.level;
   }
+  // Legado: a UI não expõe mais esta preferência e as leituras forçam `true`
+  // (chat, flashcards, getProfileSettings). A escrita permanece só para
+  // compatibilidade com o onboarding e clientes antigos.
   if (typeof input.audioEnabled === "boolean") fields.audio_enabled = input.audioEnabled;
   if (typeof input.transcriptEnabled === "boolean") fields.transcript_enabled = input.transcriptEnabled;
   if (typeof input.calendarMemoryEnabled === "boolean") fields.calendar_memory_enabled = input.calendarMemoryEnabled;

@@ -188,15 +188,20 @@ export function ChatConversation({
     const handlePageHide = () => {
       if (!finalizedRef.current) discardActiveTraining(conversation.id);
     };
+    const handlePageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) router.refresh();
+    };
     window.addEventListener("pagehide", handlePageHide);
+    window.addEventListener("pageshow", handlePageShow);
     return () => {
       window.removeEventListener("pagehide", handlePageHide);
+      window.removeEventListener("pageshow", handlePageShow);
       discardTimerRef.current = window.setTimeout(() => {
         discardTimerRef.current = null;
         if (!finalizedRef.current) discardActiveTraining(conversation.id);
       }, 300);
     };
-  }, [conversation.id, readOnly]);
+  }, [conversation.id, readOnly, router]);
 
   useEffect(() => {
     const chatStack = chatStackRef.current;
