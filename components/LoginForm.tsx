@@ -2,51 +2,124 @@
 
 import { useActionState, useState } from "react";
 import { login, requestPasswordReset, signup, type AuthFormState } from "@/app/login/actions";
+import { AuthMascot } from "@/components/AuthMascot";
 
 type Mode = "login" | "signup" | "reset";
 
 const initialState: AuthFormState = {};
 
+const heroCopy: Record<Mode, { bubble: string; tagline: string }> = {
+  login: { bubble: "Olá de novo!", tagline: "Pronto para conversar hoje?" },
+  signup: { bubble: "Bora aprender!", tagline: "Comece sua jornada de fluência." },
+  reset: { bubble: "Sem pânico!", tagline: "A gente te ajuda a voltar." }
+};
+
 export function LoginForm() {
   const [mode, setMode] = useState<Mode>("login");
   const action = mode === "login" ? login : mode === "signup" ? signup : requestPasswordReset;
   const [state, formAction, pending] = useActionState(action, initialState);
+  const hero = heroCopy[mode];
 
   return (
-    <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h1 className="mb-1 text-xl font-semibold text-slate-900">AI Fluency</h1>
-      <p className="mb-4 text-sm text-slate-500">
-        {mode === "login" ? "Entre na sua conta" : mode === "signup" ? "Crie sua conta" : "Redefinir senha"}
-      </p>
+    <>
+      <header className="auth-hero">
+        <AuthMascot bubble={hero.bubble} />
+        <h1 className="auth-wordmark">
+          AI <span>Fluency</span>
+        </h1>
+        <p className="auth-tagline">{hero.tagline}</p>
+      </header>
 
-      <form action={formAction} className="flex flex-col gap-3">
-        {mode === "signup" && (
-          <input name="name" placeholder="Seu nome" autoComplete="name" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-        )}
-        <input name="email" type="email" required placeholder="Email" autoComplete="email" className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-        {mode !== "reset" && (
-          <input name="password" type="password" required minLength={8} placeholder="Senha" autoComplete={mode === "login" ? "current-password" : "new-password"} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" />
+      <div className="auth-card">
+        {mode !== "reset" ? (
+          <div className="auth-tabs" role="tablist" aria-label="Entrar ou criar conta">
+            <button
+              type="button"
+              role="tab"
+              id="auth-tab-login"
+              aria-controls="auth-panel"
+              className={`auth-tab${mode === "login" ? " active" : ""}`}
+              aria-selected={mode === "login"}
+              onClick={() => setMode("login")}
+            >
+              Entrar
+            </button>
+            <button
+              type="button"
+              role="tab"
+              id="auth-tab-signup"
+              aria-controls="auth-panel"
+              className={`auth-tab${mode === "signup" ? " active" : ""}`}
+              aria-selected={mode === "signup"}
+              onClick={() => setMode("signup")}
+            >
+              Criar conta
+            </button>
+          </div>
+        ) : (
+          <h2 className="auth-card-title">Redefinir senha</h2>
         )}
 
-        {state.error && <p role="alert" className="text-sm text-red-600">{state.error}</p>}
-        {state.success && <p role="status" className="text-sm text-emerald-600">{state.success}</p>}
+        <form action={formAction} className="auth-form" id="auth-panel" role="tabpanel" aria-labelledby={mode === "signup" ? "auth-tab-signup" : "auth-tab-login"}>
+          {mode === "signup" && (
+            <input
+              name="name"
+              placeholder="Seu nome"
+              autoComplete="name"
+              aria-label="Seu nome"
+              className="auth-input"
+            />
+          )}
+          <input
+            name="email"
+            type="email"
+            required
+            placeholder="Email"
+            autoComplete="email"
+            aria-label="Email"
+            className="auth-input"
+          />
+          {mode !== "reset" && (
+            <input
+              name="password"
+              type="password"
+              required
+              minLength={8}
+              placeholder="Senha"
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              aria-label="Senha"
+              className="auth-input"
+            />
+          )}
 
-        <button type="submit" disabled={pending} className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white disabled:opacity-50">
-          {pending ? "Aguarde..." : mode === "login" ? "Entrar" : mode === "signup" ? "Criar conta" : "Enviar link"}
-        </button>
-      </form>
+          {state.error && (
+            <p role="alert" className="auth-alert error">
+              {state.error}
+            </p>
+          )}
+          {state.success && (
+            <p role="status" className="auth-alert success">
+              {state.success}
+            </p>
+          )}
 
-      <div className="mt-4 flex flex-col gap-1 text-sm">
-        {mode !== "login" && (
-          <button type="button" onClick={() => setMode("login")} className="text-left text-slate-600 underline">Já tenho conta — entrar</button>
-        )}
-        {mode !== "signup" && (
-          <button type="button" onClick={() => setMode("signup")} className="text-left text-slate-600 underline">Criar conta</button>
-        )}
-        {mode !== "reset" && (
-          <button type="button" onClick={() => setMode("reset")} className="text-left text-slate-600 underline">Esqueci a senha</button>
-        )}
+          <button type="submit" disabled={pending} className="green-button full-button auth-submit">
+            {pending ? "Aguarde..." : mode === "login" ? "Entrar" : mode === "signup" ? "Criar conta" : "Enviar link"}
+          </button>
+        </form>
+
+        <div className="auth-links">
+          {mode === "reset" ? (
+            <button type="button" onClick={() => setMode("login")} className="auth-link">
+              Voltar para o login
+            </button>
+          ) : (
+            <button type="button" onClick={() => setMode("reset")} className="auth-link">
+              Esqueci a senha
+            </button>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
