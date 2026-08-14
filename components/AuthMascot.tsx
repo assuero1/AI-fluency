@@ -4,49 +4,41 @@ export function AuthMascot({ bubble }: { bubble: string }) {
       className="auth-mascot"
       viewBox="0 0 200 172"
       role="img"
-      aria-label={`Mascote papagaio dizendo: ${bubble}`}
+      aria-label={`Mascote dizendo: ${bubble}`}
     >
       <circle cx="72" cy="102" r="62" fill="var(--brand-soft)" />
 
-      {/* cauda */}
-      <path d="M34 120 q-16 4 -22 20 q18 4 30 -4 z" fill="var(--brand-deep)" />
+      {/* chifres */}
+      <path d="M52 60 q-6 -16 6 -20 q8 10 2 22 z" fill="var(--brand-deep)" />
+      <path d="M92 60 q6 -16 -6 -20 q-8 10 -2 22 z" fill="var(--brand-deep)" />
+
+      {/* braços */}
+      <ellipse cx="30" cy="108" rx="9" ry="13" fill="var(--brand-deep)" />
+      <ellipse cx="114" cy="108" rx="9" ry="13" fill="var(--brand-deep)" />
 
       {/* corpo */}
-      <ellipse cx="72" cy="102" rx="40" ry="44" fill="var(--brand)" />
-      <ellipse cx="74" cy="116" rx="23" ry="26" fill="var(--brand-soft)" />
+      <ellipse cx="72" cy="104" rx="42" ry="42" fill="var(--brand)" />
+      <ellipse cx="72" cy="120" rx="24" ry="20" fill="var(--brand-soft)" />
 
-      {/* asa */}
-      <path
-        d="M44 96 q-14 22 6 35 q16 -3 14 -18 q-2 -15 -20 -17 z"
-        fill="var(--brand-deep)"
-      />
-
-      {/* topete */}
-      <path
-        d="M62 58 q10 -12 20 0"
-        fill="none"
-        stroke="var(--brand-deep)"
-        strokeWidth="5"
-        strokeLinecap="round"
-      />
-
-      {/* olho */}
+      {/* olhos */}
+      <circle cx="56" cy="88" r="12" fill="#fff" />
       <circle cx="88" cy="88" r="12" fill="#fff" />
-      <circle cx="90" cy="90" r="5" fill="var(--text)" />
-      <circle cx="92" cy="88" r="1.8" fill="#fff" />
+      <circle cx="59" cy="90" r="5.5" fill="var(--text)" />
+      <circle cx="91" cy="90" r="5.5" fill="var(--text)" />
+      <circle cx="61" cy="88" r="2" fill="#fff" />
+      <circle cx="93" cy="88" r="2" fill="#fff" />
 
-      {/* bico */}
-      <path
-        d="M100 92 q20 2 22 13 q-2 13 -22 11 q7 -11 0 -24 z"
-        fill="#ff9600"
-        stroke="#d97c00"
-        strokeWidth="2"
-        strokeLinejoin="round"
-      />
+      {/* bochechas */}
+      <circle cx="44" cy="103" r="6" fill="#ffb3d9" opacity="0.85" />
+      <circle cx="100" cy="103" r="6" fill="#ffb3d9" opacity="0.85" />
+
+      {/* boca aberta com língua */}
+      <path d="M58 104 q14 18 28 0 q-2 16 -14 16 q-12 0 -14 -16 z" fill="#4a2b6b" />
+      <ellipse cx="72" cy="116" rx="8" ry="4.5" fill="#ff8fb3" />
 
       {/* pés */}
-      <rect x="56" y="142" width="15" height="9" rx="4.5" fill="#ff9600" />
-      <rect x="78" y="142" width="15" height="9" rx="4.5" fill="#ff9600" />
+      <rect x="54" y="141" width="16" height="10" rx="5" fill="var(--brand-deep)" />
+      <rect x="78" y="141" width="16" height="10" rx="5" fill="var(--brand-deep)" />
 
       {/* balão de fala */}
       <g className="auth-mascot-bubble">
