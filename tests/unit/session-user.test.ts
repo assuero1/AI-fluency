@@ -6,7 +6,7 @@ const listRecordsWhereAll = vi.fn();
 vi.mock("@/lib/supabase/server", () => ({
   getRequestSupabaseClient: vi.fn(async () => ({ auth: { getUser } }))
 }));
-vi.mock("@/lib/teable/client", () => ({
+vi.mock("@/lib/supabase/client", () => ({
   getTeableClient: () => ({ listRecordsWhereAll }),
   safeUpdateRecord: vi.fn(async (_t: string, _id: string, fields: unknown) => ({ id: "u1", fields })),
   TeableConfigError: class extends Error { status = 500 },

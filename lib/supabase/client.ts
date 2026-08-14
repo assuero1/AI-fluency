@@ -1,7 +1,47 @@
 import type { SupabaseClient as SupabaseJsClient } from "@supabase/supabase-js";
-import type { TeableTableKey } from "@/lib/teable/schema";
-import { TeableConfigError, TeableRequestError, type TeableRecord } from "@/lib/teable/types";
+import { getRequestSupabaseClient } from "@/lib/supabase/server";
+import type { TeableTableKey } from "@/lib/supabase/tables";
 import tablesJson from "./tables.json";
+
+// getTeableClient é o nome histórico da fachada de dados; o backend é sempre
+// Supabase. Os tipos Teable* abaixo vêm do antigo lib/teable e permanecem para
+// não reescrever os call sites existentes.
+
+export type TeableRecord<TFields extends Record<string, unknown> = Record<string, unknown>> = {
+  id: string;
+  fields: TFields;
+  createdTime?: string;
+};
+
+export class TeableConfigError extends Error {
+  status = 503;
+}
+
+export class TeableRequestError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public detail?: unknown
+  ) {
+    super(message);
+  }
+}
+
+export type TeableListResponse<TFields extends Record<string, unknown> = Record<string, unknown>> = {
+  records?: TeableRecord<TFields>[];
+  data?: {
+    records?: TeableRecord<TFields>[];
+  };
+};
+
+export type TeableCreateResponse<TFields extends Record<string, unknown> = Record<string, unknown>> =
+  | TeableRecord<TFields>
+  | {
+      records?: TeableRecord<TFields>[];
+      data?: {
+        records?: TeableRecord<TFields>[];
+      };
+    };
 
 type TableMeta = {
   key: string;
@@ -226,4 +266,25 @@ export class SupabaseTeableClient {
 
 export function createSupabaseTeableClient(db: Promise<SupabaseJsClient> | SupabaseJsClient) {
   return new SupabaseTeableClient(db);
+}
+
+// Alias de tipo histórico: o client da fachada é sempre o adapter Supabase.
+export type TeableClient = SupabaseTeableClient;
+
+// Fachada de dados do app: sempre o adapter Supabase autenticado pelo cookie
+// da request (o Postgres aplica RLS). O nome é histórico.
+export function getTeableClient(): SupabaseTeableClient {
+  return new SupabaseTeableClient(getRequestSupabaseClient());
+}
+
+export async function safeUpdateRecord<TFields extends Record<string, unknown> = Record<string, unknown>>(
+  tableKey: TeableTableKey,
+  recordId: string,
+  fields: Partial<TFields>
+) {
+  try {
+    return await getTeableClient().updateRecord<TFields>(tableKey, recordId, fields);
+  } catch {
+    return null;
+  }
 }

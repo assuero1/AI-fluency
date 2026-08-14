@@ -1,7 +1,7 @@
 import { createChatCompletion } from "@/lib/ai/client";
 import { getAiConfig } from "@/lib/ai/config";
-import { getTeableClient, TeableClient, TeableRecord, TeableRequestError } from "@/lib/teable/client";
-import { TeableTableKey } from "@/lib/teable/schema";
+import { getTeableClient, TeableClient, TeableRecord, TeableRequestError } from "@/lib/supabase/client";
+import { TeableTableKey } from "@/lib/supabase/tables";
 import { createTopic } from "./topics";
 import { assertPracticeReady, LearningStateError } from "./access";
 import { isMutableConversationStatus, selectScopedConversation } from "./conversation-state";

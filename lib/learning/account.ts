@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getConnectionStatus } from "@/lib/settings/status";
-import { getTeableClient, TeableRecord } from "@/lib/teable/client";
-import type { TeableTableKey } from "@/lib/teable/schema";
+import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
+import type { TeableTableKey } from "@/lib/supabase/tables";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields, WordOccurrenceFields, WordUsageSummaryFields } from "./conversations";
 import type { DailyFeedbackFields, TopicFields } from "./home";
 import type { FlashcardAttemptFields, FlashcardFields } from "./flashcards";

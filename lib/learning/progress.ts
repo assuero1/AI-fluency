@@ -3,7 +3,7 @@ import { startConversation } from "./conversations";
 import type { ConversationFields, CorrectionFields, WordFields } from "./conversations";
 import type { DailyFeedbackFields } from "./home";
 import { getActiveLanguageProfile, getSessionUser } from "./profile";
-import { getTeableClient, TeableRecord } from "@/lib/teable/client";
+import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import { getPracticeActivity } from "./practice-activity";
 import type { PracticeSessionFields } from "./flashcards";
 

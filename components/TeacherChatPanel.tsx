@@ -6,7 +6,7 @@ import { LoadingDots } from "./LoadingDots";
 import { IconBubble } from "./IconBubble";
 import { ModalDialog } from "./ModalDialog";
 import type { MessageFields } from "@/lib/learning/conversations";
-import type { TeableRecord } from "@/lib/teable/client";
+import type { TeableRecord } from "@/lib/supabase/client";
 
 type TeacherChatPanelProps = {
   conversationId: string;

@@ -12,7 +12,7 @@ const getActiveLanguageProfile = vi.fn();
 const getTutorContext = vi.fn();
 
 vi.mock("../../lib/ai/client", () => ({ createChatCompletion }));
-vi.mock("../../lib/teable/client", () => ({
+vi.mock("../../lib/supabase/client", () => ({
   getTeableClient: () => ({ createRecord, listRecordsWhere, getRecord, createEvent }),
   TeableRequestError: class TeableRequestError extends Error {
     status = 500;

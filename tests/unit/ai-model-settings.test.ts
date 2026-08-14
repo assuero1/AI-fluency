@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   createRecord: vi.fn()
 }));
 
-vi.mock("@/lib/teable/client", () => ({
+vi.mock("@/lib/supabase/client", () => ({
   getTeableClient: () => mocks
 }));
 

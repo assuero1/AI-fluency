@@ -70,7 +70,7 @@ export default async function ConnectionsPage() {
         <Pill>Conexões</Pill>
       </div>
       <section className="section">
-        <h1 className="title">IA, Teable e Kokoro</h1>
+        <h1 className="title">IA, Supabase e Kokoro</h1>
         <p className="subtitle">As chaves ficam no servidor. O app mostra apenas status e máscaras.</p>
       </section>
       <section className="section choice-list">
@@ -94,17 +94,16 @@ export default async function ConnectionsPage() {
           />
         </ConnectionCard>
         <ConnectionCard
-          title="Teable"
-          meta="Base URL, API key e base ID"
+          title="Supabase"
+          meta="URL e service role key"
           Icon={Server}
           tone="info"
-          connected={status.teable.configured}
+          connected={status.supabase.configured}
           lines={[
-            { label: "API key", value: status.teable.apiKeyMasked ?? "não configurada" },
-            { label: "Tabelas mapeadas", value: `${status.teable.mappedTableCount}/${status.teable.totalTableCount}` },
-            { label: "Health table", value: status.teable.healthTableConfigured ? "configurada" : "não configurada" }
+            { label: "URL", value: status.supabase.urlConfigured ? "configurada" : "não configurada" },
+            { label: "Service role key", value: status.supabase.serviceRoleKeyMasked ?? "não configurada" }
           ]}
-          testEndpoint="/api/settings/test-teable"
+          testEndpoint="/api/settings/test-supabase"
         />
         <ConnectionCard
           title="Kokoro voz"

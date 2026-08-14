@@ -6,7 +6,7 @@ const listRecordsWhere = vi.fn();
 const getConversation = vi.fn();
 
 vi.mock("../../lib/ai/client", () => ({ createChatCompletion }));
-vi.mock("../../lib/teable/client", () => ({
+vi.mock("../../lib/supabase/client", () => ({
   getTeableClient: () => ({ createRecord, listRecordsWhere }),
   TeableRequestError: class TeableRequestError extends Error {
     status = 500;

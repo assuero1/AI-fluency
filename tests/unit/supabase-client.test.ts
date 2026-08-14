@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TeableRequestError } from "@/lib/teable/types";
+import { TeableRequestError } from "@/lib/supabase/client";
 
 type BuilderResult = { data: unknown; error: unknown };
 

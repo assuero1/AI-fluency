@@ -4,8 +4,8 @@ export const ABANDONED_CONVERSATION_STATUS = "abandoned";
 
 export type LearningGate = "ready" | "onboarding" | "connections";
 
-export function resolveLearningGate(input: { hasProfile: boolean; teableReady: boolean; aiReady: boolean }): LearningGate {
-  if (!input.teableReady) return "connections";
+export function resolveLearningGate(input: { hasProfile: boolean; backendReady: boolean; aiReady: boolean }): LearningGate {
+  if (!input.backendReady) return "connections";
   if (!input.hasProfile) return "onboarding";
   return input.aiReady ? "ready" : "connections";
 }

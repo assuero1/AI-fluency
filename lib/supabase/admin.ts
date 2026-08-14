@@ -2,7 +2,7 @@ import "server-only";
 
 import { createClient } from "@supabase/supabase-js";
 import { getEnv } from "@/lib/env";
-import { TeableConfigError } from "@/lib/teable/client";
+import { TeableConfigError } from "@/lib/supabase/client";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 

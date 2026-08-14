@@ -20,7 +20,7 @@ import type { SelectionExplanation } from "@/lib/learning/selection-explanation"
 import { resolveSelectionState } from "@/lib/learning/selection-ui";
 import { joinSpeechSegments, markMicReleased, speechLanguageName, speechLocale, speechRecognitionErrorMessage } from "@/lib/learning/speech";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
-import type { TeableRecord } from "@/lib/teable/client";
+import type { TeableRecord } from "@/lib/supabase/client";
 import { getMessageGoalProgress, InteractionMode, normalizeStoredInteractionMode } from "@/lib/learning/chat-contracts";
 
 type ChatConversationProps = {

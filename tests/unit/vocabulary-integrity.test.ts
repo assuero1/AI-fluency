@@ -75,7 +75,7 @@ vi.mock("../../lib/learning/conversations", async (importOriginal) => {
   };
 });
 vi.mock("../../lib/learning/feedback", () => ({ addSavedWordsToDailyFeedback: vi.fn(async () => undefined) }));
-vi.mock("../../lib/teable/client", () => ({
+vi.mock("../../lib/supabase/client", () => ({
   TeableRequestError: class TeableRequestError extends Error {},
   getTeableClient: () => ({
     listRecords,

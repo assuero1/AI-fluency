@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createChatCompletion } from "@/lib/ai/client";
-import { getTeableClient, TeableRecord, TeableRequestError } from "@/lib/teable/client";
+import { getTeableClient, TeableRecord, TeableRequestError } from "@/lib/supabase/client";
 import { LearningStateError } from "./access";
 import { CorrectionFields, getConversation, MessageFields, WordFields, WordSenseFields, WordUsageSummaryFields } from "./conversations";
 import { addSavedWordsToDailyFeedback } from "./feedback";

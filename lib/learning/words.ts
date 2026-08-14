@@ -11,7 +11,7 @@ import {
   matchesCanonicalSenseKey
 } from "./word-senses";
 import { normalizeVocabularyToken } from "./vocabulary-selection";
-import { getTeableClient, TeableRecord } from "@/lib/teable/client";
+import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import { summarizeDailyQueue, type DailyQueueSessionFields } from "./daily-queue";
 
 export const wordFilters = ["all", "recent", "review", "corrected"] as const;

@@ -25,7 +25,7 @@ type ProfilePreferencesProps = {
     languageProfiles: Array<{ id: string; languageName: string; level: string }>;
     connections: {
       ai: { configured: boolean };
-      teable: { configured: boolean };
+      supabase: { configured: boolean };
       kokoro: { configured: boolean };
     };
   };
@@ -203,7 +203,7 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
         <h2 className="section-title">Conexões</h2>
         <div className="settings-list">
           <ConnectionLink connected={initial.connections.ai.configured} Icon={KeyRound} label="IA e modelos" tone="primary" />
-          <ConnectionLink connected={initial.connections.teable.configured} Icon={Server} label="Teable" tone="info" />
+          <ConnectionLink connected={initial.connections.supabase.configured} Icon={Server} label="Supabase" tone="info" />
           <ConnectionLink connected={initial.connections.kokoro.configured} Icon={Mic} label="Kokoro voz" tone="warning" />
         </div>
       </section>

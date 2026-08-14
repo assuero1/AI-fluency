@@ -12,7 +12,7 @@ import {
   validateGeneratedPhrases
 } from "../../lib/learning/flashcards";
 import type { WordFields } from "../../lib/learning/conversations";
-import type { TeableRecord } from "../../lib/teable/client";
+import type { TeableRecord } from "../../lib/supabase/client";
 
 // Force the AI phrase generation to fail so mixed-type buildDeck tests stay hermetic
 // regardless of whether the environment has a working AI endpoint.

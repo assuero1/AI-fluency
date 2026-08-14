@@ -14,7 +14,7 @@ const createEvent = vi.fn();
 const getConversation = vi.fn();
 
 vi.mock("../../lib/ai/client", () => ({ createChatCompletion }));
-vi.mock("../../lib/teable/client", () => ({
+vi.mock("../../lib/supabase/client", () => ({
   getTeableClient: () => ({ listRecords, listAllRecords, listRecordsWhere, listRecordsWhereAll, getRecord, createRecord, updateRecord, createEvent })
 }));
 vi.mock("../../lib/learning/conversations", () => ({ getConversation, startConversation: vi.fn() }));

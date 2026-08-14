@@ -1,7 +1,7 @@
 import { jsonError, jsonOk } from "@/lib/api/responses";
 import { getAiStatus } from "@/lib/ai/config";
 import { saveModelOverride } from "@/lib/ai/model-settings";
-import { TeableConfigError, TeableRequestError } from "@/lib/teable/client";
+import { TeableConfigError, TeableRequestError } from "@/lib/supabase/client";
 
 export async function PUT(request: Request) {
   const body = (await request.json().catch(() => null)) as { chatModel?: unknown } | null;

@@ -9,13 +9,13 @@ import {
 
 describe("learning gate", () => {
   it("requires connections before creating learning data", () => {
-    expect(resolveLearningGate({ hasProfile: false, teableReady: false, aiReady: false })).toBe("connections");
-    expect(resolveLearningGate({ hasProfile: true, teableReady: true, aiReady: false })).toBe("connections");
+    expect(resolveLearningGate({ hasProfile: false, backendReady: false, aiReady: false })).toBe("connections");
+    expect(resolveLearningGate({ hasProfile: true, backendReady: true, aiReady: false })).toBe("connections");
   });
 
   it("requires onboarding after Teable is available", () => {
-    expect(resolveLearningGate({ hasProfile: false, teableReady: true, aiReady: true })).toBe("onboarding");
-    expect(resolveLearningGate({ hasProfile: true, teableReady: true, aiReady: true })).toBe("ready");
+    expect(resolveLearningGate({ hasProfile: false, backendReady: true, aiReady: true })).toBe("onboarding");
+    expect(resolveLearningGate({ hasProfile: true, backendReady: true, aiReady: true })).toBe("ready");
   });
 });
 

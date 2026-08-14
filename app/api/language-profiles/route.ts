@@ -8,7 +8,7 @@ import {
   type OnboardingPayload,
   updateSessionUserProfile
 } from "@/lib/learning/profile";
-import { getTeableClient } from "@/lib/teable/client";
+import { getTeableClient } from "@/lib/supabase/client";
 
 export async function GET() {
   try {

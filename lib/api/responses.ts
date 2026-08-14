@@ -5,7 +5,7 @@ import { AccountValidationError } from "@/lib/learning/account";
 import { LearningStateError } from "@/lib/learning/access";
 import { TranslationValidationError } from "@/lib/learning/translation";
 import { UnauthenticatedError, UserLinkError } from "@/lib/learning/profile";
-import { TeableConfigError, TeableRequestError } from "@/lib/teable/client";
+import { TeableConfigError, TeableRequestError } from "@/lib/supabase/client";
 
 export function jsonOk<T>(data: T, init?: ResponseInit) {
   return NextResponse.json(data, init);

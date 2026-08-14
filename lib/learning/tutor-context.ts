@@ -1,4 +1,4 @@
-import type { TeableClient, TeableRecord } from "@/lib/teable/client";
+import type { TeableClient, TeableRecord } from "@/lib/supabase/client";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields } from "./conversations";
 import type { LanguageProfileFields } from "./profile";
 
@@ -29,7 +29,7 @@ export type TutorContext = {
 type TutorKnowledge = Omit<TutorContext, "recentHistory">;
 
 // The pedagogical knowledge changes slowly, while loading it requires several
-// complete Teable reads. Keep it warm throughout a normal conversation.
+// complete database reads. Keep it warm throughout a normal conversation.
 const TUTOR_CONTEXT_TTL_MS = 5 * 60_000;
 const MAX_TUTOR_CONTEXT_ENTRIES = 24;
 const tutorKnowledgeCache = new Map<string, { expiresAt: number; promise: Promise<TutorKnowledge> }>();

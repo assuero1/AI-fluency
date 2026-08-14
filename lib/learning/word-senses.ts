@@ -1,5 +1,4 @@
-import { getTeableClient, TeableConfigError, TeableRecord, TeableRequestError } from "@/lib/teable/client";
-import { getSchemaTable } from "@/lib/teable/schema";
+import { getTeableClient, TeableRecord, TeableRequestError } from "@/lib/supabase/client";
 import { normalizeVocabularyToken } from "./vocabulary-selection";
 import type { WordFields, WordSenseFields } from "./conversations";
 
@@ -111,14 +110,6 @@ export function aggregateSenseReviewToWordFields(senses: TeableRecord<WordSenseF
   return result;
 }
 
-const WORD_SENSES_ENV_NAME = getSchemaTable("wordSenses")?.envName ?? "TEABLE_WORD_SENSES_TABLE_ID";
-
-// Deploy-ordering guard: only the "table not configured" error degrades.
-// Network, auth and server errors must keep propagating.
-function isUnconfiguredWordSensesTableError(error: unknown): boolean {
-  return error instanceof TeableConfigError && error.message.startsWith(`${WORD_SENSES_ENV_NAME} is not configured`);
-}
-
 async function mapWithConcurrency<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results = new Array<R>(items.length);
   let cursor = 0;
@@ -140,24 +131,9 @@ export async function listSensesByWordIds(wordIds: string[]): Promise<Map<string
   const byWord = new Map<string, TeableRecord<WordSenseFields>[]>();
   if (!wordIds.length) return byWord;
   const client = getTeableClient();
-  // Deploy-ordering guard: se a tabela ainda não existe neste ambiente, degrada
-  // para "sem sentidos" (caminho legado) em vez de 503 — mesmo comportamento de
-  // antes, agora detectado na primeira query filtrada.
-  let unconfigured = false;
-  const groups = await mapWithConcurrency(wordIds, SENSE_LOOKUP_CONCURRENCY, async (wordId) => {
-    if (unconfigured) return [] as TeableRecord<WordSenseFields>[];
-    try {
-      return await client.listRecordsWhere<WordSenseFields>("wordSenses", "word_id", wordId);
-    } catch (error) {
-      if (!isUnconfiguredWordSensesTableError(error)) throw error;
-      // Aviso único mesmo quando várias buscas concorrentes degradam juntas.
-      if (!unconfigured) {
-        unconfigured = true;
-        console.warn(`[word-senses] ${WORD_SENSES_ENV_NAME} is not configured; treating every word as sense-less (legacy path).`);
-      }
-      return [] as TeableRecord<WordSenseFields>[];
-    }
-  });
+  const groups = await mapWithConcurrency(wordIds, SENSE_LOOKUP_CONCURRENCY, async (wordId) =>
+    client.listRecordsWhere<WordSenseFields>("wordSenses", "word_id", wordId)
+  );
   wordIds.forEach((wordId, index) => {
     if (groups[index].length) byWord.set(wordId, groups[index]);
   });

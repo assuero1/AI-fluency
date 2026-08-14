@@ -21,7 +21,7 @@ vi.mock("../../lib/learning/profile", () => ({
   getSessionUser: vi.fn(async () => user),
   getActiveLanguageProfile: vi.fn(async () => profile)
 }));
-vi.mock("../../lib/teable/client", () => ({
+vi.mock("../../lib/supabase/client", () => ({
   getTeableClient: () => ({ listRecords, listAllRecords, listRecordsWhere, listRecordsWhereAll, updateRecord, createEvent })
 }));
 

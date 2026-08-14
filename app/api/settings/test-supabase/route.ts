@@ -1,5 +1,5 @@
-import { getTeableClient } from "@/lib/teable/client";
-import { getTeableStatus } from "@/lib/teable/config";
+import { getTeableClient } from "@/lib/supabase/client";
+import { getSupabaseStatus } from "@/lib/supabase/config";
 import { handleApiError, jsonOk } from "@/lib/api/responses";
 
 export async function POST() {
@@ -8,7 +8,7 @@ export async function POST() {
     return jsonOk({
       ok: true,
       result,
-      status: getTeableStatus()
+      status: getSupabaseStatus()
     });
   } catch (error) {
     return handleApiError(error);

@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { getConnectionStatus, isDataBackendReady } from "@/lib/settings/status";
 import { getRequestSupabaseClient } from "@/lib/supabase/server";
-import { getTeableClient, safeUpdateRecord, TeableRecord } from "@/lib/teable/client";
+import { getTeableClient, safeUpdateRecord, TeableRecord } from "@/lib/supabase/client";
 import { normalizeNewCardsQuota } from "./daily-queue";
 import { DEFAULT_LANGUAGE_LEVEL, isLanguageLevel } from "./levels";
 
@@ -169,12 +169,12 @@ export async function createOrActivateLanguageProfile(user: TeableRecord<UserFie
 
 export async function getOnboardingRedirectTarget() {
   const status = await getConnectionStatus();
-  const teableReady = isDataBackendReady(status);
+  const backendReady = isDataBackendReady(status);
   const aiReady = status.ai.configured;
 
   return {
     status,
-    readyForPractice: teableReady && aiReady,
-    redirectTo: teableReady && aiReady ? "/" : "/settings/connections"
+    readyForPractice: backendReady && aiReady,
+    redirectTo: backendReady && aiReady ? "/" : "/settings/connections"
   };
 }

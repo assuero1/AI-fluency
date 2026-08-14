@@ -4,7 +4,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 import { getEnv } from "@/lib/env";
-import { TeableConfigError } from "@/lib/teable/client";
+import { TeableConfigError } from "@/lib/supabase/client";
 
 const REQUEST_TIMEOUT_MS = 10_000;
 

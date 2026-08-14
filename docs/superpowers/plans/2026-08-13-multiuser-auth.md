@@ -882,7 +882,7 @@ export async function updatePassword(_prev: AuthFormState, formData: FormData): 
 
 export async function logout() {
   const supabase = await getRequestSupabaseClient();
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: "local" });
   redirect("/login");
 }
 ```

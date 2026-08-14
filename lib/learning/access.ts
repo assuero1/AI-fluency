@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getConnectionStatus, isDataBackendReady } from "@/lib/settings/status";
-import { getTeableClient, TeableClient, TeableRecord } from "@/lib/teable/client";
+import { getTeableClient, TeableClient, TeableRecord } from "@/lib/supabase/client";
 import {
   getActiveLanguageProfile,
   getSessionUser,
@@ -25,9 +25,9 @@ type ReadyLearningAccess = {
 
 export async function getLearningGate() {
   const status = await getConnectionStatus();
-  const teableReady = isDataBackendReady(status);
+  const backendReady = isDataBackendReady(status);
 
-  if (!teableReady) {
+  if (!backendReady) {
     return { gate: "connections" as const, status, user: null, profile: null };
   }
 
@@ -41,7 +41,7 @@ export async function getLearningGate() {
     throw error;
   }
   const profile = await getActiveLanguageProfile(user);
-  const gate = resolveLearningGate({ hasProfile: Boolean(profile), teableReady, aiReady: status.ai.configured });
+  const gate = resolveLearningGate({ hasProfile: Boolean(profile), backendReady, aiReady: status.ai.configured });
 
   return { gate, status, user, profile };
 }

@@ -2,7 +2,8 @@ import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import net from "node:net";
 import path from "node:path";
-import { readEnv } from "./qa-env.mjs";
+import { createChunks, stringToBase64URL } from "@supabase/ssr";
+import { readEnv, required } from "./qa-env.mjs";
 
 export function createFixture(envPath = ".env.qa.local") {
   const output = execFileSync(process.execPath, ["scripts/qa-fixture.mjs", "--env", envPath], { encoding: "utf8" });
@@ -21,13 +22,36 @@ export function readFixture(runId) {
   return JSON.parse(fs.readFileSync(manifestPath, "utf8"));
 }
 
+// Signs in as the persistent QA auth user and returns the Cookie header that
+// @supabase/ssr expects (base64url session JSON, chunked like a browser).
+export async function qaAuthCookieHeader(env) {
+  const url = required(env, "SUPABASE_URL").replace(/\/+$/, "");
+  const anonKey = required(env, "SUPABASE_ANON_KEY");
+  const email = required(env, "QA_USER_EMAIL");
+  const password = required(env, "QA_USER_PASSWORD");
+  const response = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+    method: "POST",
+    headers: { apikey: anonKey, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, password })
+  });
+  const session = await response.json().catch(() => null);
+  if (!response.ok || !session?.access_token) {
+    throw new Error("QA auth login failed. Run: node scripts/qa-create-auth-user.mjs --env .env.qa.local");
+  }
+  const projectRef = new URL(url).hostname.split(".")[0];
+  const key = `sb-${projectRef}-auth-token`;
+  const value = `base64-${stringToBase64URL(JSON.stringify(session))}`;
+  return createChunks(key, value)
+    .map((chunk) => `${chunk.name}=${encodeURIComponent(chunk.value)}`)
+    .join("; ");
+}
+
 export async function startQaServer(port, envPath = ".env.qa.local", options = {}) {
   await assertPortIsAvailable(port);
   const env = {
     ...process.env,
     ...readEnv(envPath),
-    PORT: String(port),
-    AI_FLUENCY_USER_ID: options.userId ?? ""
+    PORT: String(port)
   };
   const nextBin = path.join(process.cwd(), "node_modules", "next", "dist", "bin", "next");
   const child = spawn(process.execPath, [nextBin, "start", "-p", String(port)], {
@@ -36,11 +60,12 @@ export async function startQaServer(port, envPath = ".env.qa.local", options = {
     detached: false
   });
   const baseUrl = `http://localhost:${port}`;
+  const headers = options.headers ?? {};
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`QA server exited early with code ${child.exitCode}.`);
     try {
-      const response = await fetch(`${baseUrl}/api/settings/connections`);
+      const response = await fetch(`${baseUrl}/api/settings/connections`, { headers });
       if (response.ok) return { child, baseUrl };
     } catch {
       // Keep polling until Next starts.

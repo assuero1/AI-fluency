@@ -1,6 +1,6 @@
 import { handleApiError, jsonOk } from "@/lib/api/responses";
 import { getSessionUser } from "@/lib/learning/profile";
-import { getTeableClient } from "@/lib/teable/client";
+import { getTeableClient } from "@/lib/supabase/client";
 
 export async function POST(request: Request) {
   try {

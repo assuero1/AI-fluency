@@ -1,5 +1,5 @@
 import { createChatCompletion } from "@/lib/ai/client";
-import { getTeableClient, TeableRecord } from "@/lib/teable/client";
+import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import { LearningStateError } from "./access";
 import { isTeacherChannel, isValidClientRequestId, normalizeStoredInteractionMode } from "./chat-contracts";
 import { ConversationFields, CorrectionFields, getConversation, MessageFields } from "./conversations";

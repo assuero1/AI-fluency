@@ -29,7 +29,6 @@ const child = spawn("npm", ["start", "--", "-p", "3015"], {
   env: {
     ...process.env,
     ...readEnv(envPath),
-    AI_FLUENCY_USER_ID: userId,
     PORT: "3015"
   },
   stdio: "inherit"

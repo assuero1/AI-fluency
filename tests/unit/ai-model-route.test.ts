@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { TeableConfigError, TeableRequestError } from "@/lib/teable/client";
+import { TeableConfigError, TeableRequestError } from "@/lib/supabase/client";
 
 const mocks = vi.hoisted(() => ({
   saveModelOverride: vi.fn(),

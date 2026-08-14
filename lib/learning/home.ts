@@ -1,5 +1,5 @@
 import { getConnectionStatus } from "@/lib/settings/status";
-import { getTeableClient, TeableRecord } from "@/lib/teable/client";
+import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser } from "./profile";
 import type { ConversationFields } from "./conversations";
 import { getPracticeActivity } from "./practice-activity";

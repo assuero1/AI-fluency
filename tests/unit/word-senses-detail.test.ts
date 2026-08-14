@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { WordFields, WordSenseFields, WordUsageSummaryFields } from "../../lib/learning/conversations";
 import { LearningStateError } from "../../lib/learning/access";
 import { canonicalSenseKey } from "../../lib/learning/word-senses";
-import type { TeableRecord } from "../../lib/teable/client";
+import type { TeableRecord } from "../../lib/supabase/client";
 
 const user = { id: "user-a", fields: { timezone: "UTC" } };
 const profile = { id: "profile-a", fields: { language_code: "es", language_name: "Espanhol", weekly_word_goal: 500 } };
@@ -20,7 +20,7 @@ vi.mock("../../lib/learning/profile", () => ({
   getActiveLanguageProfile: vi.fn(async () => profile),
   getDailyNewCardsQuota: vi.fn(() => 10)
 }));
-vi.mock("../../lib/teable/client", () => ({
+vi.mock("../../lib/supabase/client", () => ({
   getTeableClient: () => ({ listRecords, listAllRecords, listRecordsWhere, listRecordsWhereAll, createRecord, updateRecord, createEvent }),
   TeableRequestError: class TeableRequestError extends Error {
     constructor(public status: number, message: string) {

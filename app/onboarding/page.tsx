@@ -1,7 +1,7 @@
 import { AppShell } from "@/components/AppShell";
 import { OnboardingForm } from "@/components/OnboardingForm";
 import { getActiveLanguageProfile, getSessionUser, LanguageProfileFields } from "@/lib/learning/profile";
-import { getTeableClient } from "@/lib/teable/client";
+import { getTeableClient } from "@/lib/supabase/client";
 
 export default async function OnboardingPage({ searchParams }: { searchParams: Promise<{ mode?: string }> }) {
   const { mode } = await searchParams;

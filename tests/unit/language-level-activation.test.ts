@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { LanguageProfileFields, UserFields } from "../../lib/learning/profile";
-import type { TeableRecord } from "../../lib/teable/client";
+import type { TeableRecord } from "../../lib/supabase/client";
 
 const user: TeableRecord<UserFields> = { id: "user-a", fields: { Name: "Camila", created_at: "2026-08-13T12:00:00.000Z" } };
 
@@ -33,7 +33,7 @@ const updateRecord = vi.fn();
 const createEvent = vi.fn();
 const safeUpdateRecord = vi.fn(async () => null);
 
-vi.mock("../../lib/teable/client", () => ({
+vi.mock("../../lib/supabase/client", () => ({
   getTeableClient: () => ({ listRecords, createRecord, updateRecord, createEvent }),
   safeUpdateRecord
 }));

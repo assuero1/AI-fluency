@@ -1,7 +1,7 @@
 import "server-only";
 
 import { createChatCompletion } from "@/lib/ai/client";
-import { getTeableClient, TeableRecord } from "@/lib/teable/client";
+import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import { getEnv } from "@/lib/env";
 import { LearningStateError } from "./access";
 import { WordFields, WordSenseFields } from "./conversations";
@@ -610,7 +610,7 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
 
 // Applies the review to the card's target sense, then re-aggregates the word-level
 // SRS cache from the fresh senses (compat reads keep working). The double write is
-// not transactional in Teable: if the re-aggregation fails the word cache stays
+// not transactional: if the re-aggregation fails the word cache stays
 // stale until the next review — accepted, so we warn-log instead of failing.
 async function applyReviewToSense(
   client: ReturnType<typeof getTeableClient>,

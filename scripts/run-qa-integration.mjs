@@ -1,4 +1,5 @@
-import { createFixture, readFixture, recoverFixture, startQaServer, stopQaServer } from "./qa-test-runtime.mjs";
+import { createFixture, qaAuthCookieHeader, readFixture, recoverFixture, startQaServer, stopQaServer } from "./qa-test-runtime.mjs";
+import { readEnv } from "./qa-env.mjs";
 
 const envPath = ".env.qa.local";
 const runIds = [];
@@ -10,53 +11,50 @@ const cleanupFailures = [];
 try {
   const primaryRunId = createFixture(envPath);
   runIds.push(primaryRunId);
-  const secondaryRunId = createFixture(envPath);
-  runIds.push(secondaryRunId);
   const fixture = readFixture(primaryRunId);
-  const secondaryFixture = readFixture(secondaryRunId);
   const userId = fixture.records.TEABLE_USERS_TABLE_ID[0];
-  server = await startQaServer(3013, envPath, { userId });
+  // A sessão do usuário QA persistente é a identidade de todas as requests;
+  // AI_FLUENCY_USER_ID não existe mais no runtime. Isolamento entre usuários
+  // (dois auth users) é coberto por scripts/verify-multitenant-isolation.mjs
+  // (npm run test:isolation) — fixtures concorrentes não são possíveis porque
+  // todos pertencem ao mesmo usuário QA (compartilham active_language_id).
+  const cookieHeader = await qaAuthCookieHeader(readEnv(envPath));
+  server = await startQaServer(3013, envPath, { headers: { cookie: cookieHeader } });
+  const api = (pathname, init = {}) =>
+    fetch(`${server.baseUrl}${pathname}`, { ...init, headers: { cookie: cookieHeader, ...(init.headers ?? {}) } });
   const completedConversationId = fixture.records.TEABLE_CONVERSATIONS_TABLE_ID[1];
-  const foreignConversationId = secondaryFixture.records.TEABLE_CONVERSATIONS_TABLE_ID[0];
 
-  const connections = await fetch(`${server.baseUrl}/api/settings/connections`);
+  const connections = await api(`/api/settings/connections`);
   assert(connections.ok, "connections endpoint is available");
   assert(connections.headers.get("cache-control")?.includes("no-store"), "safe API responses use no-store");
   assert(connections.headers.get("x-ai-fluency-environment") === "qa", "QA marker is present");
 
-  const profile = await fetch(`${server.baseUrl}/api/profile`);
+  const profile = await api(`/api/profile`);
   const profileBody = await profile.json();
-  assert(profile.ok && profileBody.profile?.user?.id === userId, "the QA server resolves only its pinned fixture user");
+  assert(profile.ok && profileBody.profile?.user?.id === userId, "the QA server resolves the session QA user");
 
-  const completedMessage = await fetch(`${server.baseUrl}/api/conversations/${completedConversationId}/messages`, {
+  const completedMessage = await api(`/api/conversations/${completedConversationId}/messages`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text: "This must stay read-only.", clientRequestId: "qa-integration-completed-0001" })
   });
   assert(completedMessage.status === 409, "completed conversations reject messages");
 
-  const invalidQuickAction = await fetch(`${server.baseUrl}/api/conversations/${fixture.records.TEABLE_CONVERSATIONS_TABLE_ID[0]}/actions`, {
+  const invalidQuickAction = await api(`/api/conversations/${fixture.records.TEABLE_CONVERSATIONS_TABLE_ID[0]}/actions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "delete" })
   });
   assert(invalidQuickAction.status === 422, "unknown quick actions are rejected");
 
-  const completedQuickAction = await fetch(`${server.baseUrl}/api/conversations/${completedConversationId}/actions`, {
+  const completedQuickAction = await api(`/api/conversations/${completedConversationId}/actions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ action: "explain" })
   });
   assert(completedQuickAction.status === 409, "completed conversations reject quick actions");
 
-  const foreignMessage = await fetch(`${server.baseUrl}/api/conversations/${foreignConversationId}/messages`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text: "This belongs to another fixture.", clientRequestId: "qa-integration-foreign-0001" })
-  });
-  assert(foreignMessage.status === 404, "records from another fixture user remain inaccessible");
-
-  const renamedProfile = await fetch(`${server.baseUrl}/api/profile`, {
+  const renamedProfile = await api(`/api/profile`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name: "Renamed QA learner" })
@@ -64,7 +62,7 @@ try {
   assert(renamedProfile.ok, "fixture recovery remains keyed by user ID after a profile rename");
 
   const originalProfileId = fixture.records.TEABLE_LANGUAGE_PROFILES_TABLE_ID[0];
-  const spanishProfile = await fetch(`${server.baseUrl}/api/language-profiles`, {
+  const spanishProfile = await api(`/api/language-profiles`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -76,21 +74,21 @@ try {
     })
   });
   assert(spanishProfile.ok, "a second language can be created for the same learner");
-  const spanishWords = await fetch(`${server.baseUrl}/api/words`);
+  const spanishWords = await api(`/api/words`);
   const spanishWordsBody = await spanishWords.json();
   assert(spanishWords.ok && spanishWordsBody.words?.length === 0, "the second language does not expose English vocabulary");
 
-  const restoreEnglish = await fetch(`${server.baseUrl}/api/profile`, {
+  const restoreEnglish = await api(`/api/profile`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ activeLanguageId: originalProfileId })
   });
   assert(restoreEnglish.ok, "the original language can be restored");
-  const restoredWords = await fetch(`${server.baseUrl}/api/words`);
+  const restoredWords = await api(`/api/words`);
   const restoredWordsBody = await restoredWords.json();
   assert(restoredWords.ok && restoredWordsBody.words?.some((word) => word.displayText === "fixture"), "restoring English restores its vocabulary exactly");
 
-  const flashcardStart = await fetch(`${server.baseUrl}/api/practice/flashcards`, {
+  const flashcardStart = await api(`/api/practice/flashcards`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ criterion: "least_used", count: 2 })
@@ -98,7 +96,7 @@ try {
   const flashcardStartBody = await flashcardStart.json();
   assert(flashcardStart.status === 201 && flashcardStartBody.sessionId && flashcardStartBody.cards?.length === 2, `flashcard session persists a frozen two-card deck (status ${flashcardStart.status}: ${flashcardStartBody.error ?? "unexpected response"}; ${JSON.stringify(flashcardStartBody.detail ?? {})})`);
   for (const [index, card] of flashcardStartBody.cards.entries()) {
-    const attempt = await fetch(`${server.baseUrl}/api/practice/flashcards/attempt`, {
+    const attempt = await api(`/api/practice/flashcards/attempt`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -118,22 +116,22 @@ try {
     });
     assert(attempt.status === 201, `flashcard attempt ${index + 1} persists idempotently`);
   }
-  const flashcardComplete = await fetch(`${server.baseUrl}/api/practice/flashcards/complete`, {
+  const flashcardComplete = await api(`/api/practice/flashcards/complete`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ sessionId: flashcardStartBody.sessionId, clientCompletionId: "qa-flashcard-complete-0001", answers: [] })
   });
   const flashcardCompleteBody = await flashcardComplete.json();
   assert(flashcardComplete.ok && flashcardCompleteBody.presentationCount === 2 && flashcardCompleteBody.uniqueCardCount === 2, "flashcard completion derives metrics from persisted attempts");
-  const reviewedWords = await fetch(`${server.baseUrl}/api/words`);
+  const reviewedWords = await api(`/api/words`);
   const reviewedWordsBody = await reviewedWords.json();
   assert(reviewedWords.ok && reviewedWordsBody.words?.every((word) => word.reviewIntervalDays === 1 && word.reviewStreak === 1 && word.reviewVersion === "srs-v2" && word.lastRating === "good"), "flashcard completion persists versioned adaptive review fields");
 
-  const invalidAudio = await fetch(`${server.baseUrl}/api/voice/${"a".repeat(64)}`);
+  const invalidAudio = await api(`/api/voice/${"a".repeat(64)}`);
   assert(invalidAudio.status === 404, "unknown cached audio is rejected");
   assert(invalidAudio.headers.get("cache-control")?.includes("no-store"), "unknown audio is not privately cached");
 
-  const populatedExport = await fetch(`${server.baseUrl}/api/export`);
+  const populatedExport = await api(`/api/export`);
   const populatedExportBody = await populatedExport.json();
   assert(populatedExport.ok, "a populated personal export is available");
   assert(populatedExportBody.schemaVersion === 3, "personal export declares its schema version");
@@ -143,10 +141,10 @@ try {
   assert(populatedExport.headers.get("content-disposition")?.includes("ai-fluency-en-"), "export filename includes the active language");
   assert(!JSON.stringify(populatedExportBody).includes("API_KEY"), "personal export contains no provider key names");
 
-  const deletionChallenge = await fetch(`${server.baseUrl}/api/data/delete-confirmation`, { method: "POST" });
+  const deletionChallenge = await api(`/api/data/delete-confirmation`, { method: "POST" });
   const deletionChallengeBody = await deletionChallenge.json();
   assert(deletionChallenge.ok && deletionChallengeBody.confirmationToken, "history deletion requires a server confirmation");
-  const deletion = await fetch(`${server.baseUrl}/api/data`, {
+  const deletion = await api(`/api/data`, {
     method: "DELETE",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -158,7 +156,7 @@ try {
   assert(deletion.ok, "active-language learning history can be deleted in QA");
   assert(deletionBody.preserved?.includes("other_language_profiles"), "history deletion preserves other languages");
 
-  const emptyExport = await fetch(`${server.baseUrl}/api/export`);
+  const emptyExport = await api(`/api/export`);
   const emptyExportBody = await emptyExport.json();
   assert(emptyExport.ok && emptyExportBody.activeLanguageProfile?.id, "empty export preserves the active language profile");
   assert(Object.values(emptyExportBody.learningHistory).every((records) => Array.isArray(records) && records.length === 0), "empty export contains no deleted learning records");

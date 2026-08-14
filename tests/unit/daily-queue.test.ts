@@ -10,7 +10,7 @@ import {
   summarizeDailyQueue
 } from "../../lib/learning/daily-queue";
 import type { WordFields } from "../../lib/learning/conversations";
-import type { TeableRecord } from "../../lib/teable/client";
+import type { TeableRecord } from "../../lib/supabase/client";
 
 function word(id: string, fields: Partial<WordFields>): TeableRecord<WordFields> {
   return { id, fields: fields as WordFields };
