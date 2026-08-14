@@ -45,10 +45,9 @@ expect(connections.response.ok, `Connections endpoint returned ${connections.res
 expect((connections.response.headers.get("cache-control") ?? "").includes("no-store"), "API response is missing no-store.");
 const status = connections.body?.connections;
 expect(status?.ai?.configured === true, "AI connection is not configured.");
-expect(status?.teable?.configured === true && status?.teable?.hasBaseId === true, "Teable connection is not configured.");
-expect(status?.teable?.mappedTableCount === status?.teable?.totalTableCount, "Teable table mapping is incomplete.");
+expect(status?.supabase?.configured === true, "Supabase connection is not configured.");
 expect(status?.kokoro?.configured === true && status?.kokoro?.audioCacheEnabled === true, "Kokoro connection or cache is not configured.");
-checks.push("server-only AI, Teable, and Kokoro readiness");
+checks.push("server-only AI, Supabase, and Kokoro readiness");
 
 console.log(JSON.stringify({ ok: true, origin: appUrl.origin, checks }));
 

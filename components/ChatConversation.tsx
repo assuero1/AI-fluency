@@ -20,7 +20,7 @@ import type { SelectionExplanation } from "@/lib/learning/selection-explanation"
 import { resolveSelectionState } from "@/lib/learning/selection-ui";
 import { joinSpeechSegments, markMicReleased, speechLanguageName, speechLocale, speechRecognitionErrorMessage } from "@/lib/learning/speech";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
-import type { TeableRecord } from "@/lib/teable/client";
+import type { TeableRecord } from "@/lib/supabase/client";
 import { getMessageGoalProgress, InteractionMode, normalizeStoredInteractionMode } from "@/lib/learning/chat-contracts";
 
 type ChatConversationProps = {
@@ -834,6 +834,8 @@ function createOptimisticUserMessage(
     id,
     fields: {
       Name: text.slice(0, 80),
+      // Optimistic local message — never persisted, so no real user id exists here.
+      user_id: "",
       conversation_id: conversationId,
       role: "user",
       text,

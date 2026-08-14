@@ -4,6 +4,7 @@ const messages = [
   {
     id: "message-user-1",
     fields: {
+      user_id: "user-1",
       conversation_id: "conversation-1",
       role: "user" as const,
       text: "Work work WORK café",
@@ -17,6 +18,7 @@ const messages = [
   {
     id: "message-assistant-1",
     fields: {
+      user_id: "user-1",
       conversation_id: "conversation-1",
       role: "assistant" as const,
       text: "Work is useful.",
@@ -30,6 +32,7 @@ const messages = [
   {
     id: "message-user-2",
     fields: {
+      user_id: "user-1",
       conversation_id: "conversation-1",
       role: "user" as const,
       text: "Worked working",
@@ -72,7 +75,7 @@ vi.mock("../../lib/learning/conversations", async (importOriginal) => {
   };
 });
 vi.mock("../../lib/learning/feedback", () => ({ addSavedWordsToDailyFeedback: vi.fn(async () => undefined) }));
-vi.mock("../../lib/teable/client", () => ({
+vi.mock("../../lib/supabase/client", () => ({
   TeableRequestError: class TeableRequestError extends Error {},
   getTeableClient: () => ({
     listRecords,

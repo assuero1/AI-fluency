@@ -1,7 +1,5 @@
 import { getEnv, maskSecret } from "@/lib/env";
 
-export type DataBackend = "teable" | "supabase";
-
 export type SupabaseConfig = {
   url?: string;
   serviceRoleKey?: string;
@@ -19,19 +17,12 @@ export function isSupabaseConfigured() {
   return Boolean(config.url && config.serviceRoleKey);
 }
 
-export function resolveDataBackend(): DataBackend {
-  const explicit = (process.env.DATA_BACKEND ?? "").trim().toLowerCase();
-  if (explicit === "teable" || explicit === "supabase") return explicit;
-  return isSupabaseConfigured() ? "supabase" : "teable";
-}
-
 export function getSupabaseStatus() {
   const config = getSupabaseConfig();
   return {
     configured: isSupabaseConfigured(),
     urlConfigured: Boolean(config.url),
     serviceRoleKeyConfigured: Boolean(config.serviceRoleKey),
-    serviceRoleKeyMasked: maskSecret(config.serviceRoleKey),
-    backend: resolveDataBackend()
+    serviceRoleKeyMasked: maskSecret(config.serviceRoleKey)
   };
 }

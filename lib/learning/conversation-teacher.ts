@@ -1,5 +1,5 @@
 import { createChatCompletion } from "@/lib/ai/client";
-import { getTeableClient, TeableRecord } from "@/lib/teable/client";
+import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import { LearningStateError } from "./access";
 import { isTeacherChannel, isValidClientRequestId, normalizeStoredInteractionMode } from "./chat-contracts";
 import { ConversationFields, CorrectionFields, getConversation, MessageFields } from "./conversations";
@@ -112,6 +112,7 @@ export async function sendTeacherMessage(conversationId: string, text: string, c
     const now = new Date().toISOString();
     userMessage = await client.createRecord<MessageFields>("messages", {
       Name: cleanText.slice(0, 80),
+      user_id: context.conversation.fields.user_id,
       conversation_id: context.conversation.id,
       role: "user",
       text: cleanText,
@@ -158,6 +159,7 @@ async function generateTeacherReply(
   const now = new Date().toISOString();
   return client.createRecord<MessageFields>("messages", {
     Name: reply.slice(0, 80),
+    user_id: context.conversation.fields.user_id,
     conversation_id: context.conversation.id,
     role: "assistant",
     text: reply,

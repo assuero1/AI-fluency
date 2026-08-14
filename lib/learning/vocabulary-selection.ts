@@ -1,10 +1,9 @@
 import "server-only";
 
 import { createChatCompletion } from "@/lib/ai/client";
-import { getTeableClient, TeableRecord, TeableRequestError } from "@/lib/teable/client";
+import { getTeableClient, TeableRecord, TeableRequestError } from "@/lib/supabase/client";
 import { LearningStateError } from "./access";
 import { CorrectionFields, getConversation, MessageFields, WordFields, WordSenseFields, WordUsageSummaryFields } from "./conversations";
-import { matchesLearningScope } from "./scope";
 import { addSavedWordsToDailyFeedback } from "./feedback";
 import { calculateAdaptiveReview, reviewToWordFields } from "./spaced-repetition";
 import {
@@ -558,10 +557,9 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
     const correctUseCount = relevant.filter((occurrence) => occurrence.source === "user").length;
     const familyKeys = new Set([family.lemma, ...family.forms.map(normalizeVocabularyToken)]);
     let word = existingWords.find((item) =>
-      matchesLearningScope(item.fields, scope) &&
-      (matchesCanonicalVocabularyKey(item.fields.canonical_key, canonicalKey) ||
+      matchesCanonicalVocabularyKey(item.fields.canonical_key, canonicalKey) ||
         familyKeys.has(normalizeVocabularyToken(item.fields.lemma || item.fields.display_text)) ||
-        parseVocabularyForms(item.fields.forms_json).some((form) => familyKeys.has(normalizeVocabularyToken(form))))
+        parseVocabularyForms(item.fields.forms_json).some((form) => familyKeys.has(normalizeVocabularyToken(form)))
     );
     let createdWord = false;
     if (!word) {
@@ -629,6 +627,7 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
     // em words.translation (cache do primário).
     const filledTranslation = !translationBeforeSave && family.translation ? family.translation.trim() : "";
     const senseBase = {
+      user_id: scope.userId,
       word_id: resolvedWord.id,
       part_of_speech: family.partOfSpeech,
       example_sentence: relevant[0]?.context ?? "",
@@ -679,6 +678,7 @@ async function persistSelectedVocabulary(conversationId: string, candidateIds: s
     }
     const summaryFields: WordUsageSummaryFields = {
       Name: forms[0] ?? family.lemma,
+      user_id: scope.userId,
       usage_key: usageKey,
       word_id: resolvedWord.id,
       conversation_id: conversationId,

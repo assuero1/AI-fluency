@@ -22,11 +22,11 @@ const updateRecord = vi.fn();
 const createEvent = vi.fn();
 
 vi.mock("../../lib/learning/profile", () => ({
-  getOrCreatePersonalUser: vi.fn(async () => user),
+  getSessionUser: vi.fn(async () => user),
   getActiveLanguageProfile: vi.fn(async () => profile),
   getDailyNewCardsQuota: vi.fn(() => 10)
 }));
-vi.mock("../../lib/teable/client", () => ({
+vi.mock("../../lib/supabase/client", () => ({
   getTeableClient: () => ({ updateRecord, createEvent }),
   safeUpdateRecord: vi.fn(async () => null)
 }));

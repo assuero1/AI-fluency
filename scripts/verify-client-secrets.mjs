@@ -12,7 +12,7 @@ const env = Object.fromEntries(
     .filter(Boolean)
     .map((match) => [match[1], match[2]])
 );
-const secretKeys = ["TEABLE_API_KEY", "TEABLE_TOKEN", "AI_API_KEY", "KOKORO_API_KEY", "ENCRYPTION_SECRET"];
+const secretKeys = ["SUPABASE_SERVICE_ROLE_KEY", "AI_API_KEY", "KOKORO_API_KEY", "ENCRYPTION_SECRET"];
 const clientBundle = readFiles(".next/static").map((file) => fs.readFileSync(file, "utf8")).join("\n");
 const leaked = secretKeys.filter((key) => {
   const value = env[key]?.trim();

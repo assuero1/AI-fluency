@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 type TestMessage = {
   id: string;
   fields: {
+    user_id: string;
     conversation_id: string;
     role: "user" | "assistant";
     text: string;
@@ -18,6 +19,7 @@ function buildMessage(id: string, role: "user" | "assistant", text: string, conv
   return {
     id,
     fields: {
+      user_id: "user-1",
       conversation_id: conversationId,
       role,
       text,
@@ -89,7 +91,7 @@ vi.mock("../../lib/learning/conversations", async (importOriginal) => {
   };
 });
 vi.mock("../../lib/learning/feedback", () => ({ addSavedWordsToDailyFeedback }));
-vi.mock("../../lib/teable/client", () => ({
+vi.mock("../../lib/supabase/client", () => ({
   TeableRequestError: class TeableRequestError extends Error {},
   getTeableClient: () => ({
     listRecords,

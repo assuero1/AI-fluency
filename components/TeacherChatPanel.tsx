@@ -6,7 +6,7 @@ import { LoadingDots } from "./LoadingDots";
 import { IconBubble } from "./IconBubble";
 import { ModalDialog } from "./ModalDialog";
 import type { MessageFields } from "@/lib/learning/conversations";
-import type { TeableRecord } from "@/lib/teable/client";
+import type { TeableRecord } from "@/lib/supabase/client";
 
 type TeacherChatPanelProps = {
   conversationId: string;
@@ -75,6 +75,8 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
     const optimisticMessage: TeacherMessage = {
       id: optimisticId,
       fields: {
+        // Optimistic local message — never persisted, so no real user id exists here.
+        user_id: "",
         conversation_id: conversationId,
         role: "user",
         text: cleanText,

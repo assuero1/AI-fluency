@@ -14,9 +14,11 @@ export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: false,
   workers: 1,
+  globalSetup: "./tests/e2e/global-setup.ts",
   globalTeardown: "./tests/e2e/global-teardown.ts",
   use: {
     baseURL: "http://localhost:3015",
+    storageState: ".qa-fixtures/auth-state.json",
     serviceWorkers: "block",
     trace: "retain-on-failure"
   },

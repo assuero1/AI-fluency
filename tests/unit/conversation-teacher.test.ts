@@ -6,7 +6,7 @@ const listRecordsWhere = vi.fn();
 const getConversation = vi.fn();
 
 vi.mock("../../lib/ai/client", () => ({ createChatCompletion }));
-vi.mock("../../lib/teable/client", () => ({
+vi.mock("../../lib/supabase/client", () => ({
   getTeableClient: () => ({ createRecord, listRecordsWhere }),
   TeableRequestError: class TeableRequestError extends Error {
     status = 500;
@@ -51,6 +51,7 @@ const context = {
     {
       id: "p1",
       fields: {
+        user_id: "user-1",
         conversation_id: "conv-1",
         role: "user" as const,
         text: "I would like a coffee",
@@ -66,6 +67,7 @@ const context = {
     {
       id: "c1",
       fields: {
+        user_id: "user-1",
         conversation_id: "conv-1",
         message_id: "p1",
         original_text: "I would like",

@@ -2,9 +2,8 @@ import { createTopic } from "./topics";
 import { startConversation } from "./conversations";
 import type { ConversationFields, CorrectionFields, WordFields } from "./conversations";
 import type { DailyFeedbackFields } from "./home";
-import { getActiveLanguageProfile, getOrCreatePersonalUser } from "./profile";
-import { getTeableClient, TeableRecord } from "@/lib/teable/client";
-import { matchesLearningScope } from "./scope";
+import { getActiveLanguageProfile, getSessionUser } from "./profile";
+import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import { getPracticeActivity } from "./practice-activity";
 import type { PracticeSessionFields } from "./flashcards";
 
@@ -25,22 +24,29 @@ type ProgressStrength = {
 
 export async function getProgressData() {
   const client = getTeableClient();
-  const [user, conversations, corrections, words, feedbacks, practiceSessions] = await Promise.all([
-    getOrCreatePersonalUser(),
-    client.listAllRecords<ConversationFields>("conversations"),
-    client.listAllRecords<CorrectionFields>("corrections"),
-    client.listAllRecords<WordFields>("words"),
-    client.listAllRecords<DailyFeedbackFields>("dailyFeedbacks"),
-    client.listAllRecords<PracticeSessionFields>("practiceSessions")
-  ]);
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
-  const scopedConversations = conversations.filter((conversation) => matchesConversationScope(conversation, user.id, profile?.id));
+  const scopeFilters = profile
+    ? [
+        { field: "user_id", value: user.id },
+        { field: "language_profile_id", value: profile.id }
+      ]
+    : null;
+  const [conversations, corrections, words, feedbacks, practiceSessions] = scopeFilters
+    ? await Promise.all([
+        client.listRecordsWhereAll<ConversationFields>("conversations", scopeFilters),
+        client.listRecordsWhereAll<CorrectionFields>("corrections", [{ field: "user_id", value: user.id }]),
+        client.listRecordsWhereAll<WordFields>("words", scopeFilters),
+        client.listRecordsWhereAll<DailyFeedbackFields>("dailyFeedbacks", scopeFilters),
+        client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters)
+      ])
+    : [[], [], [], [], []];
+  const scopedConversations = conversations;
   const completedConversations = scopedConversations.filter((conversation) => conversation.fields.status === "completed");
   const scopedWords = words.filter(
-    (word) =>
-      matchesRecordScope(word, user.id, profile?.id) && Boolean(word.fields.display_text?.trim() || word.fields.lemma?.trim())
+    (word) => Boolean(word.fields.display_text?.trim() || word.fields.lemma?.trim())
   );
-  const scopedFeedbacks = feedbacks.filter((feedback) => matchesRecordScope(feedback, user.id, profile?.id)).sort(sortByFeedbackDate);
+  const scopedFeedbacks = feedbacks.sort(sortByFeedbackDate);
   const conversationIds = new Set(scopedConversations.map((conversation) => conversation.id));
   const scopedCorrections = corrections.filter((correction) => conversationIds.has(correction.fields.conversation_id));
   const now = new Date();
@@ -55,7 +61,7 @@ export async function getProgressData() {
   const monthlyConversations = completedConversations.filter((conversation) =>
     dateKey(conversation.fields.ended_at || conversation.fields.started_at).startsWith(currentMonth)
   );
-  const completedFlashcards = practiceSessions.filter((session) => session.fields.type === "flashcards" && session.fields.status === "completed" && matchesLearningScope(session.fields, { userId: user.id, profileId: profile?.id }));
+  const completedFlashcards = practiceSessions.filter((session) => session.fields.type === "flashcards" && session.fields.status === "completed");
   const flashcardSeconds = completedFlashcards.reduce((sum, session) => sum + Number(session.fields.duration_seconds ?? 0), 0);
   const flashcardWords = completedFlashcards.reduce((sum, session) => sum + Number(session.fields.selected_word_count ?? 0), 0);
   const recoveredWords = completedFlashcards.reduce((sum, session) => {
@@ -232,18 +238,6 @@ function buildWeeklyFocus(errors: ProgressError[], feedback: TeableRecord<DailyF
     reason: "Converse usando palavras novas em frases mais completas e naturais.",
     source: "vocabulary"
   };
-}
-
-function matchesConversationScope(record: TeableRecord<ConversationFields>, userId: string, profileId?: string) {
-  return matchesLearningScope(record.fields, { userId, profileId });
-}
-
-function matchesRecordScope<T extends { user_id?: string; language_profile_id?: string }>(
-  record: TeableRecord<T>,
-  userId: string,
-  profileId?: string
-) {
-  return matchesLearningScope(record.fields, { userId, profileId });
 }
 
 function average(values: number[]) {

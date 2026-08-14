@@ -1,4 +1,4 @@
-import type { TeableClient, TeableRecord } from "@/lib/teable/client";
+import type { TeableClient, TeableRecord } from "@/lib/supabase/client";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields } from "./conversations";
 import type { LanguageProfileFields } from "./profile";
 
@@ -29,7 +29,7 @@ export type TutorContext = {
 type TutorKnowledge = Omit<TutorContext, "recentHistory">;
 
 // The pedagogical knowledge changes slowly, while loading it requires several
-// complete Teable reads. Keep it warm throughout a normal conversation.
+// complete database reads. Keep it warm throughout a normal conversation.
 const TUTOR_CONTEXT_TTL_MS = 5 * 60_000;
 const MAX_TUTOR_CONTEXT_ENTRIES = 24;
 const tutorKnowledgeCache = new Map<string, { expiresAt: number; promise: Promise<TutorKnowledge> }>();
@@ -74,11 +74,11 @@ async function loadTutorKnowledge(
   profileId: string | undefined,
   calendarMemoryEnabled: boolean
 ): Promise<TutorKnowledge> {
-  // words/conversations carry a user_id field, so they can be filtered
-  // server-side; corrections/topics/feedbacks still need broader reads.
+  // Todas as tabelas carregam user_id; RLS já restringe ao usuário da sessão e
+  // o filtro por perfil ativo permanece em memória (language_profile_id).
   const [words, corrections, conversations, topics, feedbacks] = await Promise.all([
     client.listRecordsWhere<WordFields>("words", "user_id", userId),
-    client.listAllRecords<CorrectionFields>("corrections"),
+    client.listRecordsWhere<CorrectionFields>("corrections", "user_id", userId),
     client.listRecordsWhere<ConversationFields>("conversations", "user_id", userId),
     client.listRecords<TopicFields>("topics", 150),
     client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 90)

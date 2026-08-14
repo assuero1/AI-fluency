@@ -1,8 +1,7 @@
 import { startConversation } from "./conversations";
 import type { WordFields, WordSenseFields, WordUsageSummaryFields } from "./conversations";
-import { getActiveLanguageProfile, getDailyNewCardsQuota, getOrCreatePersonalUser } from "./profile";
+import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser } from "./profile";
 import { createTopic } from "./topics";
-import { matchesLearningScope } from "./scope";
 import { LearningStateError } from "./access";
 import {
   aggregateSenseReviewToWordFields,
@@ -12,7 +11,7 @@ import {
   matchesCanonicalSenseKey
 } from "./word-senses";
 import { normalizeVocabularyToken } from "./vocabulary-selection";
-import { getTeableClient, TeableRecord } from "@/lib/teable/client";
+import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import { summarizeDailyQueue, type DailyQueueSessionFields } from "./daily-queue";
 
 export const wordFilters = ["all", "recent", "review", "corrected"] as const;
@@ -131,13 +130,18 @@ export function matchesWordSearch(
 }
 
 export async function getWordsData(filter: WordFilter = "all", query = "") {
-  const [scope, records, sessions] = await Promise.all([
-    getWordScope(),
-    getWordRecords(),
-    getTeableClient().listAllRecords<DailyQueueSessionFields>("practiceSessions")
+  const scope = await getWordScope();
+  const [records, sessions] = await Promise.all([
+    getWordRecords(scope),
+    scope.profileId
+      ? getTeableClient().listRecordsWhereAll<DailyQueueSessionFields>("practiceSessions", [
+          { field: "user_id", value: scope.userId },
+          { field: "language_profile_id", value: scope.profileId }
+        ])
+      : Promise.resolve([])
   ]);
   const scoped = records.words.filter(
-    (word) => matchesScope(word, scope) && Boolean(word.fields.display_text?.trim() || word.fields.lemma?.trim())
+    (word) => Boolean(word.fields.display_text?.trim() || word.fields.lemma?.trim())
   );
   const now = Date.now();
   const mapped = scoped.map((word) => toWordListItem(word, records.usageSummaries, now));
@@ -182,11 +186,11 @@ function normalizeSearchText(value: string) {
 }
 
 export async function getWordDetail(wordId: string) {
-  const [scope, records] = await Promise.all([getWordScope(), getWordRecords()]);
+  const scope = await getWordScope();
+  const records = await getWordRecords(scope);
   const word = records.words.find(
     (record) =>
       record.id === wordId &&
-      matchesScope(record, scope) &&
       Boolean(record.fields.display_text?.trim() || record.fields.lemma?.trim())
   );
   if (!word) return null;
@@ -209,8 +213,9 @@ export async function getWordDetail(wordId: string) {
 export async function addManualWordSense(wordId: string, input: { translation: string; partOfSpeech?: string; exampleSentence?: string }): Promise<WordSenseListItem> {
   const translation = input.translation.trim().slice(0, 200);
   if (!translation) throw new LearningStateError("Informe a tradução do significado.", 422);
-  const [scope, records] = await Promise.all([getWordScope(), getWordRecords()]);
-  const word = records.words.find((record) => record.id === wordId && matchesScope(record, scope));
+  const scope = await getWordScope();
+  const records = await getWordRecords(scope);
+  const word = records.words.find((record) => record.id === wordId);
   if (!word || !scope.profileId) throw new LearningStateError("Palavra não encontrada no seu vocabulário ativo.", 404);
 
   const lemma = word.fields.lemma || word.fields.display_text || "";
@@ -233,6 +238,7 @@ export async function addManualWordSense(wordId: string, input: { translation: s
   const senseOrder = existingSenses.reduce((order, sense) => Math.max(order, Number(sense.fields.sense_order ?? 0) || 0), 0) + 1;
   const created = await createWordSense({
     Name: lemma,
+    user_id: scope.userId,
     word_id: word.id,
     sense_key: senseKey,
     translation,
@@ -317,7 +323,7 @@ async function startVocabularyConversation(words: WordListItem[], source: "word"
 }
 
 async function getWordScope(): Promise<WordScope> {
-  const user = await getOrCreatePersonalUser();
+  const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   return {
     userId: user.id,
@@ -329,17 +335,17 @@ async function getWordScope(): Promise<WordScope> {
   };
 }
 
-async function getWordRecords() {
+async function getWordRecords(scope: WordScope) {
+  if (!scope.profileId) return { words: [] as TeableRecord<WordFields>[], usageSummaries: [] as TeableRecord<WordUsageSummaryFields>[] };
   const client = getTeableClient();
   const [words, usageSummaries] = await Promise.all([
-    client.listAllRecords<WordFields>("words"),
-    client.listAllRecords<WordUsageSummaryFields>("wordUsageSummaries")
+    client.listRecordsWhereAll<WordFields>("words", [
+      { field: "user_id", value: scope.userId },
+      { field: "language_profile_id", value: scope.profileId }
+    ]),
+    client.listRecordsWhereAll<WordUsageSummaryFields>("wordUsageSummaries", [{ field: "user_id", value: scope.userId }])
   ]);
   return { words, usageSummaries };
-}
-
-function matchesScope(word: TeableRecord<WordFields>, scope: WordScope) {
-  return matchesLearningScope(word.fields, scope);
 }
 
 function toWordListItem(

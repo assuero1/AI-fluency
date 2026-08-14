@@ -3,23 +3,37 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const user = { id: "user-a", fields: {} };
 const profile = { id: "profile-a", fields: { language_code: "es", language_name: "Espanhol" } };
 const session = { id: "session-a", fields: { user_id: user.id, language_profile_id: profile.id, type: "flashcards", status: "active", language_code: "es", focus: "{}", configuration_json: "{}", started_at: "2026-07-10T12:00:00.000Z", created_at: "2026-07-10T12:00:00.000Z" } };
-const cardRecord = { id: "card-a", fields: { practice_session_id: session.id, target_word_id: "word-a", supporting_word_ids: "[]", card_type: "native_to_target", prompt: "olá", expected_answer: "hola", accepted_answers: "[]", translation: "olá", explanation: "", sentence: "", audio_text: "", difficulty: 2, initial_position: 0, generation_source: "deterministic", created_at: "2026-07-10T12:00:00.000Z" } };
+const cardRecord = { id: "card-a", fields: { user_id: user.id, practice_session_id: session.id, target_word_id: "word-a", supporting_word_ids: "[]", card_type: "native_to_target", prompt: "olá", expected_answer: "hola", accepted_answers: "[]", translation: "olá", explanation: "", sentence: "", audio_text: "", difficulty: 2, initial_position: 0, generation_source: "deterministic", created_at: "2026-07-10T12:00:00.000Z" } };
 let attempts: Array<{ id: string; fields: Record<string, unknown>; createdTime?: string }> = [];
 const listRecords = vi.fn();
 const listAllRecords = vi.fn();
 const listRecordsWhere = vi.fn();
+const listRecordsWhereAll = vi.fn();
 const createRecord = vi.fn();
 const updateRecord = vi.fn();
 const createEvent = vi.fn();
 
 vi.mock("../../lib/ai/client", () => ({ createChatCompletion: vi.fn() }));
 vi.mock("../../lib/learning/profile", () => ({
-  getOrCreatePersonalUser: vi.fn(async () => user),
+  getSessionUser: vi.fn(async () => user),
   getActiveLanguageProfile: vi.fn(async () => profile)
 }));
-vi.mock("../../lib/teable/client", () => ({
-  getTeableClient: () => ({ listRecords, listAllRecords, listRecordsWhere, createRecord, updateRecord, createEvent })
+vi.mock("../../lib/supabase/client", () => ({
+  getTeableClient: () => ({ listRecords, listAllRecords, listRecordsWhere, listRecordsWhereAll, createRecord, updateRecord, createEvent })
 }));
+
+// Scoped reads (RLS era): listRecordsWhere/listRecordsWhereAll delegate to the
+// per-test listRecords data, applying the filters the query would apply.
+function mockScopedReads() {
+  listRecordsWhere.mockImplementation(async (table: string, field: string, value: string) =>
+    ((await listRecords(table)) as Array<{ fields: Record<string, unknown> }>).filter((record) => String(record.fields[field] ?? "") === value)
+  );
+  listRecordsWhereAll.mockImplementation(async (table: string, filters: Array<{ field: string; value: string }>) =>
+    ((await listRecords(table)) as Array<{ fields: Record<string, unknown> }>).filter((record) =>
+      filters.every((filter) => String(record.fields[filter.field] ?? "") === filter.value)
+    )
+  );
+}
 
 describe("flashcard attempt persistence and resume", () => {
   beforeEach(() => {
@@ -40,7 +54,7 @@ describe("flashcard attempt persistence and resume", () => {
     updateRecord.mockResolvedValue(session);
     createEvent.mockResolvedValue({ id: "event-a", fields: {} });
     listAllRecords.mockResolvedValue([]);
-    listRecordsWhere.mockResolvedValue([]);
+    mockScopedReads();
   });
 
   it("persists one normalized attempt and returns it idempotently", async () => {
@@ -237,7 +251,8 @@ describe("flashcard attempt persistence and resume", () => {
   });
 
   it("undoes the latest attempt: restores the snapshot and marks it undone", async () => {
-    attempts = [{ id: "attempt-1", fields: { practice_session_id: session.id, flashcard_id: cardRecord.id, word_id: "word-a", presentation_number: 1, client_attempt_id: "u-001", user_answer: "hola", normalized_answer: "hola", match_result: "exact", suggested_rating: "easy", final_rating: "easy", was_correct: true, response_time_ms: 1200, used_speech: false, audio_replay_count: 0, review_applied: true, review_snapshot: JSON.stringify({ "word-a": { familiarity_score: 4, review_ease: 2.5, review_state: "learning" } }), created_at: "2026-07-10T12:01:00.000Z" } }];
+    attempts = [{ id: "attempt-1", fields: { user_id: user.id,
+        practice_session_id: session.id, flashcard_id: cardRecord.id, word_id: "word-a", presentation_number: 1, client_attempt_id: "u-001", user_answer: "hola", normalized_answer: "hola", match_result: "exact", suggested_rating: "easy", final_rating: "easy", was_correct: true, response_time_ms: 1200, used_speech: false, audio_replay_count: 0, review_applied: true, review_snapshot: JSON.stringify({ "word-a": { familiarity_score: 4, review_ease: 2.5, review_state: "learning" } }), created_at: "2026-07-10T12:01:00.000Z" } }];
     listRecords.mockImplementation(async (table: string) => {
       if (table === "practiceSessions") return [session];
       if (table === "flashcards") return [cardRecord];
@@ -260,8 +275,10 @@ describe("flashcard attempt persistence and resume", () => {
 
   it("skips already-undone attempts and undoes the latest live one", async () => {
     attempts = [
-      { id: "attempt-1", fields: { practice_session_id: session.id, flashcard_id: cardRecord.id, word_id: "word-a", presentation_number: 1, client_attempt_id: "u-010", user_answer: "x", normalized_answer: "x", match_result: "incorrect", suggested_rating: "forgot", final_rating: "forgot", was_correct: false, response_time_ms: 900, used_speech: false, audio_replay_count: 0, created_at: "2026-07-10T12:01:00.000Z" } },
-      { id: "attempt-2", fields: { practice_session_id: session.id, flashcard_id: cardRecord.id, word_id: "word-a", presentation_number: 2, client_attempt_id: "u-011", user_answer: "hola", normalized_answer: "hola", match_result: "exact", suggested_rating: "easy", final_rating: "easy", was_correct: true, response_time_ms: 1100, used_speech: false, audio_replay_count: 0, created_at: "2026-07-10T12:03:00.000Z", undone_at: "2026-07-10T12:04:00.000Z" } }
+      { id: "attempt-1", fields: { user_id: user.id,
+        practice_session_id: session.id, flashcard_id: cardRecord.id, word_id: "word-a", presentation_number: 1, client_attempt_id: "u-010", user_answer: "x", normalized_answer: "x", match_result: "incorrect", suggested_rating: "forgot", final_rating: "forgot", was_correct: false, response_time_ms: 900, used_speech: false, audio_replay_count: 0, created_at: "2026-07-10T12:01:00.000Z" } },
+      { id: "attempt-2", fields: { user_id: user.id,
+        practice_session_id: session.id, flashcard_id: cardRecord.id, word_id: "word-a", presentation_number: 2, client_attempt_id: "u-011", user_answer: "hola", normalized_answer: "hola", match_result: "exact", suggested_rating: "easy", final_rating: "easy", was_correct: true, response_time_ms: 1100, used_speech: false, audio_replay_count: 0, created_at: "2026-07-10T12:03:00.000Z", undone_at: "2026-07-10T12:04:00.000Z" } }
     ];
     const { undoFlashcardAttempt } = await import("../../lib/learning/flashcards");
     const result = await undoFlashcardAttempt(session.id);
@@ -269,7 +286,8 @@ describe("flashcard attempt persistence and resume", () => {
   });
 
   it("ignores undone attempts when rebuilding the queue", async () => {
-    attempts = [{ id: "attempt-0", fields: { practice_session_id: session.id, flashcard_id: cardRecord.id, word_id: "word-a", presentation_number: 1, client_attempt_id: "old-001", user_answer: "x", normalized_answer: "x", match_result: "incorrect", suggested_rating: "forgot", final_rating: "forgot", was_correct: false, response_time_ms: 1000, used_speech: false, audio_replay_count: 0, created_at: "2026-07-10T12:01:00.000Z", undone_at: "2026-07-10T12:02:00.000Z" } }];
+    attempts = [{ id: "attempt-0", fields: { user_id: user.id,
+        practice_session_id: session.id, flashcard_id: cardRecord.id, word_id: "word-a", presentation_number: 1, client_attempt_id: "old-001", user_answer: "x", normalized_answer: "x", match_result: "incorrect", suggested_rating: "forgot", final_rating: "forgot", was_correct: false, response_time_ms: 1000, used_speech: false, audio_replay_count: 0, created_at: "2026-07-10T12:01:00.000Z", undone_at: "2026-07-10T12:02:00.000Z" } }];
     const { persistFlashcardAttempt } = await import("../../lib/learning/flashcards");
     // Sem o filtro, a tentativa antiga contaria e presentationNumber 1 falharia com 409.
     const result = await persistFlashcardAttempt({ sessionId: session.id, clientAttemptId: "bin-0004", cardId: cardRecord.id, presentationNumber: 1, userAnswer: "hola", remembered: true, responseTimeMs: 1500 });
@@ -282,7 +300,8 @@ describe("flashcard target sense round-trip", () => {
     const { flashcardToRecord, flashcardRecordToCard } = await import("../../lib/learning/flashcards");
     const card = { id: "card-sense", sessionId: "", type: "target_to_native" as const, targetWordId: "word-a", targetSenseId: "sense-a", supportingWordIds: [], prompt: "banco", expectedAnswer: "banco (instituição)", acceptedAnswers: [], translation: "banco (instituição)", difficulty: 1 };
 
-    const record = flashcardToRecord(card, session.id, 0, "2026-08-12T12:00:00.000Z");
+    const record = flashcardToRecord(card, session.id, user.id, 0, "2026-08-12T12:00:00.000Z");
+    expect(record.user_id).toBe(user.id);
     expect(record.target_sense_id).toBe("sense-a");
 
     const restored = flashcardRecordToCard({ id: "card-sense", fields: { ...record, practice_session_id: session.id } });
@@ -293,7 +312,7 @@ describe("flashcard target sense round-trip", () => {
     const { flashcardToRecord, flashcardRecordToCard } = await import("../../lib/learning/flashcards");
     const legacyCard = { id: "card-legacy", sessionId: "", type: "target_to_native" as const, targetWordId: "word-a", supportingWordIds: [], prompt: "hola", expectedAnswer: "olá", acceptedAnswers: [], translation: "olá", difficulty: 1 };
 
-    const record = flashcardToRecord(legacyCard, session.id, 1, "2026-08-12T12:00:00.000Z");
+    const record = flashcardToRecord(legacyCard, session.id, user.id, 1, "2026-08-12T12:00:00.000Z");
     expect(record.target_sense_id).toBe("");
 
     const legacyRecord = { id: "card-legacy", fields: { ...record, practice_session_id: session.id } };
@@ -317,7 +336,12 @@ describe("sense-aware review persistence", () => {
     });
     listAllRecords.mockImplementation(async (table: string) => table === "wordSenses" ? senses : []);
     listRecordsWhere.mockImplementation(async (table: string, field: string, value: string) =>
-      table === "wordSenses" ? senses.filter((sense) => String(sense.fields[field] ?? "") === value) : []
+      ((table === "wordSenses" ? senses : await listRecords(table)) as Array<{ fields: Record<string, unknown> }>)
+        .filter((record) => String(record.fields[field] ?? "") === value)
+    );
+    listRecordsWhereAll.mockImplementation(async (table: string, filters: Array<{ field: string; value: string }>) =>
+      ((table === "wordSenses" ? senses : await listRecords(table)) as Array<{ fields: Record<string, unknown> }>)
+        .filter((record) => filters.every((filter) => String(record.fields[filter.field] ?? "") === filter.value))
     );
     updateRecord.mockImplementation(async (table: string, id: string, fields: Record<string, unknown>) => {
       if (table === "wordSenses") {
@@ -346,7 +370,7 @@ describe("sense-aware review persistence", () => {
     });
     createEvent.mockResolvedValue({ id: "event-a", fields: {} });
     listAllRecords.mockResolvedValue([]);
-    listRecordsWhere.mockResolvedValue([]);
+    mockScopedReads();
   });
 
   it("applies the incremental review to the target sense and re-aggregates the word cache", async () => {
@@ -420,6 +444,7 @@ describe("sense-aware review persistence", () => {
     attempts = [{
       id: "attempt-1",
       fields: {
+        user_id: user.id,
         practice_session_id: session.id, flashcard_id: senseCardRecord.id, word_id: "word-a", sense_id: "sense-a",
         presentation_number: 1, client_attempt_id: "u-sense-1", user_answer: "hola", normalized_answer: "hola",
         match_result: "exact", suggested_rating: "good", final_rating: "good", was_correct: true,
@@ -445,6 +470,7 @@ describe("sense-aware review persistence", () => {
     attempts = [{
       id: "attempt-1",
       fields: {
+        user_id: user.id,
         practice_session_id: session.id, flashcard_id: senseCardRecord.id, word_id: "word-a", sense_id: "sense-foreign",
         presentation_number: 1, client_attempt_id: "u-sense-2", user_answer: "hola", normalized_answer: "hola",
         match_result: "exact", suggested_rating: "good", final_rating: "good", was_correct: true,

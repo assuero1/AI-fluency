@@ -1,4 +1,4 @@
-import type { TeableRecord } from "@/lib/teable/client";
+import type { TeableRecord } from "@/lib/supabase/client";
 import type { DailyQueueSummary } from "./flashcard-contracts";
 import { hashSeed, zonedDateTimeToUtc, zonedParts } from "./spaced-repetition";
 

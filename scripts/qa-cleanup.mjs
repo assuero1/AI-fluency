@@ -37,6 +37,9 @@ const deletionOrder = [
 ];
 
 for (const tableEnvName of deletionOrder) {
+  // The fixture scopes data under the persistent QA auth user; its users row
+  // is never deleted (only throwaway legacy fixture users were).
+  if (tableEnvName === "TEABLE_USERS_TABLE_ID" && manifest.keepQaUser) continue;
   for (const recordId of manifest.records[tableEnvName] ?? []) {
     await dbDelete(env, tableEnvName, recordId);
   }

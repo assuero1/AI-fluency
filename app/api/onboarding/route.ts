@@ -5,13 +5,14 @@ import {
   createOrActivateLanguageProfile,
   getActiveLanguageProfile,
   getOnboardingRedirectTarget,
-  getOrCreatePersonalUser,
-  OnboardingPayload
+  getSessionUser,
+  OnboardingPayload,
+  updateSessionUserProfile
 } from "@/lib/learning/profile";
 
 export async function GET() {
   try {
-    const user = await getOrCreatePersonalUser();
+    const user = await getSessionUser();
     const activeProfile = await getActiveLanguageProfile(user);
     const readiness = await getOnboardingRedirectTarget();
 
@@ -29,7 +30,7 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = (await request.json()) as OnboardingPayload & { mode?: "onboarding" | "language" };
-    const user = await getOrCreatePersonalUser({ name: body.name, timezone: body.timezone });
+    const user = await updateSessionUserProfile({ name: body.name, timezone: body.timezone });
     const profile = await createOrActivateLanguageProfile(user, body);
     const readiness = await getOnboardingRedirectTarget();
     after(() => warmKokoroLanguage(profile.fields.language_code));

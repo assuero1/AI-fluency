@@ -176,6 +176,84 @@ git commit -m "feat: add multiuser auth migration (auth_user_id, leaf user_id, R
 
 ---
 
+### Task 1B: Corrigir policies RLS — mapear auth.uid() → public.users.id
+
+**Contexto:** a revisão da Task 1 encontrou um defeito do plano original: `public.users.id` é gerado por `gen_random_uuid()` e difere de `auth.users.id`; as policies `user_id = auth.uid()` nunca casariam. A migration 0003 já foi aplicada em produção — esta task cria a migration corretiva 0004. O usuário decidiu: corrigir com função de mapeamento (não migrar PKs).
+
+**Files:**
+- Create: `supabase/migrations/0004_fix_rls_policies.sql`
+
+**Interfaces:**
+- Produces: `public.current_user_id() returns uuid` (stable, security definer) — id do `public.users` da sessão atual; policies das 16 tabelas com `user_id` recriadas para comparar com `public.current_user_id()`. Tasks 4, 8 e 10 dependem disso.
+
+- [ ] **Step 1: Escrever a migration**
+
+Criar `supabase/migrations/0004_fix_rls_policies.sql`:
+
+```sql
+-- Corrige as policies da 0003: user_id referencia public.users.id, que difere
+-- de auth.users.id. A função mapeia o auth id da sessão para o id público.
+
+create or replace function public.current_user_id()
+returns uuid
+language sql
+stable
+security definer
+set search_path = public
+as $$
+  select id from public.users where auth_user_id = auth.uid()
+$$;
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array[
+    'language_profiles', 'ai_provider_settings', 'voice_provider_settings',
+    'conversations', 'messages', 'corrections', 'words', 'word_senses',
+    'word_occurrences', 'word_usage_summaries', 'daily_feedbacks', 'topics',
+    'practice_sessions', 'flashcards', 'flashcard_attempts', 'app_events'
+  ]
+  loop
+    execute format('drop policy if exists %I on public.%I', t || '_select_own', t);
+    execute format('drop policy if exists %I on public.%I', t || '_insert_own', t);
+    execute format('drop policy if exists %I on public.%I', t || '_update_own', t);
+    execute format('drop policy if exists %I on public.%I', t || '_delete_own', t);
+    execute format('create policy %I on public.%I for select using (user_id = public.current_user_id())', t || '_select_own', t);
+    execute format('create policy %I on public.%I for insert with check (user_id = public.current_user_id())', t || '_insert_own', t);
+    execute format('create policy %I on public.%I for update using (user_id = public.current_user_id()) with check (user_id = public.current_user_id())', t || '_update_own', t);
+    execute format('create policy %I on public.%I for delete using (user_id = public.current_user_id())', t || '_delete_own', t);
+  end loop;
+end $$;
+```
+
+Notas: (a) `security definer` faz a função rodar como o dono (postgres), evitando recursão de RLS ao ler `public.users`; (b) as policies de `public.users` (`users_select_own`/`users_update_own`, que comparam `auth_user_id = auth.uid()`) estão corretas e **não** são tocadas.
+
+- [ ] **Step 2: Aplicar no Supabase**
+
+```bash
+node scripts/apply-supabase-schema.mjs --file supabase/migrations/0004_fix_rls_policies.sql
+```
+
+- [ ] **Step 3: Verificar**
+
+No SQL Editor ou via Management API:
+
+```sql
+select public.current_user_id();  -- sem sessão: null (esperado)
+select polname from pg_policy join pg_class on pg_policy.polrelid = pg_class.oid
+where pg_class.relname = 'words';  -- esperado: 4 policies recriadas
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add supabase/migrations/0004_fix_rls_policies.sql
+git commit -m "fix: map auth.uid() to public.users id in RLS policies"
+```
+
+---
+
 ### Task 2: Env + `@supabase/ssr` + clients server-side (request e service role)
 
 **Files:**
@@ -804,7 +882,7 @@ export async function updatePassword(_prev: AuthFormState, formData: FormData): 
 
 export async function logout() {
   const supabase = await getRequestSupabaseClient();
-  await supabase.auth.signOut();
+  await supabase.auth.signOut({ scope: "local" });
   redirect("/login");
 }
 ```
@@ -1063,7 +1141,7 @@ await client.createRecord("messages", {
 Pontos de atenção:
 - `flashcard_attempts`: usa `practice_session_id` — o `user_id` vem do dono da sessão (o `user` da request).
 - Se algum call site não tiver `user` em escopo, subir na cadeia de chamada até onde `getSessionUser()` já foi chamado e passar `user.id` por parâmetro.
-- `createEvent` (`lib/supabase/client.ts:221`) grava em `app_events` com `user_id ?? ""`, que vira `null` no adapter e **falha na policy de insert** (RLS exige `user_id = auth.uid()`). Rodar `grep -rn "createEvent(" lib app` e garantir que todo call site passa `user.id`; nenhum evento pode ser gravado sem usuário autenticado.
+- `createEvent` (`lib/supabase/client.ts:221`) grava em `app_events` com `user_id ?? ""`, que vira `null` no adapter e **falha na policy de insert** (RLS exige `user_id = public.current_user_id()`). Rodar `grep -rn "createEvent(" lib app` e garantir que todo call site passa `user.id`; nenhum evento pode ser gravado sem usuário autenticado.
 
 - [ ] **Step 3: Remover o scoping em memória**
 

@@ -1,7 +1,7 @@
 import { cache } from "react";
 import { getConnectionStatus, isDataBackendReady } from "@/lib/settings/status";
-import { getEnv } from "@/lib/env";
-import { getTeableClient, safeUpdateRecord, TeableRecord } from "@/lib/teable/client";
+import { getRequestSupabaseClient } from "@/lib/supabase/server";
+import { getTeableClient, safeUpdateRecord, TeableRecord } from "@/lib/supabase/client";
 import { normalizeNewCardsQuota } from "./daily-queue";
 import { DEFAULT_LANGUAGE_LEVEL, isLanguageLevel } from "./levels";
 
@@ -46,57 +46,50 @@ export type OnboardingPayload = {
   weekly_word_goal?: number;
 };
 
-export class PersonalUserResolutionError extends Error {
-  status = 409;
+export class UnauthenticatedError extends Error {
+  status = 401;
 }
 
-export async function getOrCreatePersonalUser(payload?: Pick<OnboardingPayload, "name" | "timezone">) {
-  const client = getTeableClient();
-  const existing = await getExistingPersonalUser();
-  if (existing) return existing;
+export class UserLinkError extends Error {
+  status = 500;
+}
 
-  return client.createRecord<UserFields>("users", {
-    Name: payload?.name ?? "Camila",
-    avatar_url: "",
-    active_language_id: "",
-    timezone: payload?.timezone ?? "America/Sao_Paulo",
-    created_at: new Date().toISOString()
+// Cached per server request (React cache): uma leitura de sessão + uma query
+// por request; fora de request é passthrough.
+export const getSessionUser = cache(async function getSessionUser() {
+  const supabase = await getRequestSupabaseClient();
+  const {
+    data: { user: authUser }
+  } = await supabase.auth.getUser();
+  if (!authUser) {
+    throw new UnauthenticatedError("Sessão expirada. Faça login novamente.");
+  }
+
+  const records = await getTeableClient().listRecordsWhereAll<UserFields>("users", [
+    { field: "auth_user_id", value: authUser.id }
+  ]);
+  const record = records[0];
+  if (!record) {
+    // O trigger on_auth_user_created deveria ter criado o registro no signup.
+    console.error(JSON.stringify({ event: "user_link_missing", auth_user_id: authUser.id, timestamp: new Date().toISOString() }));
+    throw new UserLinkError("Conta sem perfil vinculado. Fale com o suporte.");
+  }
+  return record;
+});
+
+export async function updateSessionUserProfile(payload: Pick<OnboardingPayload, "name" | "timezone">) {
+  const user = await getSessionUser();
+  const updated = await getTeableClient().updateRecord<UserFields>("users", user.id, {
+    Name: payload.name ?? user.fields.Name ?? "",
+    timezone: payload.timezone ?? user.fields.timezone ?? "America/Sao_Paulo"
   });
+  return updated;
 }
 
 export function getDailyNewCardsQuota(user: TeableRecord<UserFields>) {
   return normalizeNewCardsQuota(user.fields.daily_new_cards_quota);
 }
 
-// Cached per server request (React cache) so repeated callers within one
-// request share a single Teable read; outside a request it is a passthrough.
-export const getExistingPersonalUser = cache(async function getExistingPersonalUser() {
-  const users = await getTeableClient().listRecords<UserFields>("users", 100);
-  return resolvePersonalUser(users, getEnv("AI_FLUENCY_USER_ID"));
-});
-
-export function resolvePersonalUser(users: TeableRecord<UserFields>[], configuredUserId?: string) {
-  if (configuredUserId) {
-    const configured = users.find((user) => user.id === configuredUserId);
-    if (!configured) {
-      throw new PersonalUserResolutionError(
-        "O usuário configurado em AI_FLUENCY_USER_ID não foi encontrado no Teable."
-      );
-    }
-    return configured;
-  }
-
-  const candidates = users.filter((user) => Boolean(user.fields.Name?.trim() || user.fields.created_at));
-  if (candidates.length === 0) return null;
-  if (candidates.length === 1) return candidates[0];
-
-  throw new PersonalUserResolutionError(
-    "Há mais de um usuário no Teable. Configure AI_FLUENCY_USER_ID para selecionar o perfil pessoal com segurança."
-  );
-}
-
-// Cached per server request (React cache) so repeated callers within one
-// request share a single Teable read; outside a request it is a passthrough.
 export const getActiveLanguageProfile = cache(async function getActiveLanguageProfile(user?: TeableRecord<UserFields>) {
   const client = getTeableClient();
   const profileId = user?.fields.active_language_id;
@@ -176,12 +169,12 @@ export async function createOrActivateLanguageProfile(user: TeableRecord<UserFie
 
 export async function getOnboardingRedirectTarget() {
   const status = await getConnectionStatus();
-  const teableReady = isDataBackendReady(status);
+  const backendReady = isDataBackendReady(status);
   const aiReady = status.ai.configured;
 
   return {
     status,
-    readyForPractice: teableReady && aiReady,
-    redirectTo: teableReady && aiReady ? "/" : "/settings/connections"
+    readyForPractice: backendReady && aiReady,
+    redirectTo: backendReady && aiReady ? "/" : "/settings/connections"
   };
 }

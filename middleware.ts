@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { updateSession } from "@/lib/supabase/middleware";
 
-export function middleware(request: NextRequest) {
-  const response = NextResponse.next();
+export async function middleware(request: NextRequest) {
+  const response = await updateSession(request);
   const isAudioRoute = request.method === "GET" && /^\/api\/voice\/[a-f0-9]{64}$/.test(request.nextUrl.pathname);
   if (request.nextUrl.pathname.startsWith("/api/") && !isAudioRoute) {
     response.headers.set("Cache-Control", "no-store, max-age=0");

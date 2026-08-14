@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import tablesJson from "@/lib/supabase/tables.json";
-import { teableSchema } from "@/lib/teable/schema";
+import type { TeableTableKey } from "@/lib/supabase/tables";
 
 const tables = tablesJson.tables as unknown as Array<{
   key: string;
@@ -10,31 +10,37 @@ const tables = tablesJson.tables as unknown as Array<{
   hasCreatedAt: boolean;
 }>;
 
+// As 17 chaves históricas do antigo lib/teable/schema.ts — tables.json é agora
+// a fonte única de TeableTableKey.
+const EXPECTED_KEYS: TeableTableKey[] = [
+  "users",
+  "languageProfiles",
+  "aiProviderSettings",
+  "voiceProviderSettings",
+  "conversations",
+  "messages",
+  "corrections",
+  "words",
+  "wordSenses",
+  "wordOccurrences",
+  "wordUsageSummaries",
+  "dailyFeedbacks",
+  "topics",
+  "practiceSessions",
+  "flashcards",
+  "flashcardAttempts",
+  "appEvents"
+];
+
 describe("lib/supabase/tables.json", () => {
   it("covers every TeableTableKey exactly once", () => {
-    expect(tables.map((t) => t.key).sort()).toEqual(teableSchema.map((t) => t.key).sort());
+    expect(tables.map((t) => t.key).sort()).toEqual([...EXPECTED_KEYS].sort());
   });
 
   it("uses unique snake_case table names", () => {
     const names = tables.map((t) => t.tableName);
     expect(new Set(names).size).toBe(names.length);
     for (const name of names) expect(name).toMatch(/^[a-z][a-z0-9_]*$/);
-  });
-
-  it("only marks Teable json fields as jsonb columns", () => {
-    for (const meta of tables) {
-      const teableTable = teableSchema.find((t) => t.key === meta.key)!;
-      const jsonFields = teableTable.fields.filter((f) => f.type === "json").map((f) => f.name);
-      for (const column of meta.jsonbColumns) {
-        // review_snapshot (flashcardAttempts) foi adicionado por ensure-flashcard-undo-fields
-        // e não consta em teableSchema; é o único jsonb fora da lista.
-        if (meta.key === "flashcardAttempts" && column === "review_snapshot") continue;
-        expect(jsonFields).toContain(column);
-      }
-      for (const field of jsonFields) {
-        expect(meta.jsonbColumns).toContain(field);
-      }
-    }
   });
 
   it("fkColumns target existing table names", () => {

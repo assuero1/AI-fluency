@@ -1,8 +1,47 @@
-import { createClient, type SupabaseClient as SupabaseJsClient } from "@supabase/supabase-js";
-import type { TeableTableKey } from "@/lib/teable/schema";
-import { TeableConfigError, TeableRequestError, type TeableRecord } from "@/lib/teable/types";
-import { getSupabaseConfig } from "./config";
+import type { SupabaseClient as SupabaseJsClient } from "@supabase/supabase-js";
+import { getRequestSupabaseClient } from "@/lib/supabase/server";
+import type { TeableTableKey } from "@/lib/supabase/tables";
 import tablesJson from "./tables.json";
+
+// getTeableClient é o nome histórico da fachada de dados; o backend é sempre
+// Supabase. Os tipos Teable* abaixo vêm do antigo lib/teable e permanecem para
+// não reescrever os call sites existentes.
+
+export type TeableRecord<TFields extends Record<string, unknown> = Record<string, unknown>> = {
+  id: string;
+  fields: TFields;
+  createdTime?: string;
+};
+
+export class TeableConfigError extends Error {
+  status = 503;
+}
+
+export class TeableRequestError extends Error {
+  constructor(
+    message: string,
+    public status: number,
+    public detail?: unknown
+  ) {
+    super(message);
+  }
+}
+
+export type TeableListResponse<TFields extends Record<string, unknown> = Record<string, unknown>> = {
+  records?: TeableRecord<TFields>[];
+  data?: {
+    records?: TeableRecord<TFields>[];
+  };
+};
+
+export type TeableCreateResponse<TFields extends Record<string, unknown> = Record<string, unknown>> =
+  | TeableRecord<TFields>
+  | {
+      records?: TeableRecord<TFields>[];
+      data?: {
+        records?: TeableRecord<TFields>[];
+      };
+    };
 
 type TableMeta = {
   key: string;
@@ -16,7 +55,6 @@ type TableMeta = {
 // props), so normalize through unknown to the runtime TableMeta contract.
 const TABLES = tablesJson.tables as unknown as TableMeta[];
 
-const REQUEST_TIMEOUT_MS = 10_000;
 const PAGE_SIZE = 1000;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const TRANSIENT_ERROR = /fetch failed|timed out|timeout|network|ECONNRESET|ETIMEDOUT|AbortError/i;
@@ -27,28 +65,15 @@ function tableMeta(tableKey: TeableTableKey): TableMeta {
   return meta;
 }
 
-function withTimeoutSignal(signal?: AbortSignal | null) {
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  return signal ? AbortSignal.any([signal, timeout]) : timeout;
-}
-
 export class SupabaseTeableClient {
-  private db: SupabaseJsClient;
+  private dbPromise: Promise<SupabaseJsClient>;
 
-  constructor() {
-    const config = getSupabaseConfig();
-    if (!config.url) throw new TeableConfigError("SUPABASE_URL is not configured.");
-    if (!config.serviceRoleKey) throw new TeableConfigError("SUPABASE_SERVICE_ROLE_KEY is not configured.");
-    this.db = createClient(config.url, config.serviceRoleKey, {
-      auth: { persistSession: false, autoRefreshToken: false },
-      // postgrest-js 2.112 retries GET/HEAD/OPTIONS internally by default (up to
-      // 3 retries, including HTTP 503/520). Disable it: the adapter already does
-      // its own single retry on transient failures, mirroring TeableClient.
-      db: { retry: false },
-      global: {
-        fetch: (url, init) => fetch(url, { ...init, signal: withTimeoutSignal(init?.signal ?? null) })
-      }
-    });
+  constructor(db: Promise<SupabaseJsClient> | SupabaseJsClient) {
+    this.dbPromise = Promise.resolve(db);
+  }
+
+  private db() {
+    return this.dbPromise;
   }
 
   private toRecord<TFields extends Record<string, unknown>>(meta: TableMeta, row: Record<string, unknown>): TeableRecord<TFields> {
@@ -111,7 +136,8 @@ export class SupabaseTeableClient {
 
   async healthcheck() {
     const meta = tableMeta("users");
-    const result = await this.db.from(meta.tableName).select("id").limit(1);
+    const db = await this.db();
+    const result = await db.from(meta.tableName).select("id").limit(1);
     const attempts = [{ path: `rest/v1/${meta.tableName}`, status: result.error ? 502 : 200, ok: !result.error }];
     if (result.error) {
       throw new TeableRequestError("Supabase health query failed.", 502, { attempts, error: result.error });
@@ -121,16 +147,18 @@ export class SupabaseTeableClient {
 
   async listRecords<TFields extends Record<string, unknown> = Record<string, unknown>>(tableKey: TeableTableKey, take = 20) {
     const meta = tableMeta(tableKey);
-    const rows = await this.read("listRecords", () => this.db.from(meta.tableName).select("*").order("id").limit(take));
+    const db = await this.db();
+    const rows = await this.read("listRecords", () => db.from(meta.tableName).select("*").order("id").limit(take));
     return (rows ?? []).map((row) => this.toRecord<TFields>(meta, row as Record<string, unknown>));
   }
 
   async listAllRecords<TFields extends Record<string, unknown> = Record<string, unknown>>(tableKey: TeableTableKey) {
     const meta = tableMeta(tableKey);
+    const db = await this.db();
     const records: TeableRecord<TFields>[] = [];
     for (let from = 0; ; from += PAGE_SIZE) {
       const rows = await this.read("listAllRecords", () =>
-        this.db.from(meta.tableName).select("*").order("id").range(from, from + PAGE_SIZE - 1)
+        db.from(meta.tableName).select("*").order("id").range(from, from + PAGE_SIZE - 1)
       );
       const page = (rows ?? []) as Array<Record<string, unknown>>;
       records.push(...page.map((row) => this.toRecord<TFields>(meta, row)));
@@ -151,10 +179,11 @@ export class SupabaseTeableClient {
     filters: Array<{ field: string; value: string }>
   ) {
     const meta = tableMeta(tableKey);
+    const db = await this.db();
     const records: TeableRecord<TFields>[] = [];
     for (let from = 0; ; from += PAGE_SIZE) {
       const rows = await this.read("listRecordsWhereAll", () => {
-        let query = this.db.from(meta.tableName).select("*").order("id").range(from, from + PAGE_SIZE - 1);
+        let query = db.from(meta.tableName).select("*").order("id").range(from, from + PAGE_SIZE - 1);
         for (const { field, value } of filters) {
           if (value === "") {
             query = query.is(field, null);
@@ -174,8 +203,9 @@ export class SupabaseTeableClient {
 
   async getRecord<TFields extends Record<string, unknown> = Record<string, unknown>>(tableKey: TeableTableKey, recordId: string) {
     const meta = tableMeta(tableKey);
+    const db = await this.db();
     const rows = await this.read("getRecord", () =>
-      this.db.from(meta.tableName).select("*").eq(this.idColumn(recordId), recordId).limit(1)
+      db.from(meta.tableName).select("*").eq(this.idColumn(recordId), recordId).limit(1)
     );
     const row = (rows as Array<Record<string, unknown>> | null)?.[0];
     if (!row) {
@@ -189,8 +219,9 @@ export class SupabaseTeableClient {
     fields: TFields
   ) {
     const meta = tableMeta(tableKey);
+    const db = await this.db();
     const inserted = this.unwrap<Record<string, unknown>>(
-      await this.db.from(meta.tableName).insert(this.toRow(meta, fields)).select("*").single(),
+      await db.from(meta.tableName).insert(this.toRow(meta, fields)).select("*").single(),
       "createRecord"
     );
     return this.toRecord<TFields>(meta, inserted);
@@ -202,8 +233,9 @@ export class SupabaseTeableClient {
     fields: Partial<TFields>
   ) {
     const meta = tableMeta(tableKey);
+    const db = await this.db();
     const updated = this.unwrap<Record<string, unknown>>(
-      await this.db.from(meta.tableName).update(this.toRow(meta, fields)).eq(this.idColumn(recordId), recordId).select("*").single(),
+      await db.from(meta.tableName).update(this.toRow(meta, fields)).eq(this.idColumn(recordId), recordId).select("*").single(),
       "updateRecord"
     );
     return this.toRecord<TFields>(meta, updated);
@@ -211,16 +243,20 @@ export class SupabaseTeableClient {
 
   async deleteRecord(tableKey: TeableTableKey, recordId: string) {
     const meta = tableMeta(tableKey);
+    const db = await this.db();
     this.unwrap(
-      await this.db.from(meta.tableName).delete().eq(this.idColumn(recordId), recordId),
+      await db.from(meta.tableName).delete().eq(this.idColumn(recordId), recordId),
       "deleteRecord"
     );
     return { deleted: true };
   }
 
   async createEvent(userId: string | undefined, eventName: string, payload: Record<string, unknown>) {
+    // RLS on app_events requires user_id = current_user_id(); writing "" (null
+    // after the adapter) would fail at runtime, so reject early and loudly.
+    if (!userId) throw new TeableRequestError("createEvent requires an authenticated user id.", 400, { eventName });
     return this.createRecord("appEvents", {
-      user_id: userId ?? "",
+      user_id: userId,
       event_name: eventName,
       payload: JSON.stringify(payload),
       created_at: new Date().toISOString()
@@ -228,6 +264,27 @@ export class SupabaseTeableClient {
   }
 }
 
-export function createSupabaseTeableClient() {
-  return new SupabaseTeableClient();
+export function createSupabaseTeableClient(db: Promise<SupabaseJsClient> | SupabaseJsClient) {
+  return new SupabaseTeableClient(db);
+}
+
+// Alias de tipo histórico: o client da fachada é sempre o adapter Supabase.
+export type TeableClient = SupabaseTeableClient;
+
+// Fachada de dados do app: sempre o adapter Supabase autenticado pelo cookie
+// da request (o Postgres aplica RLS). O nome é histórico.
+export function getTeableClient(): SupabaseTeableClient {
+  return new SupabaseTeableClient(getRequestSupabaseClient());
+}
+
+export async function safeUpdateRecord<TFields extends Record<string, unknown> = Record<string, unknown>>(
+  tableKey: TeableTableKey,
+  recordId: string,
+  fields: Partial<TFields>
+) {
+  try {
+    return await getTeableClient().updateRecord<TFields>(tableKey, recordId, fields);
+  } catch {
+    return null;
+  }
 }

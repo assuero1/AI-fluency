@@ -8,14 +8,14 @@ const getAiConfig = vi.fn();
 
 vi.mock("../../lib/ai/client", () => ({ createChatCompletion: vi.fn() }));
 vi.mock("../../lib/ai/config", () => ({ getAiConfig }));
-vi.mock("../../lib/teable/client", () => ({
+vi.mock("../../lib/supabase/client", () => ({
   getTeableClient: () => ({ createRecord, createEvent, listRecords, getRecord: vi.fn() }),
   TeableRequestError: class TeableRequestError extends Error {
     status = 500;
   }
 }));
 vi.mock("../../lib/learning/profile", () => ({
-  getExistingPersonalUser: vi.fn(),
+  getSessionUser: vi.fn(),
   getActiveLanguageProfile: vi.fn()
 }));
 vi.mock("../../lib/learning/tutor-context", () => ({

@@ -1,5 +1,5 @@
 import { getEnv } from "@/lib/env";
-import { getTeableClient } from "@/lib/teable/client";
+import { getTeableClient } from "@/lib/supabase/client";
 
 type AiProviderSettingsFields = {
   provider?: string;
@@ -41,7 +41,7 @@ export async function getActiveModelOverride(): Promise<ModelOverride> {
     const chatModel = providerMatches ? active?.fields.chat_model?.trim() : undefined;
     if (chatModel) value = { chatModel, source: "teable" };
   } catch {
-    // Teable indisponível ou tabela não mapeada: fallback silencioso para env.
+    // Banco indisponível: fallback silencioso para env.
   }
 
   cache = { value, expiresAt: Date.now() + CACHE_TTL_MS };

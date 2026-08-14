@@ -870,7 +870,7 @@ test("release visual matrix has no horizontal overflow or clipped navigation", a
     { name: "calendar-detail", path: `/calendario/${fixtureFeedbackDate()}`, heading: fixtureFeedbackHeading() },
     { name: "progress", path: "/progresso", heading: "Progresso" },
     { name: "profile", path: "/perfil", heading: "Perfil" },
-    { name: "connections", path: "/settings/connections", heading: "IA, Teable e Kokoro" },
+    { name: "connections", path: "/settings/connections", heading: "IA, Supabase e Kokoro" },
     { name: "offline", path: "/offline", heading: "Você está sem conexão" }
   ];
   const viewports = [
