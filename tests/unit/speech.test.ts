@@ -1,9 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   joinSpeechSegments,
-  markMicReleased,
   msUntilAudioRouteRestored,
   punctuateSpeechSentence,
+  releaseMicForPlayback,
+  silentWavUri,
   speechLanguageName,
   speechLocale,
   speechRecognitionErrorMessage
@@ -53,7 +54,7 @@ describe("native speech recognition locale", () => {
     vi.useFakeTimers();
     try {
       vi.setSystemTime(1_000_000);
-      markMicReleased();
+      releaseMicForPlayback();
       expect(msUntilAudioRouteRestored()).toBe(350);
       vi.setSystemTime(1_000_100);
       expect(msUntilAudioRouteRestored()).toBe(250);
@@ -62,5 +63,19 @@ describe("native speech recognition locale", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("releases the mic without a browser Audio implementation (nudge is best-effort)", () => {
+    expect(() => releaseMicForPlayback()).not.toThrow();
+  });
+
+  it("builds a valid silent WAV data URI for the iOS unlock/nudge", () => {
+    const uri = silentWavUri();
+    expect(uri.startsWith("data:audio/wav;base64,")).toBe(true);
+    const bytes = Buffer.from(uri.slice("data:audio/wav;base64,".length), "base64");
+    expect(bytes.subarray(0, 4).toString("ascii")).toBe("RIFF");
+    expect(bytes.subarray(8, 12).toString("ascii")).toBe("WAVE");
+    expect(bytes.length).toBe(44 + 400);
+    expect(silentWavUri()).toBe(uri); // cache estável
   });
 });

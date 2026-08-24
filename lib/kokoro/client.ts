@@ -90,7 +90,7 @@ export async function synthesizeSpeech(input: string, options?: { voice?: string
       stream_format: "audio"
     }),
     cache: "no-store",
-    signal: AbortSignal.timeout(12_000)
+    signal: AbortSignal.timeout(30_000)
   });
 
   const contentType = response.headers.get("content-type") ?? `audio/${request.outputFormat}`;

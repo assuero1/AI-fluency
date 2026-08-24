@@ -18,7 +18,7 @@ import { VoiceButton } from "./VoiceButton";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields } from "@/lib/learning/conversations";
 import type { SelectionExplanation } from "@/lib/learning/selection-explanation";
 import { resolveSelectionState } from "@/lib/learning/selection-ui";
-import { joinSpeechSegments, markMicReleased, speechLanguageName, speechLocale, speechRecognitionErrorMessage } from "@/lib/learning/speech";
+import { joinSpeechSegments, releaseMicForPlayback, speechLanguageName, speechLocale, speechRecognitionErrorMessage } from "@/lib/learning/speech";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 import { computeActiveElapsedSeconds } from "@/lib/learning/chat-elapsed";
 import type { TeableRecord } from "@/lib/supabase/client";
@@ -147,7 +147,7 @@ export function ChatConversation({
         recognition.abort();
       }
       recognitionRef.current = null;
-      markMicReleased();
+      releaseMicForPlayback();
     };
   }, []);
 
@@ -413,7 +413,7 @@ export function ChatConversation({
     recognition.onend = null;
     recognition.abort();
     recognitionRef.current = null;
-    markMicReleased();
+    releaseMicForPlayback();
   }
 
   function toggleNativeSpeechRecognition() {

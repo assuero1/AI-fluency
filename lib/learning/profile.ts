@@ -79,8 +79,11 @@ export const getSessionUser = cache(async function getSessionUser() {
 
 export async function updateSessionUserProfile(payload: Pick<OnboardingPayload, "name" | "timezone">) {
   const user = await getSessionUser();
+  const name = payload.name?.trim().slice(0, 80);
   const updated = await getTeableClient().updateRecord<UserFields>("users", user.id, {
-    Name: payload.name ?? user.fields.Name ?? "",
+    // Nome em branco/ausente preserva o existente — troca de idioma não pode
+    // apagar o nome do usuário.
+    Name: name || user.fields.Name || "",
     timezone: payload.timezone ?? user.fields.timezone ?? "America/Sao_Paulo"
   });
   return updated;

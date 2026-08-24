@@ -2,7 +2,7 @@
 
 import { Check, Download, Loader2, ShieldAlert, Trash2, UserRound } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { FormEvent, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { IconBubble } from "./IconBubble";
 import { LevelPills } from "./LevelPills";
 import { ModalDialog } from "./ModalDialog";
@@ -31,6 +31,8 @@ const correctionOptions = [
   { value: "Só quando eu pedir", meta: "modo conversa livre" }
 ];
 
+const NAME_SAVE_DELAY_MS = 800;
+
 export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps) {
   const router = useRouter();
   const [name, setName] = useState(initial.user.name);
@@ -46,6 +48,13 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
   const [error, setError] = useState<string | null>(null);
   const [deleteChallenge, setDeleteChallenge] = useState<{ token: string; phrase: string } | null>(null);
   const [deletePhrase, setDeletePhrase] = useState("");
+  const [nameStatus, setNameStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const savedNameRef = useRef(initial.user.name.trim());
+  const nameSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (nameSaveTimerRef.current) clearTimeout(nameSaveTimerRef.current);
+  }, []);
 
   async function request(path: string, method: "PATCH" | "POST" | "DELETE", body?: Record<string, unknown>) {
     const response = await fetch(path, {
@@ -58,15 +67,53 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
     return data;
   }
 
-  async function saveProfile(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setPending("profile");
+  // Auto-save do nome: dispara ao parar de digitar (debounce) ou ao sair do
+  // campo (blur). Nome vazio ou inalterado não gera request.
+  async function saveName(nextName: string) {
+    const clean = nextName.trim();
+    if (!clean || clean === savedNameRef.current) {
+      setNameStatus("idle");
+      return;
+    }
+    setNameStatus("saving");
     setError(null);
     try {
-      await request("/api/profile", "PATCH", { name, activeLanguageId });
-      setNotice("Perfil atualizado.");
+      await request("/api/profile", "PATCH", { name: clean });
+      savedNameRef.current = clean;
+      setNameStatus("saved");
       router.refresh();
     } catch (requestError) {
+      setNameStatus("idle");
+      setError(messageFrom(requestError));
+    }
+  }
+
+  function handleNameChange(value: string) {
+    setName(value);
+    setNameStatus("idle");
+    if (nameSaveTimerRef.current) clearTimeout(nameSaveTimerRef.current);
+    nameSaveTimerRef.current = setTimeout(() => void saveName(value), NAME_SAVE_DELAY_MS);
+  }
+
+  function handleNameBlur() {
+    if (nameSaveTimerRef.current) {
+      clearTimeout(nameSaveTimerRef.current);
+      nameSaveTimerRef.current = null;
+    }
+    void saveName(name);
+  }
+
+  async function saveActiveLanguage(nextId: string) {
+    const previous = activeLanguageId;
+    setActiveLanguageId(nextId);
+    setPending("language");
+    setError(null);
+    try {
+      await request("/api/profile", "PATCH", { activeLanguageId: nextId });
+      setNotice("Idioma ativo atualizado.");
+      router.refresh();
+    } catch (requestError) {
+      setActiveLanguageId(previous);
       setError(messageFrom(requestError));
     } finally {
       setPending(null);
@@ -126,12 +173,25 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
 
   return (
     <>
-      <form className="section profile-form" onSubmit={saveProfile}>
+      <section className="section profile-form">
         <div className="choice-card">
           <IconBubble Icon={UserRound} />
           <div className="row-copy">
-            <label className="field-label" htmlFor="profile-name">Nome</label>
-            <input id="profile-name" className="field-input" maxLength={80} onChange={(event) => setName(event.target.value)} value={name} />
+            <label className="field-label" htmlFor="profile-name">
+              Nome
+              {nameStatus === "saving" ? <span className="row-meta"> · salvando…</span> : null}
+              {nameStatus === "saved" ? <span className="row-meta"> · salvo</span> : null}
+            </label>
+            <input
+              autoComplete="name"
+              id="profile-name"
+              className="field-input"
+              maxLength={80}
+              onBlur={handleNameBlur}
+              onChange={(event) => handleNameChange(event.target.value)}
+              placeholder="Seu nome"
+              value={name}
+            />
             <div className="row-meta">
               {activeLanguage?.languageName ?? "Idioma"} · {activeLanguage?.level ?? "Nível"} · 🔥 {formatPracticeStreak(streak)}
             </div>
@@ -140,18 +200,14 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
         {initial.languageProfiles.length > 0 ? (
           <label className="profile-select-row">
             <span>Idioma ativo</span>
-            <select onChange={(event) => setActiveLanguageId(event.target.value)} value={activeLanguageId}>
+            <select disabled={pending === "language"} onChange={(event) => void saveActiveLanguage(event.target.value)} value={activeLanguageId}>
               {initial.languageProfiles.map((profile) => (
                 <option key={profile.id} value={profile.id}>{profile.languageName} · {profile.level}</option>
               ))}
             </select>
           </label>
         ) : null}
-        <button className="outline-button full-button" disabled={pending === "profile"} type="submit">
-          {pending === "profile" ? <Loader2 className="spin" /> : null}
-          Salvar perfil
-        </button>
-      </form>
+      </section>
 
       {initial.activeProfile ? (
         <section className="section">

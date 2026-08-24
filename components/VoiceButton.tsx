@@ -5,10 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
 import {
   claimActiveVoice,
-  playDeviceSpeech,
   releaseActiveVoice,
-  reportDeviceFallback,
-  requestSpeech
+  reportVoiceFailure,
+  requestSpeech,
+  unlockAudioForPlayback
 } from "./voice-shared";
 
 type VoiceButtonProps = {
@@ -18,11 +18,13 @@ type VoiceButtonProps = {
   languageCode?: string;
   preload?: boolean;
   playbackRate?: number;
-  onPlayback?: (event: { replay: boolean; slow: boolean; deviceFallback: boolean }) => void;
+  onPlayback?: (event: { replay: boolean; slow: boolean }) => void;
   onAudioFailure?: () => void;
 };
 
 type VoiceStatus = "idle" | "loading" | "ready" | "playing" | "paused" | "ended" | "error";
+
+const PLAY_RETRY_DELAY_MS = 300;
 
 function Wave({ playing = false }: { playing?: boolean }) {
   return (
@@ -43,7 +45,7 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
   const audioUrlRef = useRef<string | null>(null);
   const ownerRef = useRef(Symbol("voice-button"));
   const playbackRequestedRef = useRef(false);
-  const speechUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  const unlockedAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const releaseAudio = useCallback(() => {
     const audio = audioRef.current;
@@ -63,51 +65,47 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     setStatus("idle");
   }, []);
 
-  const startDeviceFallback = useCallback(() => {
-    reportDeviceFallback(text, languageCode);
-    releaseAudio();
-    const utterance = playDeviceSpeech(text, languageCode, playbackRate, () => {
-      speechUtteranceRef.current = null;
-      setStatus("ended");
-    });
-    if (!utterance) {
-      setStatus("error");
-      onAudioFailure?.();
-      return;
-    }
-    speechUtteranceRef.current = utterance;
-    setStatus("playing");
-    onPlayback?.({ replay: false, slow: playbackRate < 1, deviceFallback: true });
-  }, [languageCode, onAudioFailure, onPlayback, playbackRate, releaseAudio, text]);
-
-  const createAudio = useCallback((audioUrl: string) => {
-    releaseAudio();
-    const audio = new Audio(audioUrl);
+  /** <audio> sem src, criado dentro do gesto do usuário para destravar o play() no iOS. */
+  const ensureBareAudio = useCallback(() => {
+    const existing = audioRef.current;
+    if (existing) return existing;
+    const audio = new Audio();
     audio.preload = "auto";
     audioRef.current = audio;
+    return audio;
+  }, []);
+
+  const createAudio = useCallback((audioUrl: string) => {
+    const audio = audioRef.current ?? new Audio();
+    audioRef.current = audio;
+    // Texto/palabra nueva (ej. cards de escucha consecutivos): el elemento reusa
+    // el audio anterior; reseteo explícito para que el siguiente play() no
+    // reproduzca la URL anterior.
+    const urlChanged = audioUrlRef.current !== null && audioUrlRef.current !== audioUrl;
+    audioUrlRef.current = audioUrl;
+    audio.preload = "auto";
+    audio.src = audioUrl;
     audio.onended = () => {
       if (audioRef.current === audio) setStatus("ended");
-      else if (speechUtteranceRef.current) {
-        window.speechSynthesis?.cancel();
-        speechUtteranceRef.current = null;
-        setStatus("ended");
-      }
     };
     audio.onerror = () => {
       if (audioRef.current !== audio) return;
-      // Preload failures stay silent; only user-initiated playback falls back to device speech.
-      if (!playbackRequestedRef.current) {
-        releaseAudio();
-        setStatus("error");
-        onAudioFailure?.();
-        return;
-      }
-      startDeviceFallback();
+      // Falha de preload fica silenciosa; só falha iniciada pelo usuário vira telemetria.
+      const requested = playbackRequestedRef.current;
+      releaseAudio();
+      setStatus("error");
+      onAudioFailure?.();
+      if (requested) reportVoiceFailure(text, languageCode, "audio element error");
     };
     audio.load();
-    setStatus("ready");
+    if (urlChanged) {
+      audio.currentTime = 0;
+      setStatus("idle");
+    } else {
+      setStatus("ready");
+    }
     return audio;
-  }, [onAudioFailure, releaseAudio, startDeviceFallback]);
+  }, [languageCode, onAudioFailure, releaseAudio, text]);
 
   const recreateAudio = useCallback(() => {
     if (!audioUrlRef.current) return null;
@@ -123,25 +121,32 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     if (routeRestoreWait > 0) {
       await new Promise((resolve) => setTimeout(resolve, routeRestoreWait));
     }
-    try {
-      await audio.play();
-      setStatus("playing");
-      onPlayback?.({ replay: audio.currentTime > 0, slow: playbackRate < 1, deviceFallback: false });
-    } catch {
-      // Another failure handler may have already consumed this audio element.
-      if (audioRef.current === audio) startDeviceFallback();
+    // Uma segunda tentativa cobre rejeições transitórias do iOS (sessão de
+    // áudio ainda restaurando a rota depois do microfone).
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        await audio.play();
+        setStatus("playing");
+        onPlayback?.({ replay: audio.currentTime > 0, slow: playbackRate < 1 });
+        return;
+      } catch {
+        // Outra voz pode ter assumido este elemento; não reporta nem retenta.
+        if (audioRef.current !== audio) return;
+        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, PLAY_RETRY_DELAY_MS));
+      }
     }
-  }, [onPlayback, playbackRate, startDeviceFallback, stopForAnotherVoice]);
+    if (audioRef.current !== audio) return;
+    setStatus("error");
+    reportVoiceFailure(text, languageCode, "audio.play() rejected");
+    onAudioFailure?.();
+  }, [languageCode, onAudioFailure, onPlayback, playbackRate, stopForAnotherVoice, text]);
 
   const ensureAudio = useCallback(async () => {
-    if (audioRef.current) return audioRef.current;
+    if (audioRef.current && audioUrlRef.current) return audioRef.current;
     if (loadPromiseRef.current) return loadPromiseRef.current;
 
     setStatus("loading");
-    const promise = requestSpeech(text, languageCode).then((audioUrl) => {
-      audioUrlRef.current = audioUrl;
-      return createAudio(audioUrl);
-    });
+    const promise = requestSpeech(text, languageCode).then((audioUrl) => createAudio(audioUrl));
     loadPromiseRef.current = promise;
     try {
       return await promise;
@@ -155,8 +160,6 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
   }, [createAudio, languageCode, releaseAudio, text]);
 
   useEffect(() => () => {
-    speechUtteranceRef.current = null;
-    window.speechSynthesis?.cancel();
     releaseAudio();
   }, [releaseAudio]);
 
@@ -170,16 +173,6 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     playbackRequestedRef.current = true;
 
     const existing = audioRef.current;
-    if (!existing && speechUtteranceRef.current && status === "playing") {
-      window.speechSynthesis?.pause();
-      setStatus("paused");
-      return;
-    }
-    if (!existing && speechUtteranceRef.current && status === "paused") {
-      window.speechSynthesis?.resume();
-      setStatus("playing");
-      return;
-    }
     if (existing && status === "playing") {
       existing.pause();
       setStatus("paused");
@@ -189,11 +182,11 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
       await playExisting(existing);
       return;
     }
-    if (existing && status === "ready") {
+    if (existing && audioUrlRef.current && status === "ready") {
       await playExisting(existing);
       return;
     }
-    if (existing && status === "ended") {
+    if (existing && audioUrlRef.current && status === "ended") {
       const replayAudio = recreateAudio();
       if (replayAudio) await playExisting(replayAudio);
       else {
@@ -203,11 +196,21 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
       return;
     }
 
+    // idle | error | elemento sem src: destrava o <audio> ainda no gesto do
+    // usuário — sem isso o play() depois dos awaits de rede é rejeitado no iOS.
+    const audio = ensureBareAudio();
+    if (unlockedAudioRef.current !== audio) {
+      unlockedAudioRef.current = audio;
+      unlockAudioForPlayback(audio);
+    }
+
     try {
-      const audio = await ensureAudio();
-      await playExisting(audio);
-    } catch {
-      startDeviceFallback();
+      const readyAudio = await ensureAudio();
+      await playExisting(readyAudio);
+    } catch (error) {
+      setStatus("error");
+      reportVoiceFailure(text, languageCode, error instanceof Error ? error.message : String(error));
+      onAudioFailure?.();
     }
   }
 

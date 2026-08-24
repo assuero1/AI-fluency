@@ -18,7 +18,9 @@ import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
 import {
   claimActiveVoice,
   releaseActiveVoice,
+  reportVoiceFailure,
   requestCaptionedSpeech,
+  unlockAudioForPlayback,
   type CaptionedWord
 } from "./voice-shared";
 import { MessageAudioPlayer } from "./MessageAudioPlayer";
@@ -32,6 +34,8 @@ type MessageWordPlayerProps = {
 
 type PlayerStatus = "idle" | "loading" | "playing" | "paused" | "ended" | "error";
 type PlayerMode = "word" | "legacy";
+
+const PLAY_RETRY_DELAY_MS = 300;
 
 type WordSegment = {
   text: string;
@@ -82,6 +86,7 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
   const generationRef = useRef(0); // invalida callbacks antigos
   const ownerRef = useRef(Symbol("message-word-player"));
   const captionedFailedRef = useRef(false);
+  const unlockedRef = useRef(false);
 
   const setStatusTracked = useCallback((next: PlayerStatus) => {
     statusRef.current = next;
@@ -111,7 +116,6 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
       audio.pause();
       audio.currentTime = 0;
     }
-    window.speechSynthesis?.cancel();
   }, []);
 
   const stopForAnotherVoice = useCallback(() => {
@@ -120,6 +124,28 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     setSelectedIndex(0);
     setActiveWord(-1);
   }, [releaseAudio, setActiveWord, setSelectedIndex, setStatusTracked]);
+
+  /** Cria (uma única vez) o <audio> da mensagem, já com o handler de término. */
+  const ensureAudioElement = useCallback(() => {
+    const existing = audioRef.current;
+    if (existing) return existing;
+    const audio = new Audio();
+    audio.preload = "auto";
+    audio.onended = () => {
+      if (statusRef.current !== "playing") return;
+      cancelAnimationFrame(rafRef.current);
+      setStatusTracked("ended");
+    };
+    audioRef.current = audio;
+    return audio;
+  }, [setStatusTracked]);
+
+  /** Destrava o <audio> no gesto do usuário (iOS) — chamada nos handlers de toque. */
+  const unlockInGesture = useCallback(() => {
+    if (unlockedRef.current) return;
+    unlockedRef.current = true;
+    unlockAudioForPlayback(ensureAudioElement());
+  }, [ensureAudioElement]);
 
   const enterLegacyMode = useCallback(() => {
     captionedFailedRef.current = true;
@@ -191,14 +217,8 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
         audioUrl = seamless.audioUrl;
       }
 
-      const audio = new Audio(audioUrl);
-      audio.preload = "auto";
-      audio.onended = () => {
-        if (statusRef.current !== "playing") return;
-        cancelAnimationFrame(rafRef.current);
-        setStatusTracked("ended");
-      };
-      audioRef.current = audio;
+      const audio = ensureAudioElement();
+      audio.src = audioUrl;
 
       setTrack({ segments, aligned: buildTrackAlignment(segments) });
       setSelectedIndex(0);
@@ -208,7 +228,7 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
       if (generationRef.current !== generation) return;
       enterLegacyMode();
     }
-  }, [enterLegacyMode, languageCode, setActiveWord, setSelectedIndex, setStatusTracked, setTrack, text]);
+  }, [ensureAudioElement, enterLegacyMode, languageCode, setActiveWord, setSelectedIndex, setStatusTracked, setTrack, text]);
 
   // Preload e o primeiro play podem disparar juntos; sem a promise
   // compartilhada cada um montaria a faixa (downloads + decode) em duplicidade.
@@ -233,20 +253,28 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
     if (generationRef.current !== generation) return;
 
-    try {
-      audio.currentTime = time;
-      await audio.play();
-      if (generationRef.current !== generation) {
-        audio.pause();
+    // Uma segunda tentativa cobre rejeições transitórias do iOS (sessão de
+    // áudio ainda restaurando a rota depois do microfone).
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        audio.currentTime = time;
+        await audio.play();
+        if (generationRef.current !== generation) {
+          audio.pause();
+          return;
+        }
+        setStatusTracked("playing");
+        startHighlightLoop(generation);
         return;
+      } catch {
+        if (generationRef.current !== generation) return;
+        if (attempt === 0) await new Promise((resolve) => setTimeout(resolve, PLAY_RETRY_DELAY_MS));
       }
-      setStatusTracked("playing");
-      startHighlightLoop(generation);
-    } catch {
-      if (generationRef.current !== generation) return;
-      setStatusTracked("error");
     }
-  }, [setStatusTracked, startHighlightLoop]);
+    if (generationRef.current !== generation) return;
+    reportVoiceFailure(text, languageCode, "audio.play() rejected");
+    setStatusTracked("error");
+  }, [languageCode, setStatusTracked, startHighlightLoop, text]);
 
   const playFromToken = useCallback(async (tokenIndex: number) => {
     const current = trackRef.current;
@@ -261,24 +289,32 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
 
     claimActiveVoice(ownerRef.current, stopForAnotherVoice);
     releaseAudio();
+    unlockInGesture();
     const generation = generationRef.current;
     setSelectedIndex(target);
     setActiveWord(target);
     setStatusTracked("loading");
     await playAt(current.aligned[target].start as number, generation);
-  }, [playAt, releaseAudio, setActiveWord, setSelectedIndex, setStatusTracked, stopForAnotherVoice]);
+  }, [playAt, releaseAudio, setActiveWord, setSelectedIndex, setStatusTracked, stopForAnotherVoice, unlockInGesture]);
 
   async function togglePlayback() {
     if (!text.trim()) return;
     if (mode === "legacy") return;
 
-    if (!trackRef.current || !audioRef.current) {
+    // iOS: destrava o <audio> ainda no gesto do usuário — sem isso o play()
+    // depois dos awaits de rede perde a "user activation" e é rejeitado.
+    unlockInGesture();
+
+    if (!trackRef.current) {
       await loadCaptioned();
-      if (captionedFailedRef.current || !trackRef.current || !audioRef.current) return;
+      if (captionedFailedRef.current || !trackRef.current) return;
     }
 
+    const audio = audioRef.current;
+    if (!audio) return;
+
     if (statusRef.current === "playing") {
-      audioRef.current.pause();
+      audio.pause();
       cancelAnimationFrame(rafRef.current);
       setStatusTracked("paused");
       return;
@@ -286,7 +322,7 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     if (statusRef.current === "paused") {
       const generation = generationRef.current;
       setStatusTracked("loading");
-      await playAt(audioRef.current.currentTime, generation);
+      await playAt(audio.currentTime, generation);
       return;
     }
     // idle | ended | error → começa (ou recomeça) do token atual/0

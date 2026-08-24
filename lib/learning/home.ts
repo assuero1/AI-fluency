@@ -102,7 +102,7 @@ export async function getHomeData() {
   return {
     user: {
       id: user.id,
-      name: user.fields.Name ?? user.fields.name ?? "Camila"
+      name: user.fields.Name ?? user.fields.name ?? ""
     },
     profile: profile
       ? {

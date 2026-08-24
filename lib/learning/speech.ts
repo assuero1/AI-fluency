@@ -82,11 +82,64 @@ function looksLikeQuestion(value: string, languageCode: string | undefined) {
 const AUDIO_ROUTE_RESTORE_MS = 350;
 
 let micReleasedAt = 0;
+let routeNudgeAudio: HTMLAudioElement | null = null;
 
-export function markMicReleased() {
+/**
+ * Marca a liberação do microfone e "acorda" a rota de playback: toca um WAV
+ * silencioso ainda no rastro do gesto do usuário (parar o ditado), forçando a
+ * AVAudioSession do iOS a sair do modo gravação (auricular) e voltar ao
+ * alto-falante antes do próximo TTS. Sem o nudge, a restauração dependia só do
+ * wait fixo de `AUDIO_ROUTE_RESTORE_MS` — e às vezes o áudio saía no auricular.
+ */
+export function releaseMicForPlayback() {
   micReleasedAt = Date.now();
+  nudgePlaybackRoute();
 }
 
 export function msUntilAudioRouteRestored(now = Date.now()) {
   return Math.max(0, AUDIO_ROUTE_RESTORE_MS - (now - micReleasedAt));
+}
+
+/** WAV silencioso (~50ms, PCM 8-bit mono 8kHz) como data URI, montado uma vez. */
+let cachedSilentWavUri: string | null = null;
+
+export function silentWavUri() {
+  if (cachedSilentWavUri) return cachedSilentWavUri;
+  const sampleRate = 8000;
+  const sampleCount = 400;
+  const bytes = new Uint8Array(44 + sampleCount);
+  const view = new DataView(bytes.buffer);
+  const writeAscii = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) view.setUint8(offset + index, value.charCodeAt(index));
+  };
+  writeAscii(0, "RIFF");
+  view.setUint32(4, 36 + sampleCount, true);
+  writeAscii(8, "WAVE");
+  writeAscii(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, 1, true); // mono
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate, true); // byte rate (8-bit mono)
+  view.setUint16(32, 1, true); // block align
+  view.setUint16(34, 8, true); // bits por amostra
+  writeAscii(36, "data");
+  view.setUint32(40, sampleCount, true);
+  bytes.fill(0x80, 44); // silêncio em PCM 8-bit
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  cachedSilentWavUri = `data:audio/wav;base64,${btoa(binary)}`;
+  return cachedSilentWavUri;
+}
+
+function nudgePlaybackRoute() {
+  if (typeof window === "undefined" || typeof Audio === "undefined") return;
+  try {
+    routeNudgeAudio ??= new Audio();
+    routeNudgeAudio.src = silentWavUri();
+    routeNudgeAudio.volume = 0;
+    void routeNudgeAudio.play().catch(() => undefined);
+  } catch {
+    // O nudge é best-effort; o wait de AUDIO_ROUTE_RESTORE_MS continua valendo.
+  }
 }

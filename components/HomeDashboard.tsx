@@ -137,7 +137,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
 
   return (
     <>
-      <ScreenHeader title={`Olá, ${home.user.name} 👋`} subtitle="Pronta para praticar hoje?" streak={home.practice.streak} />
+      <ScreenHeader title={home.user.name ? `Olá, ${home.user.name} 👋` : "Olá 👋"} subtitle="Pronto para praticar hoje?" streak={home.practice.streak} />
 
       <div className="selector-bar">
         <Link

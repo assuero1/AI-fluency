@@ -80,6 +80,7 @@ export function OnboardingForm({
   profileLevels?: Array<{ languageCode: string; level: string }>;
 }) {
   const router = useRouter();
+  const [name, setName] = useState("");
   const [languageIndex, setLanguageIndex] = useState(() => languageIndexFromCode(initialProfile?.languageCode));
   const [level, setLevel] = useState(initialProfile?.level ?? DEFAULT_LANGUAGE_LEVEL);
   const [goal, setGoal] = useState(initialProfile?.learningGoal ?? goals[0]);
@@ -112,7 +113,9 @@ export function OnboardingForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: "Camila",
+          // Só envia nome no onboarding completo; ao trocar de idioma o nome
+          // existente é preservado (antes era reescrito com um valor fixo).
+          name: languageSelectionOnly ? undefined : name.trim(),
           timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
           language_code: languageCode(selectedLanguage.code),
           language_name: selectedLanguage.title,
@@ -188,6 +191,18 @@ export function OnboardingForm({
       <section className="section">
         <h1 className="title">Comece do seu jeito</h1>
         <p className="subtitle">A IA adapta conversas, correções e vocabulário ao seu objetivo.</p>
+      </section>
+
+      <section className="section">
+        <h2 className="section-title">Como podemos te chamar?</h2>
+        <input
+          autoComplete="name"
+          className="field-input"
+          maxLength={80}
+          onChange={(event) => setName(event.target.value)}
+          placeholder="Seu nome"
+          value={name}
+        />
       </section>
 
       <section className="section">
@@ -270,7 +285,7 @@ export function OnboardingForm({
       {error ? <div className="inline-error" role="alert">{error}</div> : null}
 
       <div style={{ marginTop: 32 }}>
-        <button className="dark-button full-button" disabled={isSaving} onClick={submit} type="button">
+        <button className="dark-button full-button" disabled={isSaving || !name.trim()} onClick={submit} type="button">
           {isSaving ? <Loader2 className="spin" /> : null}
           {isSaving ? "Salvando perfil..." : "Salvar e continuar"}
         </button>

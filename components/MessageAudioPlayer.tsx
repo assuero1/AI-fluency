@@ -7,10 +7,10 @@ import { splitIntoSentences } from "@/lib/learning/sentences";
 import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
 import {
   claimActiveVoice,
-  playDeviceSpeech,
   releaseActiveVoice,
-  reportDeviceFallback,
-  requestSpeech
+  reportVoiceFailure,
+  requestSpeech,
+  unlockAudioForPlayback
 } from "./voice-shared";
 
 type MessageAudioPlayerProps = {
@@ -22,11 +22,12 @@ type MessageAudioPlayerProps = {
 
 type PlayerStatus = "idle" | "loading" | "playing" | "paused" | "ended" | "error";
 
+const PLAY_RETRY_DELAY_MS = 300;
+
 export function MessageAudioPlayer({ text, languageCode, showTranscript, preload = false }: MessageAudioPlayerProps) {
   const lines = useMemo(() => splitIntoSentences(text), [text]);
   const [status, setStatus] = useState<PlayerStatus>("idle");
   const [currentLine, setCurrentLine] = useState(0);
-  const [deviceFallback, setDeviceFallback] = useState(false);
 
   const statusRef = useRef<PlayerStatus>("idle");
   const currentLineRef = useRef(0);
@@ -34,9 +35,8 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const rafRef = useRef(0);
   const ownerRef = useRef(Symbol("message-audio-player"));
-  const deviceFallbackRef = useRef(false);
-  const fallbackReportedRef = useRef(false);
-  const fallbackReasonRef = useRef("");
+  const unlockedRef = useRef(false);
+  const lastErrorRef = useRef("");
   const generationRef = useRef(0); // invalida callbacks antigos
 
   const setStatusTracked = useCallback((next: PlayerStatus) => {
@@ -57,7 +57,6 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
       audio.pause();
       audio.currentTime = 0;
     }
-    window.speechSynthesis?.cancel();
   }, []);
 
   const stopForAnotherVoice = useCallback(() => {
@@ -66,17 +65,20 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
     setLine(0);
   }, [releaseAudio, setLine, setStatusTracked]);
 
-  const enableDeviceFallback = useCallback((reason?: string) => {
-    if (reason) fallbackReasonRef.current = reason;
-    setDeviceFallback(true);
-    if (!deviceFallbackRef.current) {
-      deviceFallbackRef.current = true;
-      if (!fallbackReportedRef.current) {
-        fallbackReportedRef.current = true;
-        reportDeviceFallback(text, languageCode, fallbackReasonRef.current || undefined);
-      }
-    }
-  }, [languageCode, text]);
+  /** Cria (uma única vez) o <audio> da mensagem, já com o handler de término. */
+  const ensureAudioElement = useCallback(() => {
+    const existing = audioRef.current;
+    if (existing) return existing;
+    const audio = new Audio();
+    audio.preload = "auto";
+    audio.onended = () => {
+      if (statusRef.current !== "playing") return;
+      cancelAnimationFrame(rafRef.current);
+      setStatusTracked("ended");
+    };
+    audioRef.current = audio;
+    return audio;
+  }, [setStatusTracked]);
 
   /**
    * Prepara a faixa única da mensagem: busca o áudio de todas as frases em
@@ -84,7 +86,7 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
    * <audio> nativo, sem gaps entre as partes.
    */
   const prepareTrack = useCallback(async (generation: number) => {
-    if (audioRef.current) return true;
+    if (seamlessRef.current) return true;
     // Uma segunda tentativa com refresh cobre URLs de áudio que expiraram no
     // servidor depois do POST original (ex.: cache podado ou restart).
     for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -98,21 +100,14 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
         }
         seamlessRef.current?.dispose();
         seamlessRef.current = seamless;
-        const audio = new Audio(seamless.audioUrl);
-        audio.preload = "auto";
-        audio.onended = () => {
-          if (statusRef.current !== "playing") return;
-          cancelAnimationFrame(rafRef.current);
-          setStatusTracked("ended");
-        };
-        audioRef.current = audio;
+        ensureAudioElement().src = seamless.audioUrl;
         return true;
       } catch (error) {
-        fallbackReasonRef.current = error instanceof Error ? error.message : String(error);
+        lastErrorRef.current = error instanceof Error ? error.message : String(error);
       }
     }
     return false;
-  }, [languageCode, lines, setStatusTracked]);
+  }, [ensureAudioElement, languageCode, lines]);
 
   const startLineLoop = useCallback((generation: number) => {
     const step = () => {
@@ -147,35 +142,28 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
     if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
     if (generationRef.current !== generation) return true;
 
-    try {
-      audio.currentTime = time;
-      await audio.play();
-      if (generationRef.current !== generation) {
-        audio.pause();
+    // Uma segunda tentativa cobre rejeições transitórias do iOS (sessão de
+    // áudio ainda restaurando a rota depois do microfone).
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        audio.currentTime = time;
+        await audio.play();
+        if (generationRef.current !== generation) {
+          audio.pause();
+          return true;
+        }
+        setStatusTracked("playing");
+        startLineLoop(generation);
         return true;
+      } catch {
+        if (attempt === 0) {
+          await new Promise((resolve) => setTimeout(resolve, PLAY_RETRY_DELAY_MS));
+          if (generationRef.current !== generation) return true;
+        }
       }
-      setStatusTracked("playing");
-      startLineLoop(generation);
-      return true;
-    } catch {
-      return false;
     }
+    return false;
   }, [setStatusTracked, startLineLoop]);
-
-  const playDeviceLine = useCallback((index: number, generation: number) => {
-    const utterance = playDeviceSpeech(lines[index], languageCode, 1, () => {
-      if (generationRef.current !== generation) return;
-      const next = index + 1;
-      if (next < lines.length) playDeviceLine(next, generation);
-      else setStatusTracked("ended");
-    });
-    if (!utterance) {
-      setStatusTracked("error");
-      return;
-    }
-    setLine(index);
-    setStatusTracked("playing");
-  }, [languageCode, lines, setLine, setStatusTracked]);
 
   const playLine = useCallback(async (index: number) => {
     if (index < 0 || index >= lines.length) return;
@@ -185,53 +173,51 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
     setLine(index);
     setStatusTracked("loading");
 
-    if (deviceFallbackRef.current) {
-      playDeviceLine(index, generation);
-      return;
+    // iOS: destrava o <audio> ainda no gesto do usuário — sem isso o play()
+    // depois dos awaits de rede perde a "user activation" e é rejeitado.
+    const audio = ensureAudioElement();
+    if (!unlockedRef.current) {
+      unlockedRef.current = true;
+      unlockAudioForPlayback(audio);
     }
 
     const ready = await prepareTrack(generation);
     if (generationRef.current !== generation) return;
     if (!ready) {
-      enableDeviceFallback();
-      playDeviceLine(index, generationRef.current);
+      reportVoiceFailure(text, languageCode, lastErrorRef.current || "Kokoro synthesis failed");
+      setStatusTracked("error");
       return;
     }
 
     const started = await startPlayerAt(seamlessRef.current?.partOffsets[index] ?? 0, generation);
     if (!started && generationRef.current === generation) {
-      enableDeviceFallback("audio.play() rejected");
-      playDeviceLine(index, generationRef.current);
+      reportVoiceFailure(text, languageCode, "audio.play() rejected");
+      setStatusTracked("error");
     }
-  }, [enableDeviceFallback, lines.length, playDeviceLine, prepareTrack, releaseAudio, setLine, setStatusTracked, startPlayerAt, stopForAnotherVoice]);
+  }, [ensureAudioElement, languageCode, lines.length, prepareTrack, releaseAudio, setLine, setStatusTracked, startPlayerAt, stopForAnotherVoice, text]);
 
   async function togglePlayback() {
     if (!lines.length) return;
 
     if (statusRef.current === "playing") {
-      if (deviceFallbackRef.current) window.speechSynthesis?.pause();
-      else {
-        audioRef.current?.pause();
-        cancelAnimationFrame(rafRef.current);
-      }
+      audioRef.current?.pause();
+      cancelAnimationFrame(rafRef.current);
       setStatusTracked("paused");
       return;
     }
     if (statusRef.current === "paused") {
-      if (deviceFallbackRef.current) {
-        window.speechSynthesis?.resume();
-        setStatusTracked("playing");
-        return;
-      }
       const audio = audioRef.current;
-      if (!audio) {
+      if (!audio || !seamlessRef.current) {
         await playLine(currentLineRef.current);
         return;
       }
       const generation = generationRef.current;
       setStatusTracked("loading");
       const started = await startPlayerAt(audio.currentTime, generation);
-      if (!started && generationRef.current === generation) await playLine(currentLineRef.current);
+      if (!started && generationRef.current === generation) {
+        reportVoiceFailure(text, languageCode, "audio.play() rejected");
+        setStatusTracked("error");
+      }
       return;
     }
     // idle | ended | error → começa (ou recomeça) da linha atual/0
@@ -246,14 +232,12 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
       void playLine(target);
       return;
     }
-    if (statusRef.current === "paused" && !deviceFallbackRef.current && audioRef.current) {
-      audioRef.current.currentTime = seamlessRef.current?.partOffsets[target] ?? 0;
-      setLine(target);
-      return;
-    }
-    // No fallback (speechSynthesis) não é possível redirecionar uma utterance
-    // pausada para outra linha, então o skip pausado toca a linha alvo na hora.
     if (statusRef.current === "paused") {
+      if (audioRef.current && seamlessRef.current) {
+        audioRef.current.currentTime = seamlessRef.current.partOffsets[target] ?? 0;
+        setLine(target);
+        return;
+      }
       void playLine(target);
       return;
     }
@@ -266,7 +250,7 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
   // Preload da faixa completa (só na última mensagem): baixa e decodifica
   // todas as frases para o primeiro play começar sem espera.
   useEffect(() => {
-    if (!preload || !lines.length || audioRef.current || deviceFallbackRef.current) return;
+    if (!preload || !lines.length || seamlessRef.current) return;
     const generation = generationRef.current;
     void prepareTrack(generation);
   }, [lines.length, preload, prepareTrack]);
@@ -286,7 +270,6 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
     status === "paused" ? "Continuar áudio" :
     status === "ended" ? "Ouvir novamente" :
     status === "error" ? "Voz indisponível. Tentar novamente" :
-    deviceFallback ? "Ouvir com a voz do dispositivo (Kokoro indisponível)" :
     "Ouvir mensagem";
 
   return (

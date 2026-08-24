@@ -1,5 +1,7 @@
 "use client";
 
+import { silentWavUri } from "@/lib/learning/speech";
+
 type ActiveVoice = { owner: symbol; stop: () => void };
 
 let activeVoice: ActiveVoice | null = null;
@@ -85,10 +87,10 @@ export function requestCaptionedSpeech(text: string, languageCode: string | unde
   return request;
 }
 
-export function reportDeviceFallback(text: string, languageCode: string | undefined, reason?: string) {
+export function reportVoiceFailure(text: string, languageCode: string | undefined, reason: string) {
   const body = JSON.stringify({
-    event_name: "voice_device_fallback",
-    payload: { language: languageCode ?? "", textLength: text.length, reason: reason ?? "" }
+    event_name: "voice_kokoro_failure",
+    payload: { language: languageCode ?? "", textLength: text.length, reason }
   });
   if (typeof navigator !== "undefined" && typeof navigator.sendBeacon === "function") {
     navigator.sendBeacon("/api/events", new Blob([body], { type: "application/json" }));
@@ -102,22 +104,33 @@ export function reportDeviceFallback(text: string, languageCode: string | undefi
   }).catch(() => undefined);
 }
 
-export function playDeviceSpeech(text: string, languageCode: string | undefined, rate: number, onEnd: () => void) {
-  if (typeof window === "undefined" || !window.speechSynthesis || typeof SpeechSynthesisUtterance === "undefined") return null;
-  window.speechSynthesis.cancel();
-  const utterance = new SpeechSynthesisUtterance(text);
-  utterance.lang = languageCode || "en";
-  utterance.rate = rate;
-  // iOS dispara onend E onerror ("interrupted") para a mesma utterance quando o
-  // próximo speak cancela a fila — sem o guard cada frase encadeava duas vezes.
-  let finished = false;
-  const finish = () => {
-    if (finished) return;
-    finished = true;
-    onEnd();
-  };
-  utterance.onend = finish;
-  utterance.onerror = finish;
-  window.speechSynthesis.speak(utterance);
-  return utterance;
+/**
+ * Destrava um <audio> no iOS dentro do gesto do usuário: toca um trecho
+ * silencioso (ou o próprio src já carregado) com volume zerado e pausa. Sem
+ * isso, o play() chamado depois de awaits de rede perde a "user activation" e
+ * é rejeitado ("audio.play() rejected" — maior causa de falha em produção).
+ */
+export function unlockAudioForPlayback(audio: HTMLAudioElement) {
+  try {
+    const position = audio.currentTime;
+    const hadSource = Boolean(audio.src);
+    if (!hadSource) audio.src = silentWavUri();
+    audio.muted = true;
+    const attempt = audio.play();
+    const finish = () => {
+      audio.pause();
+      audio.muted = false;
+      if (hadSource) {
+        try {
+          audio.currentTime = position;
+        } catch {
+          // Elemento ainda sem dados suficientes; a posição será redefinida no play real.
+        }
+      }
+    };
+    if (attempt && typeof attempt.then === "function") attempt.then(finish, finish);
+    else finish();
+  } catch {
+    audio.muted = false;
+  }
 }

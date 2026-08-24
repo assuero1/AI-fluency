@@ -60,7 +60,7 @@ export async function getProfileSettings() {
   return {
     user: {
       id: user.id,
-      name: user.fields.Name ?? user.fields.name ?? "Camila",
+      name: user.fields.Name ?? user.fields.name ?? "",
       timezone: user.fields.timezone ?? "America/Sao_Paulo",
       activeLanguageId: activeProfile?.id ?? "",
       dailyNewCardsQuota: getDailyNewCardsQuota(user)
