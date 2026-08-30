@@ -41,11 +41,12 @@ function Wave({ playing = false }: { playing?: boolean }) {
 export function VoiceButton({ text, label = "Ouvir", compact = false, languageCode, preload = false, playbackRate = 1, onPlayback, onAudioFailure }: VoiceButtonProps) {
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const loadPromiseRef = useRef<Promise<HTMLAudioElement> | null>(null);
+  const loadPromiseRef = useRef<Promise<HTMLAudioElement | null> | null>(null);
   const audioUrlRef = useRef<string | null>(null);
   const ownerRef = useRef(Symbol("voice-button"));
   const playbackRequestedRef = useRef(false);
   const unlockedAudioRef = useRef<HTMLAudioElement | null>(null);
+  const textRef = useRef(text);
 
   const releaseAudio = useCallback(() => {
     const audio = audioRef.current;
@@ -141,12 +142,19 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     onAudioFailure?.();
   }, [languageCode, onAudioFailure, onPlayback, playbackRate, stopForAnotherVoice, text]);
 
-  const ensureAudio = useCallback(async () => {
+  const ensureAudio = useCallback(async (): Promise<HTMLAudioElement | null> => {
     if (audioRef.current && audioUrlRef.current) return audioRef.current;
     if (loadPromiseRef.current) return loadPromiseRef.current;
 
     setStatus("loading");
-    const promise = requestSpeech(text, languageCode).then((audioUrl) => createAudio(audioUrl));
+    const requestedText = text;
+    const promise = requestSpeech(requestedText, languageCode).then((audioUrl) => {
+      // A síntese pode resolver depois de o texto ter mudado (ex.: troca de
+      // card); adotar esse áudio faria o próximo play repetir o conteúdo
+      // anterior — o mesmo bug do áudio errado no card de escuta.
+      if (textRef.current !== requestedText) return null;
+      return createAudio(audioUrl);
+    });
     loadPromiseRef.current = promise;
     try {
       return await promise;
@@ -155,13 +163,25 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
       setStatus("error");
       throw error;
     } finally {
-      loadPromiseRef.current = null;
+      if (loadPromiseRef.current === promise) loadPromiseRef.current = null;
     }
   }, [createAudio, languageCode, releaseAudio, text]);
 
   useEffect(() => () => {
     releaseAudio();
   }, [releaseAudio]);
+
+  // Troca de texto (ex.: card seguinte no treino): descarta o elemento e a URL
+  // anteriores — sem isso ensureAudio devolvia o áudio do texto anterior e o
+  // botão tocava a palavra do card anterior. Precisa rodar antes do efeito de
+  // preload (declaração anterior = execução anterior no mesmo commit).
+  useEffect(() => {
+    textRef.current = text;
+    releaseAudio();
+    audioUrlRef.current = null;
+    playbackRequestedRef.current = false;
+    setStatus("idle");
+  }, [releaseAudio, text]);
 
   useEffect(() => {
     if (!preload || !text.trim()) return;
@@ -206,6 +226,9 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
 
     try {
       const readyAudio = await ensureAudio();
+      // null: o texto mudou enquanto a síntese estava em voo; o efeito de
+      // troca de texto já resetou o estado para o conteúdo novo.
+      if (!readyAudio) return;
       await playExisting(readyAudio);
     } catch (error) {
       setStatus("error");

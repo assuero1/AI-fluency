@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   joinSpeechSegments,
   msUntilAudioRouteRestored,
@@ -55,10 +55,10 @@ describe("native speech recognition locale", () => {
     try {
       vi.setSystemTime(1_000_000);
       releaseMicForPlayback();
-      expect(msUntilAudioRouteRestored()).toBe(350);
+      expect(msUntilAudioRouteRestored()).toBe(800);
       vi.setSystemTime(1_000_100);
-      expect(msUntilAudioRouteRestored()).toBe(250);
-      vi.setSystemTime(1_000_400);
+      expect(msUntilAudioRouteRestored()).toBe(700);
+      vi.setSystemTime(1_000_800);
       expect(msUntilAudioRouteRestored()).toBe(0);
     } finally {
       vi.useRealTimers();
@@ -77,5 +77,104 @@ describe("native speech recognition locale", () => {
     expect(bytes.subarray(8, 12).toString("ascii")).toBe("WAVE");
     expect(bytes.length).toBe(44 + 400);
     expect(silentWavUri()).toBe(uri); // cache estável
+  });
+});
+
+/**
+ * O nudge de rota depende de um <audio> dedicado destravado dentro de um gesto
+ * do usuário; cada teste abaixo usa um módulo fresco (vi.resetModules) para
+ * não compartilhar o estado de módulo (routeNudgeAudio/micReleasedAt).
+ */
+describe("route nudge element", () => {
+  class FakeAudio {
+    static instances: FakeAudio[] = [];
+    src = "";
+    muted = false;
+    volume = 1;
+    paused = true;
+    playCount = 0;
+    constructor() {
+      FakeAudio.instances.push(this);
+    }
+    async play() {
+      this.playCount += 1;
+      this.paused = false;
+    }
+    pause() {
+      this.paused = true;
+    }
+  }
+
+  beforeEach(() => {
+    vi.resetModules();
+    FakeAudio.instances = [];
+    vi.stubGlobal("window", {});
+    vi.stubGlobal("Audio", FakeAudio);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  async function freshSpeech() {
+    return import("../../lib/learning/speech");
+  }
+
+  const flushMicrotasks = async () => {
+    await Promise.resolve();
+    await Promise.resolve();
+  };
+
+  it("prepares a dedicated nudge element inside the user gesture (muted unlock)", async () => {
+    const speech = await freshSpeech();
+    speech.prepareRouteNudgeElement();
+    expect(FakeAudio.instances).toHaveLength(1);
+    const element = FakeAudio.instances[0];
+    expect(element.src).toBe(silentWavUri());
+    expect(element.muted).toBe(true);
+    expect(element.playCount).toBe(1);
+    await flushMicrotasks();
+    expect(element.paused).toBe(true);
+    expect(element.muted).toBe(false);
+  });
+
+  it("reuses the prepared element across unlocks instead of stacking elements", async () => {
+    const speech = await freshSpeech();
+    speech.prepareRouteNudgeElement();
+    speech.prepareRouteNudgeElement();
+    expect(FakeAudio.instances).toHaveLength(1);
+  });
+
+  it("plays the prepared element unmuted when the mic is released", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(5_000_000);
+      const speech = await freshSpeech();
+      speech.prepareRouteNudgeElement();
+      const element = FakeAudio.instances[0];
+      await flushMicrotasks();
+      const playsAfterPrepare = element.playCount;
+      speech.releaseMicForPlayback();
+      expect(element.playCount).toBe(playsAfterPrepare + 1);
+      expect(element.muted).toBe(false);
+      expect(element.src).toBe(silentWavUri());
+      expect(speech.msUntilAudioRouteRestored()).toBe(800);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("still attempts a best-effort nudge on a fresh element without preparation", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(5_000_000);
+      const speech = await freshSpeech();
+      speech.releaseMicForPlayback();
+      expect(FakeAudio.instances).toHaveLength(1);
+      expect(FakeAudio.instances[0].playCount).toBe(1);
+      expect(FakeAudio.instances[0].muted).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

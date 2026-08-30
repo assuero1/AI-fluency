@@ -6,6 +6,7 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { compareAnswerForCard } from "@/lib/learning/flashcard-answer";
 import { advanceFlashcardQueue, createFlashcardQueue, selectNextQueueItem, rebuildFlashcardQueue } from "@/lib/learning/flashcard-queue";
 import type { AnswerMatch, DailyQueueSummary, Flashcard, FlashcardAnswer, FlashcardCriterion, FlashcardPracticeResult, FlashcardQueueKind, QueueItem } from "@/lib/learning/flashcard-contracts";
+import { releaseMicForPlayback } from "@/lib/learning/speech";
 import { Pill } from "./Pill";
 import { VoiceButton } from "./VoiceButton";
 
@@ -59,7 +60,19 @@ export function FlashcardTrainer() {
   useEffect(() => {
     const speechWindow = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
     setSpeechSupported(Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition));
-    return () => recognitionRef.current?.abort();
+    return () => {
+      const recognition = recognitionRef.current;
+      if (recognition) {
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
+        recognition.abort();
+        recognitionRef.current = null;
+      }
+      // Sem isso, sair da tela com o ditado ativo deixava a rota do iOS no
+      // auricular para o próximo TTS.
+      releaseMicForPlayback();
+    };
   }, []);
 
   async function loadOverview() {
@@ -231,8 +244,10 @@ export function FlashcardTrainer() {
       for (let i = 0; i < event.results.length; i += 1) transcript += event.results[i][0]?.transcript ?? "";
       setInput(transcript.trim()); setUsedSpeech(true);
     };
-    recognition.onerror = () => { setListening(false); setError("Não foi possível transcrever. Digite ou tente novamente."); };
-    recognition.onend = () => { setListening(false); recognitionRef.current = null; inputRef.current?.focus(); };
+    // Como no chat: liberar o microfone devolve a rota de playback ao
+    // alto-falante — sem isso o próximo TTS saía no auricular no iOS.
+    recognition.onerror = () => { setListening(false); setError("Não foi possível transcrever. Digite ou tente novamente."); releaseMicForPlayback(); };
+    recognition.onend = () => { setListening(false); recognitionRef.current = null; releaseMicForPlayback(); inputRef.current?.focus(); };
     setError(""); setListening(true); recognition.start();
   }
 

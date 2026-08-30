@@ -79,21 +79,67 @@ function looksLikeQuestion(value: string, languageCode: string | undefined) {
   return (starters[languageCode?.toLowerCase() ?? ""] ?? starters.en).test(normalized);
 }
 
-const AUDIO_ROUTE_RESTORE_MS = 350;
+// A restauração da rota no iOS não tem evento observável: depois do ditado, a
+// AVAudioSession sai do modo gravação (auricular) de volta ao alto-falante no
+// próprio ritmo do WebKit. 350ms mostrou-se insuficiente em produção — o TTS
+// às vezes ainda saía no auricular. 800ms cobre o caso com folga e só é pago
+// por quem ditou há pouco.
+const AUDIO_ROUTE_RESTORE_MS = 800;
 
 let micReleasedAt = 0;
 let routeNudgeAudio: HTMLAudioElement | null = null;
+let routeNudgePrepared = false;
 
 /**
- * Marca a liberação do microfone e "acorda" a rota de playback: toca um WAV
- * silencioso ainda no rastro do gesto do usuário (parar o ditado), forçando a
- * AVAudioSession do iOS a sair do modo gravação (auricular) e voltar ao
- * alto-falante antes do próximo TTS. Sem o nudge, a restauração dependia só do
- * wait fixo de `AUDIO_ROUTE_RESTORE_MS` — e às vezes o áudio saía no auricular.
+ * Marca a liberação do microfone e "acorda" a rota de playback: toca o WAV
+ * silencioso no elemento dedicado do nudge (destravado por
+ * `prepareRouteNudgeElement`), forçando a AVAudioSession do iOS a sair do modo
+ * gravação (auricular) e voltar ao alto-falante antes do próximo TTS. Sem o
+ * nudge, a restauração dependia só do wait fixo de `AUDIO_ROUTE_RESTORE_MS` —
+ * e às vezes o áudio saía no auricular.
  */
 export function releaseMicForPlayback() {
   micReleasedAt = Date.now();
   nudgePlaybackRoute();
+}
+
+/**
+ * Garante o elemento dedicado do nudge e o destrava dentro do gesto atual
+ * (mesmo mecanismo do `unlockAudioForPlayback`): um <audio> que já tocou
+ * dentro de um gesto aceita play() programático depois. Sem isso o nudge —
+ * disparado pela liberação do microfone, fora de qualquer gesto — é rejeitado
+ * pelo iOS e nunca reconduz a rota ao alto-falante.
+ */
+export function prepareRouteNudgeElement() {
+  if (typeof window === "undefined" || typeof Audio === "undefined") return;
+  if (routeNudgePrepared) return;
+  try {
+    routeNudgeAudio ??= new Audio();
+    const audio = routeNudgeAudio;
+    if (audio.src !== silentWavUri()) audio.src = silentWavUri();
+    audio.muted = true;
+    const attempt = audio.play();
+    const finish = () => {
+      audio.pause();
+      audio.muted = false;
+    };
+    if (attempt && typeof attempt.then === "function") {
+      // Só marca como preparado se o play foi aceito: uma rejeição (ex.:
+      // chamada fora de gesto) pode ser tentada de novo no próximo gesto.
+      attempt.then(
+        () => {
+          finish();
+          routeNudgePrepared = true;
+        },
+        () => undefined
+      );
+    } else {
+      finish();
+      routeNudgePrepared = true;
+    }
+  } catch {
+    // Destravar o nudge é best-effort; o wait de AUDIO_ROUTE_RESTORE_MS segue.
+  }
 }
 
 export function msUntilAudioRouteRestored(now = Date.now()) {
@@ -135,10 +181,21 @@ export function silentWavUri() {
 function nudgePlaybackRoute() {
   if (typeof window === "undefined" || typeof Audio === "undefined") return;
   try {
+    // Sem elemento destravado em gesto, um <audio> novo criado aqui (fora do
+    // gesto) é rejeitado pelo iOS — o fallback segue best-effort para
+    // desktop/Android, que não exigem gesto.
     routeNudgeAudio ??= new Audio();
-    routeNudgeAudio.src = silentWavUri();
-    routeNudgeAudio.volume = 0;
-    void routeNudgeAudio.play().catch(() => undefined);
+    const audio = routeNudgeAudio;
+    // Mute ou volume 0 fazem o iOS pular a (re)seleção de rota; o silêncio vem
+    // das próprias amostras do WAV, então toca com volume real.
+    audio.muted = false;
+    try {
+      audio.volume = 1;
+    } catch {
+      // O iPhone ignora volume em <audio>; as amostras silenciosas bastam.
+    }
+    if (audio.src !== silentWavUri()) audio.src = silentWavUri();
+    void audio.play().catch(() => undefined);
   } catch {
     // O nudge é best-effort; o wait de AUDIO_ROUTE_RESTORE_MS continua valendo.
   }

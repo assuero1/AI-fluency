@@ -1,6 +1,6 @@
 "use client";
 
-import { silentWavUri } from "@/lib/learning/speech";
+import { prepareRouteNudgeElement, silentWavUri } from "@/lib/learning/speech";
 
 type ActiveVoice = { owner: symbol; stop: () => void };
 
@@ -112,6 +112,10 @@ export function reportVoiceFailure(text: string, languageCode: string | undefine
  */
 export function unlockAudioForPlayback(audio: HTMLAudioElement) {
   try {
+    // Destrava também o elemento dedicado do nudge de rota (lib/learning/speech)
+    // neste mesmo gesto: é ele que devolve o áudio ao alto-falante depois do
+    // ditado, quando o play() programático já não tem gesto no iOS.
+    prepareRouteNudgeElement();
     const position = audio.currentTime;
     const hadSource = Boolean(audio.src);
     if (!hadSource) audio.src = silentWavUri();
