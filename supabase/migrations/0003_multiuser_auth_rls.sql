@@ -68,7 +68,9 @@ create trigger on_auth_user_created
 
 -- 6. RLS: users por auth_user_id; demais 16 tabelas por user_id
 alter table public.users enable row level security;
+drop policy if exists users_select_own on public.users;
 create policy users_select_own on public.users for select using (auth_user_id = auth.uid());
+drop policy if exists users_update_own on public.users;
 create policy users_update_own on public.users for update using (auth_user_id = auth.uid()) with check (auth_user_id = auth.uid());
 
 do $$
@@ -83,9 +85,13 @@ begin
   ]
   loop
     execute format('alter table public.%I enable row level security', t);
+    execute format('drop policy if exists %I on public.%I', t || '_select_own', t);
     execute format('create policy %I on public.%I for select using (user_id = auth.uid())', t || '_select_own', t);
+    execute format('drop policy if exists %I on public.%I', t || '_insert_own', t);
     execute format('create policy %I on public.%I for insert with check (user_id = auth.uid())', t || '_insert_own', t);
+    execute format('drop policy if exists %I on public.%I', t || '_update_own', t);
     execute format('create policy %I on public.%I for update using (user_id = auth.uid()) with check (user_id = auth.uid())', t || '_update_own', t);
+    execute format('drop policy if exists %I on public.%I', t || '_delete_own', t);
     execute format('create policy %I on public.%I for delete using (user_id = auth.uid())', t || '_delete_own', t);
   end loop;
 end $$;

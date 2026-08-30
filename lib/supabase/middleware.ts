@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { checkRateLimit, matchApiRateLimitRule } from "@/lib/api/rate-limit";
 
 const PUBLIC_PAGES = ["/login", "/auth/callback", "/reset-password", "/offline"];
 const PUBLIC_FILES = ["/sw.js", "/icon.svg", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/manifest.webmanifest"];
@@ -59,6 +60,25 @@ export async function updateSession(request: NextRequest) {
     const homeUrl = request.nextUrl.clone();
     homeUrl.pathname = "/";
     return NextResponse.redirect(homeUrl);
+  }
+
+  // Freio de custo para as rotas caras (TTS/LLM): 429 antes de qualquer
+  // handler rodar. Rodo depois da verificação de auth, então a chave é o id
+  // do usuário já validado — clientes não autenticados já levaram 401 acima.
+  if (user && pathname.startsWith("/api/")) {
+    const rule = matchApiRateLimitRule(pathname);
+    if (rule) {
+      const verdict = checkRateLimit(`${user.id}:${rule.name}`, rule.limitPerMinute);
+      if (!verdict.allowed) {
+        const limited = NextResponse.json(
+          { ok: false, error: "Muitas solicitações em pouco tempo. Aguarde alguns segundos e tente novamente." },
+          { status: 429 }
+        );
+        limited.headers.set("Retry-After", String(verdict.retryAfterSeconds));
+        limited.headers.set("Cache-Control", "no-store, max-age=0");
+        return limited;
+      }
+    }
   }
 
   return response;

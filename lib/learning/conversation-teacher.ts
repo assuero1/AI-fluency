@@ -1,7 +1,7 @@
 import { createChatCompletion } from "@/lib/ai/client";
 import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import { LearningStateError } from "./access";
-import { isTeacherChannel, isValidClientRequestId, normalizeStoredInteractionMode } from "./chat-contracts";
+import { isTeacherChannel, isValidClientRequestId, MAX_USER_MESSAGE_LENGTH, normalizeStoredInteractionMode } from "./chat-contracts";
 import { ConversationFields, CorrectionFields, getConversation, MessageFields } from "./conversations";
 import { LanguageProfileFields } from "./profile";
 
@@ -85,7 +85,7 @@ export async function getTeacherMessages(conversationId: string) {
 export async function sendTeacherMessage(conversationId: string, text: string, clientRequestId?: string) {
   const cleanText = text.trim();
   if (!cleanText) throw new LearningStateError("Escreva sua dúvida.", 422);
-  if (cleanText.length > 2000) throw new LearningStateError("A pergunta deve ter no máximo 2000 caracteres.", 422);
+  if (cleanText.length > MAX_USER_MESSAGE_LENGTH) throw new LearningStateError(`A pergunta deve ter no máximo ${MAX_USER_MESSAGE_LENGTH} caracteres.`, 422);
   if (clientRequestId && !isValidClientRequestId(clientRequestId)) {
     throw new LearningStateError("Identificador de envio inválido.", 422);
   }

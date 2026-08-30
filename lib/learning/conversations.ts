@@ -13,6 +13,7 @@ import {
   isInteractionMode,
   isPracticeChannel,
   isValidClientRequestId,
+  MAX_USER_MESSAGE_LENGTH,
   MessageChannel,
   normalizeStoredInteractionMode
 } from "./chat-contracts";
@@ -460,6 +461,11 @@ export async function getConversationWithTutorStart(conversationId?: string) {
 export async function sendConversationMessage(conversationId: string, text: string, clientRequestId?: string) {
   const cleanText = text.trim();
   if (!cleanText) throw new Error("Mensagem vazia.");
+  // Mesmo cap do canal do professor (conversation-teacher): sem limite, um
+  // POST gigante é persistido e vai inteiro no prompt do modelo.
+  if (cleanText.length > MAX_USER_MESSAGE_LENGTH) {
+    throw new LearningStateError(`Mensagem muito longa (máximo de ${MAX_USER_MESSAGE_LENGTH} caracteres). Divida em mensagens menores.`, 422);
+  }
   if (clientRequestId && !isValidClientRequestId(clientRequestId)) {
     throw new LearningStateError("Identificador de envio inválido.", 422);
   }

@@ -4,6 +4,11 @@ export type InteractionMode = (typeof INTERACTION_MODES)[number];
 export const MESSAGE_CHANNELS = ["practice", "teacher"] as const;
 export type MessageChannel = (typeof MESSAGE_CHANNELS)[number];
 
+// Cap do texto enviado pelo aluno, aplicado nos dois canais (practice e
+// teacher). Compartilhado entre o servidor (conversations/conversation-teacher)
+// e o cliente (maxLength do composer).
+export const MAX_USER_MESSAGE_LENGTH = 2000;
+
 type CountableMessage = { fields: { role?: string; channel?: string } };
 
 export type MessageGoalProgress = {
