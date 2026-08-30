@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, CalendarDays, ChevronRight, Clock3, Flame, GraduationCap, Languages, Loader2, LogOut, MessageCircle, Mic, MicOff, Send, Shuffle, Users, Volume2 } from "lucide-react";
+import { Bot, CalendarDays, Check, ChevronRight, Clock3, Flame, GraduationCap, Languages, Loader2, LogOut, MessageCircle, Mic, MicOff, Send, Shuffle, Users, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -22,7 +22,7 @@ import { joinSpeechSegments, releaseMicForPlayback, speechLanguageName, speechLo
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 import { computeActiveElapsedSeconds } from "@/lib/learning/chat-elapsed";
 import type { TeableRecord } from "@/lib/supabase/client";
-import { getMessageGoalProgress, InteractionMode, normalizeStoredInteractionMode } from "@/lib/learning/chat-contracts";
+import { getMessageGoalProgress, InteractionMode, MAX_USER_MESSAGE_LENGTH, normalizeStoredInteractionMode } from "@/lib/learning/chat-contracts";
 
 type ChatConversationProps = {
   conversation: TeableRecord<ConversationFields>;
@@ -90,6 +90,7 @@ export function ChatConversation({
   const [isTopicDialogOpen, setIsTopicDialogOpen] = useState(false);
   const [isTeacherOpen, setIsTeacherOpen] = useState(false);
   const [isExitDialogOpen, setIsExitDialogOpen] = useState(false);
+  const [isFinalizeDialogOpen, setIsFinalizeDialogOpen] = useState(false);
   const [nextTopicTitle, setNextTopicTitle] = useState("");
   const [nextInteractionMode, setNextInteractionMode] = useState<InteractionMode>(() =>
     normalizeStoredInteractionMode(conversation.fields.interaction_mode)
@@ -111,6 +112,8 @@ export function ChatConversation({
   const speechPolishRef = useRef<{ base: string; raw: string } | null>(null);
   const composerInputRef = useRef<HTMLTextAreaElement | null>(null);
   const chatStackRef = useRef<HTMLDivElement | null>(null);
+  const chatEndRef = useRef<HTMLDivElement | null>(null);
+  const nearChatEndRef = useRef(true);
   const selectionExplainerRef = useRef<HTMLDivElement | null>(null);
   const retryRequestRef = useRef<{ text: string; id: string } | null>(null);
   const pausedMsRef = useRef(0);
@@ -132,6 +135,36 @@ export function ChatConversation({
     () => getMessageGoalProgress(messages, conversation.fields.target_user_message_count),
     [messages, conversation.fields.target_user_message_count]
   );
+
+  // Auto-scroll da conversa: a página é o scroller, então um sentinel no fim
+  // do chat-stack diz se o usuário está acompanhando o fim. Sem isso, retomar
+  // caía na mensagem mais antiga e a resposta da IA aparecia fora da tela.
+  const scrollToChatEnd = useCallback((behavior: ScrollBehavior) => {
+    chatEndRef.current?.scrollIntoView({ behavior, block: "end" });
+  }, []);
+
+  useEffect(() => {
+    const updateNearEnd = () => {
+      const sentinel = chatEndRef.current;
+      if (!sentinel) return;
+      const rect = sentinel.getBoundingClientRect();
+      nearChatEndRef.current = rect.top < window.innerHeight + 160;
+    };
+    updateNearEnd();
+    window.addEventListener("scroll", updateNearEnd, { passive: true });
+    return () => window.removeEventListener("scroll", updateNearEnd);
+  }, []);
+
+  // Ao abrir/retomar: vai direto para a última mensagem.
+  useEffect(() => {
+    scrollToChatEnd("auto");
+  }, [scrollToChatEnd]);
+
+  // Nova mensagem, indicador de digitação ou erro de envio: acompanha o fim,
+  // mas só se o usuário não subiu de propósito para ler o histórico.
+  useEffect(() => {
+    if (nearChatEndRef.current) scrollToChatEnd("smooth");
+  }, [messages.length, isSending, error, scrollToChatEnd]);
 
   useEffect(() => {
     const speechWindow = window as SpeechWindow;
@@ -685,6 +718,29 @@ export function ChatConversation({
         </ModalDialog>
       ) : null}
 
+      {isFinalizeDialogOpen ? (
+        <ModalDialog
+          busy={isSending}
+          descriptionId="finalize-conversation-description"
+          onClose={() => setIsFinalizeDialogOpen(false)}
+          titleId="finalize-conversation-title"
+        >
+          <GraduationCap color="var(--primary)" size={30} />
+          <h2 id="finalize-conversation-title" className="section-title">Finalizar e ver o resumo?</h2>
+          <p className="row-meta" id="finalize-conversation-description">
+            A conversa será encerrada e o resumo do treino será gerado. As palavras e correções já ficam valendo para a revisão.
+          </p>
+          <div className="modal-actions">
+            <button data-autofocus className="outline-button" disabled={isSending} onClick={() => setIsFinalizeDialogOpen(false)} type="button">
+              Continuar conversando
+            </button>
+            <button className="green-button" disabled={isSending} onClick={() => { setIsFinalizeDialogOpen(false); void finishConversation(); }} type="button">
+              {isSending ? <Loader2 className="spin" /> : <Check />} Finalizar
+            </button>
+          </div>
+        </ModalDialog>
+      ) : null}
+
       <div className="chat-stack" ref={chatStackRef}>
         {messages.map((message) => {
           const messageCorrections = correctionsByMessageId.get(message.id) ?? [];
@@ -770,7 +826,7 @@ export function ChatConversation({
           </div> : null}
         </div> : null}
 
-        {!readOnly ? <button className="green-button full-button" disabled={isSending} onClick={finishConversation} type="button">
+        {!readOnly ? <button className="green-button full-button" disabled={isSending} onClick={() => setIsFinalizeDialogOpen(true)} type="button">
           {isSending ? <Loader2 className="spin" /> : null}
           Finalizar conversa
         </button> : <div className="empty-state">Esta conversa foi finalizada e está disponível apenas para consulta.</div>}
@@ -799,6 +855,7 @@ export function ChatConversation({
             aria-label="Mensagem para a IA"
             className="composer-input"
             disabled={isSending}
+            maxLength={MAX_USER_MESSAGE_LENGTH}
             onChange={(event) => setText(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === "Enter" && !event.shiftKey && !event.nativeEvent.isComposing) {
@@ -826,6 +883,7 @@ export function ChatConversation({
                   : `Reconhecimento de voz: ${speechLanguageName(speechLanguage)}.`}
           </p>
         ) : null}
+        <div ref={chatEndRef} aria-hidden="true" />
       </div>
     </>
   );

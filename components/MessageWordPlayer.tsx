@@ -417,10 +417,15 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
             </span>
           ))}
         </div>
-      ) : showTranscript ? (
+      ) : showTranscript || status === "error" ? (
         // Texto visível desde já: vira tokens destacáveis quando o áudio
         // terminar de carregar, em vez de deixar a bolha vazia até lá.
+        // No erro, o texto aparece MESMO com transcrição desligada — sem isso
+        // o usuário ficaria sem ler a mensagem de jeito nenhum.
         <div className="chat-words">{text}</div>
+      ) : null}
+      {status === "error" ? (
+        <p className="chat-audio-error-note" role="status">Áudio indisponível agora — leia a mensagem acima.</p>
       ) : null}
       <div className="line-player-controls word-player-controls">
         <button
@@ -432,7 +437,13 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
         >
           <SkipBack />
         </button>
-        <button aria-label={playLabel} className="voice-icon-button" onClick={togglePlayback} title={playLabel} type="button">
+        <button
+          aria-label={playLabel}
+          className={status === "error" ? "voice-icon-button audio-error" : "voice-icon-button"}
+          onClick={togglePlayback}
+          title={playLabel}
+          type="button"
+        >
           <PlayIcon className={status === "loading" ? "spin" : undefined} />
         </button>
         <button

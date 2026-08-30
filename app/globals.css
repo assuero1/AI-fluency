@@ -1412,6 +1412,20 @@ a {
   color: var(--danger);
 }
 
+/* Erro de TTS nos players das bolhas: o compound vence o color padrão do
+   .voice-icon-button (definido mais abaixo no arquivo). */
+.voice-icon-button.audio-error {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
+.chat-audio-error-note {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--danger);
+}
+
 /* Line-synced chat audio player */
 .chat-lines {
   display: flex;

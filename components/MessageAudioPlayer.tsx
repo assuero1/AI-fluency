@@ -274,7 +274,9 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
 
   return (
     <div className="message-audio-player">
-      {showTranscript ? (
+      {showTranscript || status === "error" ? (
+        // No erro, o texto aparece MESMO com transcrição desligada — sem isso
+        // o usuário ficaria sem ler a mensagem de jeito nenhum.
         <div className="chat-lines">
           {lines.map((line, index) => (
             <span
@@ -286,6 +288,9 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
           ))}
         </div>
       ) : null}
+      {status === "error" ? (
+        <p className="chat-audio-error-note" role="status">Áudio indisponível agora — leia a mensagem acima.</p>
+      ) : null}
       <div className="line-player-controls">
         <button
           aria-label="Voltar uma frase"
@@ -296,7 +301,13 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
         >
           <SkipBack />
         </button>
-        <button aria-label={playLabel} className="voice-icon-button" onClick={togglePlayback} title={playLabel} type="button">
+        <button
+          aria-label={playLabel}
+          className={status === "error" ? "voice-icon-button audio-error" : "voice-icon-button"}
+          onClick={togglePlayback}
+          title={playLabel}
+          type="button"
+        >
           <PlayIcon className={status === "loading" ? "spin" : undefined} />
         </button>
         <button
