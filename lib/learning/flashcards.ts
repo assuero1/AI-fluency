@@ -11,6 +11,7 @@ import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answ
 import { isRatingCorrect, rebuildFlashcardQueue, inferRecallRating, resolveBinaryRating, resolveDifficultyRating } from "./flashcard-queue";
 import { calculateAdaptiveReview, previewSingleInterval, reviewToSenseFields, reviewToWordFields, type ReviewAttempt, type ReviewFields } from "./spaced-repetition";
 import { chooseCardTypes, countPlannedTypes, type CardTypeFlags } from "./flashcard-type-selection";
+import { allowedFunctionWords, countLexicalWords, escapeRegExp, lexicalTokens, replaceTargetWithBlank, targetOccurrenceCount } from "./sentence-validation";
 import { aggregateSenseReviewToWordFields, listSensesByWordIds, resolveDueSenses } from "./word-senses";
 import {
   flashcardCriteria,
@@ -26,6 +27,7 @@ import {
 
 export { flashcardCriteria } from "./flashcard-contracts";
 export type { Flashcard, FlashcardCriterion } from "./flashcard-contracts";
+export { allowedFunctionWords, countLexicalWords, escapeRegExp, lexicalTokens, replaceTargetWithBlank, targetOccurrenceCount };
 
 export type PracticeSessionFields = {
   Name?: string;
@@ -976,12 +978,6 @@ function isRecallRating(value: unknown): value is RecallRating { return value ==
 function isFlashcardDifficulty(value: unknown): value is FlashcardDifficulty { return value === "hard" || value === "easy"; }
 function cardsCount(cards: Flashcard[] | undefined) { return cards?.length ?? 0; }
 function targetText(word: TeableRecord<WordFields>) { return (word.fields.display_text || word.fields.lemma || "").trim(); }
-function targetOccurrenceCount(sentence: string, target: string) { return [...sentence.matchAll(new RegExp(`(^|\\s|[.,;:!?¿¡])${escapeRegExp(target)}(?=$|\\s|[.,;:!?¿¡])`, "giu"))].length; }
-function replaceTargetWithBlank(sentence: string, target: string) { return sentence.replace(new RegExp(`(^|\\s|[.,;:!?¿¡])${escapeRegExp(target)}(?=$|\\s|[.,;:!?¿¡])`, "iu"), (_match, prefix: string) => `${prefix}___`); }
-function escapeRegExp(value: string) { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
-function countLexicalWords(value: string) { return value.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)?.length ?? 0; }
-function lexicalTokens(value: string) { return (value.toLocaleLowerCase().match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu) ?? []).map((token) => token.normalize("NFC")); }
-const allowedFunctionWords = new Set("a an the to of in on at for with and or but i you he she it we they my your his her our their am is are was were be been do does did have has had o os as um uma uns umas de da do das dos em no na nos nas para por com e ou mas eu você ele ela nós vocês eles elas meu minha seu sua el la los las un una unos unas de del al en por para con y o pero yo tú usted él ella nosotros ustedes ellos ellas mi tu su es son era fue ser estar ha han haber".split(" "));
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number) { return new Promise<T>((resolve, reject) => { const timer = setTimeout(() => reject(new Error("Flashcard generation timed out.")), timeoutMs); promise.then((value) => { clearTimeout(timer); resolve(value); }, (error) => { clearTimeout(timer); reject(error); }); }); }
 function isStoredFlashcard(value: unknown): value is Flashcard {
   if (!value || typeof value !== "object") return false;

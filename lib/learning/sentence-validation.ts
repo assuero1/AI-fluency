@@ -1,0 +1,6 @@
+export function targetOccurrenceCount(sentence: string, target: string) { return [...sentence.matchAll(new RegExp(`(^|\\s|[.,;:!?¿¡])${escapeRegExp(target)}(?=$|\\s|[.,;:!?¿¡])`, "giu"))].length; }
+export function replaceTargetWithBlank(sentence: string, target: string) { return sentence.replace(new RegExp(`(^|\\s|[.,;:!?¿¡])${escapeRegExp(target)}(?=$|\\s|[.,;:!?¿¡])`, "iu"), (_match, prefix: string) => `${prefix}___`); }
+export function escapeRegExp(value: string) { return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+export function countLexicalWords(value: string) { return value.match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu)?.length ?? 0; }
+export function lexicalTokens(value: string) { return (value.toLocaleLowerCase().match(/[\p{L}\p{N}]+(?:['’][\p{L}\p{N}]+)*/gu) ?? []).map((token) => token.normalize("NFC")); }
+export const allowedFunctionWords = new Set("a an the to of in on at for with and or but i you he she it we they my your his her our their am is are was were be been do does did have has had o os as um uma uns umas de da do das dos em no na nos nas para por com e ou mas eu você ele ela nós vocês eles elas meu minha seu sua el la los las un una unos unas de del al en por para con y o pero yo tú usted él ella nosotros ustedes ellos ellas mi tu su es son era fue ser estar ha han haber".split(" "));
