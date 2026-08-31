@@ -74,6 +74,7 @@ type VocabularyCandidateFamily = Omit<VocabularyCandidateGroup, "kind" | "existi
 
 const MAX_VOCABULARY_CANDIDATES = 80;
 const VOCABULARY_ANALYSIS_CHUNK_SIZE = 20;
+const VOCABULARY_ANALYSIS_CONCURRENCY = 3;
 const VOCABULARY_TRANSLATION_FALLBACK_CHUNK_SIZE = 5;
 const VOCABULARY_ANALYSIS_CACHE_TTL_MS = 10 * 60_000;
 const MAX_VOCABULARY_ANALYSIS_CACHE_ENTRIES = 32;
@@ -859,13 +860,32 @@ async function analyzeVocabulary(candidates: VocabularyCandidate[], language: st
   }])) as Record<string, VocabularyLinguisticData>;
   // Batching keeps each response small enough to avoid the truncated JSON that
   // used to push every candidate silently onto the fallback lemma. Chunks run
-  // sequentially to stay clear of provider rate limits.
-  for (let index = 0; index < candidates.length; index += VOCABULARY_ANALYSIS_CHUNK_SIZE) {
-    const chunk = candidates.slice(index, index + VOCABULARY_ANALYSIS_CHUNK_SIZE);
-    Object.assign(merged, await analyzeVocabularyChunk(chunk, language, knownVocabulary));
-  }
+  // with small concurrency so a full conversation analysis stays inside the
+  // picker wait without hammering the provider's per-key rate limit.
+  const chunkResults: Record<string, VocabularyLinguisticData>[] = [];
+  await runWithConcurrency(
+    VOCABULARY_ANALYSIS_CONCURRENCY,
+    Math.ceil(candidates.length / VOCABULARY_ANALYSIS_CHUNK_SIZE),
+    async (chunkIndex) => {
+      const chunk = candidates.slice(chunkIndex * VOCABULARY_ANALYSIS_CHUNK_SIZE, (chunkIndex + 1) * VOCABULARY_ANALYSIS_CHUNK_SIZE);
+      chunkResults.push(await analyzeVocabularyChunk(chunk, language, knownVocabulary));
+    }
+  );
+  for (const result of chunkResults) Object.assign(merged, result);
   await translateMissingTranslations(merged, candidates, language);
   return merged;
+}
+
+async function runWithConcurrency<T>(limit: number, total: number, worker: (index: number) => Promise<T>) {
+  let next = 0;
+  const runners = Array.from({ length: Math.min(limit, total) }, async () => {
+    while (next < total) {
+      const index = next;
+      next += 1;
+      await worker(index);
+    }
+  });
+  await Promise.all(runners);
 }
 
 async function analyzeVocabularyChunk(chunk: VocabularyCandidate[], language: string, knownVocabulary: KnownVocabularyEntry[] = []) {
@@ -887,7 +907,7 @@ async function analyzeVocabularyChunk(chunk: VocabularyCandidate[], language: st
         role: "user",
         content: `Idioma: ${language}\nPalavras conhecidas: ${JSON.stringify(relevantKnown)}\nItens: ${JSON.stringify(chunk.map((candidate) => ({ id: candidate.id, text: candidate.text, context: candidate.context })))}`
       }
-    ], { temperature: 0, maxTokens: 2_000, timeoutMs: 15_000 });
+    ], { temperature: 0, maxTokens: 2_000, timeoutMs: 15_000, disableThinking: true });
     content = response.content;
   } catch (error) {
     console.error(`Vocabulary analysis failed for ${chunk.length} candidate(s) in ${language}; keeping fallback lemmas.`, error);
@@ -947,7 +967,7 @@ async function translateMissingTranslations(
           content: "Traduza cada item para português brasileiro. Responda somente JSON válido: um array com objetos {id, translation}. Preserve cada id exatamente."
         },
         { role: "user", content: `Idioma: ${language}\nItens: ${JSON.stringify(batch.map((candidate) => ({ id: candidate.id, text: candidate.text, context: candidate.context })))}` }
-      ], { temperature: 0, maxTokens: 800, timeoutMs: 15_000 });
+      ], { temperature: 0, maxTokens: 800, timeoutMs: 15_000, disableThinking: true });
       content = response.content;
       consecutiveFailures = 0;
     } catch (error) {

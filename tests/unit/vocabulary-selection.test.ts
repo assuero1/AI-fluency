@@ -252,7 +252,34 @@ describe("vocabulary candidate selection", () => {
       await groupNewVocabularyCandidates(candidates, [], "en");
 
       expect(createChatCompletion).toHaveBeenCalledTimes(3);
-      expect(createChatCompletion.mock.calls[0][1]).toMatchObject({ maxTokens: 2_000, timeoutMs: 15_000 });
+      // O modelo configurado é híbrido (thinking): sem disableThinking o
+      // raciocínio consome o orçamento de tokens e o JSON vem truncado depois
+      // do timeout, derrubando todo o chunk (palavras sem tradução não salvam).
+      expect(createChatCompletion.mock.calls[0][1]).toMatchObject({
+        maxTokens: 2_000,
+        timeoutMs: 15_000,
+        disableThinking: true
+      });
+    });
+
+    it("runs analysis chunks with limited concurrency and merges every chunk result", async () => {
+      const { groupNewVocabularyCandidates } = await import("../../lib/learning/vocabulary-selection");
+      const candidates = Array.from({ length: 45 }, (_, index) => buildCandidate(`user:w${index}`, "user", 1));
+      let inFlight = 0;
+      let maxInFlight = 0;
+      createChatCompletion.mockImplementation(() => {
+        inFlight += 1;
+        maxInFlight = Math.max(maxInFlight, inFlight);
+        return new Promise((resolve) => setTimeout(() => {
+          inFlight -= 1;
+          resolve({ content: "[]", tokensUsed: 1 });
+        }, 5));
+      });
+
+      await groupNewVocabularyCandidates(candidates, [], "en");
+
+      expect(maxInFlight).toBeGreaterThan(1);
+      expect(maxInFlight).toBeLessThanOrEqual(3);
     });
 
     it("logs an error and falls back when a chunk fails instead of swallowing it", async () => {
@@ -297,7 +324,7 @@ describe("vocabulary candidate selection", () => {
       const groups = await groupNewVocabularyCandidates([buildCandidate("user:biblioteca", "user", 1)], [], "en");
 
       expect(createChatCompletion).toHaveBeenCalledTimes(2);
-      expect(createChatCompletion.mock.calls[1][1]).toMatchObject({ maxTokens: 800, timeoutMs: 15_000 });
+      expect(createChatCompletion.mock.calls[1][1]).toMatchObject({ maxTokens: 800, timeoutMs: 15_000, disableThinking: true });
       expect(groups[0].translation).toBe("biblioteca");
     });
 

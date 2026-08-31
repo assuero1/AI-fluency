@@ -507,7 +507,7 @@ async function generateConversationSummary(
           ].join("\n\n")
         }
       ],
-      { temperature: 0.3, maxTokens: 420, timeoutMs: 4_500 }
+      { temperature: 0.3, maxTokens: 420, timeoutMs: 8_000, disableThinking: true }
     );
     return normalizeSummary(parseSummary(ai.content), corrections, words);
   } catch {
