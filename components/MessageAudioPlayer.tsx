@@ -7,9 +7,11 @@ import { splitIntoSentences } from "@/lib/learning/sentences";
 import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
 import {
   claimActiveVoice,
+  createStallTracker,
   releaseActiveVoice,
   reportVoiceFailure,
   requestSpeech,
+  samplePlaybackStall,
   unlockAudioForPlayback
 } from "./voice-shared";
 
@@ -36,6 +38,8 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
   const rafRef = useRef(0);
   const ownerRef = useRef(Symbol("message-audio-player"));
   const unlockedRef = useRef(false);
+  const unlockHandleRef = useRef<{ cancel: () => void } | null>(null);
+  const stallTrackerRef = useRef(createStallTracker());
   const lastErrorRef = useRef("");
   const generationRef = useRef(0); // invalida callbacks antigos
 
@@ -65,7 +69,8 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
     setLine(0);
   }, [releaseAudio, setLine, setStatusTracked]);
 
-  /** Cria (uma única vez) o <audio> da mensagem, já com o handler de término. */
+  /** Cria (uma única vez) o <audio> da mensagem, já com handlers de término,
+   * pausa externa e erro. */
   const ensureAudioElement = useCallback(() => {
     const existing = audioRef.current;
     if (existing) return existing;
@@ -76,9 +81,25 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
       cancelAnimationFrame(rafRef.current);
       setStatusTracked("ended");
     };
+    // Pausa sem passar pelos botões (interrupção do iOS, pause() tardio de um
+    // destravamento antigo): reconcilia a UI em vez de exibir "tocando" sem som.
+    audio.onpause = () => {
+      if (statusRef.current !== "playing") return;
+      cancelAnimationFrame(rafRef.current);
+      const atEnd = Number.isFinite(audio.duration) && audio.duration > 0 && audio.currentTime >= audio.duration - 0.05;
+      setStatusTracked(atEnd ? "ended" : "paused");
+    };
+    // Erro do elemento (fonte corrompida, blob revogado): estado de erro em
+    // vez de loading/playing eterno.
+    audio.onerror = () => {
+      if (statusRef.current !== "playing" && statusRef.current !== "loading") return;
+      cancelAnimationFrame(rafRef.current);
+      reportVoiceFailure(text, languageCode, "audio element error");
+      setStatusTracked("error");
+    };
     audioRef.current = audio;
     return audio;
-  }, [setStatusTracked]);
+  }, [languageCode, setStatusTracked, text]);
 
   /**
    * Prepara a faixa única da mensagem: busca o áudio de todas as frases em
@@ -109,7 +130,16 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
     return false;
   }, [ensureAudioElement, languageCode, lines]);
 
+  /** O watchdog esgotou as recuperações do episódio: nem re-seek + play()
+   * revive o elemento — declara erro como nos demais caminhos de falha. */
+  const giveUpStalledPlayback = useCallback(() => {
+    cancelAnimationFrame(rafRef.current);
+    reportVoiceFailure(text, languageCode, "playback stalled with no progress");
+    setStatusTracked("error");
+  }, [languageCode, setStatusTracked, text]);
+
   const startLineLoop = useCallback((generation: number) => {
+    stallTrackerRef.current = createStallTracker();
     const step = () => {
       if (generationRef.current !== generation) return;
       const audio = audioRef.current;
@@ -125,16 +155,21 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
       }
       line = Math.max(0, line);
       if (line !== currentLineRef.current) setLine(line);
+      samplePlaybackStall(audio, stallTrackerRef.current, statusRef.current === "playing", giveUpStalledPlayback);
       rafRef.current = requestAnimationFrame(step);
     };
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(step);
-  }, [setLine]);
+  }, [giveUpStalledPlayback, setLine]);
 
   /** Toca a faixa a partir de `time` segundos. Retorna false se falhar. */
   const startPlayerAt = useCallback(async (time: number, generation: number) => {
     const audio = audioRef.current;
     if (!audio) return false;
+
+    // O destravamento do gesto não pode pausar o play real nem deixá-lo mudo.
+    unlockHandleRef.current?.cancel();
+    audio.muted = false;
 
     // iOS: aguarda a AVAudioSession restaurar a rota do alto-falante
     // antes de tocar após uso do microfone.
@@ -178,7 +213,7 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
     const audio = ensureAudioElement();
     if (!unlockedRef.current) {
       unlockedRef.current = true;
-      unlockAudioForPlayback(audio);
+      unlockHandleRef.current = unlockAudioForPlayback(audio);
     }
 
     const ready = await prepareTrack(generation);

@@ -17,9 +17,11 @@ import { buildSeamlessTrack, type SeamlessTrack } from "@/lib/learning/seamless-
 import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
 import {
   claimActiveVoice,
+  createStallTracker,
   releaseActiveVoice,
   reportVoiceFailure,
   requestCaptionedSpeech,
+  samplePlaybackStall,
   unlockAudioForPlayback,
   type CaptionedWord
 } from "./voice-shared";
@@ -87,6 +89,8 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
   const ownerRef = useRef(Symbol("message-word-player"));
   const captionedFailedRef = useRef(false);
   const unlockedRef = useRef(false);
+  const unlockHandleRef = useRef<{ cancel: () => void } | null>(null);
+  const stallTrackerRef = useRef(createStallTracker());
 
   const setStatusTracked = useCallback((next: PlayerStatus) => {
     statusRef.current = next;
@@ -125,7 +129,8 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     setActiveWord(-1);
   }, [releaseAudio, setActiveWord, setSelectedIndex, setStatusTracked]);
 
-  /** Cria (uma única vez) o <audio> da mensagem, já com o handler de término. */
+  /** Cria (uma única vez) o <audio> da mensagem, já com handlers de término,
+   * pausa externa e erro. */
   const ensureAudioElement = useCallback(() => {
     const existing = audioRef.current;
     if (existing) return existing;
@@ -136,15 +141,31 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
       cancelAnimationFrame(rafRef.current);
       setStatusTracked("ended");
     };
+    // Pausa sem passar pelos botões (interrupção do iOS, pause() tardio de um
+    // destravamento antigo): reconcilia a UI em vez de exibir "tocando" sem som.
+    audio.onpause = () => {
+      if (statusRef.current !== "playing") return;
+      cancelAnimationFrame(rafRef.current);
+      const atEnd = Number.isFinite(audio.duration) && audio.duration > 0 && audio.currentTime >= audio.duration - 0.05;
+      setStatusTracked(atEnd ? "ended" : "paused");
+    };
+    // Erro do elemento (fonte corrompida, blob revogado): estado de erro em
+    // vez de loading/playing eterno.
+    audio.onerror = () => {
+      if (statusRef.current !== "playing" && statusRef.current !== "loading") return;
+      cancelAnimationFrame(rafRef.current);
+      reportVoiceFailure(text, languageCode, "audio element error");
+      setStatusTracked("error");
+    };
     audioRef.current = audio;
     return audio;
-  }, [setStatusTracked]);
+  }, [languageCode, setStatusTracked, text]);
 
   /** Destrava o <audio> no gesto do usuário (iOS) — chamada nos handlers de toque. */
   const unlockInGesture = useCallback(() => {
     if (unlockedRef.current) return;
     unlockedRef.current = true;
-    unlockAudioForPlayback(ensureAudioElement());
+    unlockHandleRef.current = unlockAudioForPlayback(ensureAudioElement());
   }, [ensureAudioElement]);
 
   const enterLegacyMode = useCallback(() => {
@@ -154,7 +175,16 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     setMode("legacy");
   }, [releaseAudio, setStatusTracked]);
 
+  /** O watchdog esgotou as recuperações do episódio: nem re-seek + play()
+   * revive o elemento — declara erro como nos demais caminhos de falha. */
+  const giveUpStalledPlayback = useCallback(() => {
+    cancelAnimationFrame(rafRef.current);
+    reportVoiceFailure(text, languageCode, "playback stalled with no progress");
+    setStatusTracked("error");
+  }, [languageCode, setStatusTracked, text]);
+
   const startHighlightLoop = useCallback((generation: number) => {
+    stallTrackerRef.current = createStallTracker();
     const step = () => {
       if (generationRef.current !== generation) return;
       const audio = audioRef.current;
@@ -162,11 +192,12 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
       if (!audio || !current) return;
       const index = activeIndexAtTime(current.aligned, audio.currentTime);
       if (index !== activeWordRef.current) setActiveWord(index);
+      samplePlaybackStall(audio, stallTrackerRef.current, statusRef.current === "playing", giveUpStalledPlayback);
       rafRef.current = requestAnimationFrame(step);
     };
     cancelAnimationFrame(rafRef.current);
     rafRef.current = requestAnimationFrame(step);
-  }, [setActiveWord]);
+  }, [giveUpStalledPlayback, setActiveWord]);
 
   const loadCaptionedTask = useCallback(async () => {
     if (captionedFailedRef.current) return;
@@ -247,6 +278,10 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
   const playAt = useCallback(async (time: number, generation: number) => {
     const audio = audioRef.current;
     if (!audio) return;
+
+    // O destravamento do gesto não pode pausar o play real nem deixá-lo mudo.
+    unlockHandleRef.current?.cancel();
+    audio.muted = false;
 
     // iOS: aguarda a AVAudioSession restaurar a rota do alto-falante.
     const wait = msUntilAudioRouteRestored();
