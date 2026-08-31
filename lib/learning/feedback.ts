@@ -284,14 +284,23 @@ function buildCompletionSummary(
 }
 
 export async function addSavedWordsToDailyFeedback(conversation: TeableRecord<ConversationFields>, count: number) {
+  return addLearnedWordsToDailyFeedback(
+    conversation.fields.user_id,
+    conversation.fields.language_profile_id,
+    toDateKey(conversation.fields.ended_at || conversation.fields.started_at),
+    count
+  );
+}
+
+/** Incrementa new_words_count do feedback do dia (usado por conversas e pela sessão de palavras novas). */
+export async function addLearnedWordsToDailyFeedback(userId: string, profileId: string, dateKey: string, count: number) {
   if (count <= 0) return;
   const client = getTeableClient();
   const feedbacks = await client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180);
-  const date = toDateKey(conversation.fields.ended_at || conversation.fields.started_at);
   const feedback = feedbacks.find((item) =>
-    item.fields.user_id === conversation.fields.user_id &&
-    item.fields.language_profile_id === conversation.fields.language_profile_id &&
-    toDateKey(item.fields.date) === date
+    item.fields.user_id === userId &&
+    item.fields.language_profile_id === profileId &&
+    toDateKey(item.fields.date) === dateKey
   );
   if (feedback) {
     await client.updateRecord<DailyFeedbackFields>("dailyFeedbacks", feedback.id, {
@@ -646,7 +655,7 @@ function clampScore(value: number) {
   return Math.max(0, Math.min(10, Math.round(value)));
 }
 
-function toDateKey(value: string) {
+export function toDateKey(value: string) {
   return new Date(value).toISOString().slice(0, 10);
 }
 

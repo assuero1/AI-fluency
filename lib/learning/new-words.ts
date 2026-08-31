@@ -4,6 +4,7 @@ import { createChatCompletion } from "@/lib/ai/client";
 import { getTeableClient, TeableRecord, TeableRequestError } from "@/lib/supabase/client";
 import { LearningStateError } from "./access";
 import { WordFields, WordSenseFields } from "./conversations";
+import { addLearnedWordsToDailyFeedback, toDateKey } from "./feedback";
 import { getActiveLanguageProfile, getSessionUser } from "./profile";
 import { canonicalVocabularyKey, normalizeVocabularyToken } from "./vocabulary-selection";
 import { canonicalSenseKey, createWordSense, listSensesByWordIds, matchesCanonicalSenseKey, nextSenseOrderFromList, updateWordSense } from "./word-senses";
@@ -16,7 +17,8 @@ import {
   type JudgedTranslation,
   type NewWordPreview,
   type NewWordsAttemptResult,
-  type NewWordsSentence
+  type NewWordsSentence,
+  type NewWordsSessionResult
 } from "./new-words-contracts";
 import { fallbackJudgment, mapVerdictToMatch, sanitizeJudgment, validateGeneratedSentences, validateProposedWords, type ExistingBankWord, type GeneratedSentence } from "./new-words-validation";
 
@@ -322,6 +324,91 @@ export async function abandonNewWordsPractice(sessionId: string) {
   });
   await client.createEvent(user.id, "new_words_session_abandoned", { session_id: session.id });
   return { sessionId: session.id, status: "abandoned" as const };
+}
+
+// ---------- Conclusão ----------
+
+const completionLocks = new Map<string, Promise<NewWordsSessionResult>>();
+
+export async function completeNewWordsPractice(sessionId: string, clientCompletionId: string): Promise<NewWordsSessionResult> {
+  if (!sessionId.trim()) throw new LearningStateError("Informe a sessão.", 422);
+  if (!isOperationId(clientCompletionId)) throw new LearningStateError("Identificador de conclusão inválido.", 422);
+  const pending = completionLocks.get(sessionId);
+  if (pending) return pending;
+  const operation = completeNewWordsPracticeUnlocked(sessionId, clientCompletionId);
+  completionLocks.set(sessionId, operation);
+  try { return await operation; } finally { completionLocks.delete(sessionId); }
+}
+
+async function completeNewWordsPracticeUnlocked(sessionId: string, clientCompletionId: string): Promise<NewWordsSessionResult> {
+  const client = getTeableClient();
+  const user = await getSessionUser();
+  const profile = await getActiveLanguageProfile(user);
+  if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
+  const scopeFilters = [
+    { field: "user_id", value: user.id },
+    { field: "language_profile_id", value: profile.id }
+  ];
+  const sessions = await client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters);
+  const session = sessions.find((item) => item.id === sessionId && item.fields.type === SESSION_TYPE);
+  if (!session) throw new LearningStateError("Sessão não encontrada.", 404);
+  const focus = parseJsonObject(session.fields.focus ?? "{}") as Record<string, unknown> & {
+    completed?: boolean; completionId?: string; result?: NewWordsSessionResult; expandedSenses?: number;
+  };
+  if (focus.completed || session.fields.status === "completed") {
+    if (focus.completionId === clientCompletionId && focus.result) return focus.result;
+    throw new LearningStateError("Esta sessão já foi contabilizada.", 409);
+  }
+  const [sentences, attempts] = await Promise.all([
+    listSentences(client, user.id, sessionId),
+    client.listRecordsWhere<FlashcardAttemptFields>("flashcardAttempts", "practice_session_id", sessionId)
+  ]);
+  const liveAttempts = attempts.filter((record) => !record.fields.undone_at);
+  const answeredBySentence = new Map<string, typeof liveAttempts[number]>();
+  for (const record of liveAttempts.sort((a, b) => dateValue(a.fields.created_at) - dateValue(b.fields.created_at))) {
+    answeredBySentence.set(record.fields.flashcard_id, record);
+  }
+  const pending = sentences.filter((sentence) => !answeredBySentence.has(sentence.id));
+  if (pending.length) throw new LearningStateError("Ainda existem frases pendentes nesta sessão.", 409);
+
+  const judgmentOf = (record: typeof liveAttempts[number]) =>
+    parseJsonObject(record.fields.judgment_json ?? "") as JudgedTranslation;
+  const correctSentences = liveAttempts.filter((record) => record.fields.was_correct).length;
+  const firstAttemptCorrect = correctSentences; // cada frase é apresentada uma única vez
+  const newSensesAdded = liveAttempts.filter((record) => {
+    const judgment = judgmentOf(record);
+    return Boolean(judgment.newSenseTranslation) && (judgment.verdict === "correct" || judgment.verdict === "acceptable");
+  }).length;
+  const score = sentences.length ? Math.round((correctSentences / sentences.length) * 100) : 0;
+  const durationSeconds = Math.max(0, Math.round((Date.now() - dateValue(session.fields.started_at || session.fields.created_at)) / 1000));
+  const words = await sessionWordPreviews(client, user.id, profile.id, session);
+  const result: NewWordsSessionResult = {
+    score, wordCount: words.length, sentenceCount: sentences.length,
+    correctSentences, firstAttemptCorrect, newSensesAdded, durationSeconds, words
+  };
+
+  const endedAt = new Date().toISOString();
+  await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, {
+    focus: JSON.stringify({ ...focus, completed: true, completionId: clientCompletionId, result, expandedSenses: newSensesAdded }),
+    status: "completed",
+    ended_at: endedAt,
+    duration_seconds: durationSeconds,
+    presentation_count: sentences.length,
+    correct_count: correctSentences,
+    incorrect_count: sentences.length - correctSentences,
+    score,
+    updated_at: endedAt
+  });
+  await client.createEvent(user.id, "new_words_session_completed", {
+    session_id: sessionId, score, sentence_count: sentences.length, correct: correctSentences, new_senses: newSensesAdded, duration_seconds: durationSeconds
+  });
+  // Palavras novas contam no feedback do dia (mesma métrica das conversas).
+  try {
+    await addLearnedWordsToDailyFeedback(user.id, profile.id, toDateKey(new Date().toISOString()), words.length);
+  } catch (error) {
+    console.warn("new words: daily feedback update failed", error);
+  }
+  return result;
 }
 
 // ---------- Julgamento da tentativa ----------
