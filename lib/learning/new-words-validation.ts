@@ -2,6 +2,9 @@
 import { normalizeVocabularyToken, parseVocabularyForms } from "./vocabulary-selection";
 import { NEW_WORDS_SENTENCE_MAX_WORDS, NEW_WORDS_SENTENCE_MIN_WORDS, SENTENCES_PER_WORD } from "./new-words-contracts";
 import { allowedFunctionWords, countLexicalWords, lexicalTokens, targetOccurrenceCount } from "./sentence-validation";
+import type { AnswerMatch } from "./flashcard-contracts";
+import { compareFlashcardAnswer } from "./flashcard-answer";
+import type { JudgedTranslation, TranslationVerdict } from "./new-words-contracts";
 
 export type ProposedWord = { lemma: string; translation: string; partOfSpeech: string };
 export type ExistingBankWord = { lemma: string; displayText: string; formsJson?: string };
@@ -94,4 +97,46 @@ export function validateGeneratedSentences(
 
 function normalizeVocabularyTokenSafe(value: string) {
   return value.normalize("NFKC").trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+}
+
+const translationVerdicts: TranslationVerdict[] = ["correct", "acceptable", "minor_error", "incorrect"];
+
+export function mapVerdictToMatch(verdict: TranslationVerdict): AnswerMatch {
+  if (verdict === "correct") return "exact";
+  return verdict;
+}
+
+export function sanitizeJudgment(value: unknown, referenceTranslation: string): JudgedTranslation | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  const verdict = translationVerdicts.find((candidate) => candidate === record.verdict);
+  if (!verdict) return null;
+  const rawFeedback = typeof record.feedback === "string" ? record.feedback.trim() : "";
+  const corrected = typeof record.corrected_translation === "string" && record.corrected_translation.trim()
+    ? record.corrected_translation.trim()
+    : referenceTranslation;
+  const newSense = typeof record.new_sense_translation === "string" && record.new_sense_translation.trim()
+    ? record.new_sense_translation.trim().slice(0, 200)
+    : undefined;
+  return {
+    verdict,
+    feedback: (rawFeedback || feedbackFallback(verdict)).slice(0, 300),
+    correctedTranslation: corrected,
+    // Sentido novo só faz sentido quando o aluno acertou.
+    ...(verdict === "correct" || verdict === "acceptable" ? { newSenseTranslation: newSense } : {})
+  };
+}
+
+function feedbackFallback(verdict: TranslationVerdict) {
+  if (verdict === "incorrect") return "Ainda não é essa a tradução. Veja a tradução esperada e vamos para a próxima.";
+  if (verdict === "minor_error") return "Quase isso! Confira os detalhes na tradução esperada.";
+  return "Isso mesmo!";
+}
+
+export function fallbackJudgment(userTranslation: string, referenceTranslation: string): JudgedTranslation {
+  const match = compareFlashcardAnswer(userTranslation, referenceTranslation);
+  const verdict: TranslationVerdict = match === "exact" || match === "acceptable" ? "correct"
+    : match === "minor_error" ? "minor_error"
+    : "incorrect";
+  return { verdict, feedback: feedbackFallback(verdict), correctedTranslation: referenceTranslation };
 }
