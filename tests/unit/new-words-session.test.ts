@@ -60,4 +60,28 @@ describe("geração de frases para palavras novas", () => {
     );
     expect(sentencesByWord.get("w1")?.[0].translation).toBe("pão é bom");
   });
+
+  it("marca a sessão como failed quando a gravação dos cards falha", async () => {
+    const { createNewWordsPractice } = await import("../../lib/learning/new-words");
+    createChatCompletion
+      .mockResolvedValueOnce({ content: JSON.stringify({ words: [{ lemma: "bread", translation: "pão", part_of_speech: "noun" }] }) })
+      .mockResolvedValueOnce({ content: JSON.stringify({ sentences: [
+        { text: "I eat bread", translation: "eu como pão", word: "bread" },
+        { text: "bread is good", translation: "pão é bom", word: "bread" },
+        { text: "want bread", translation: "quero pão", word: "bread" }
+      ] }) });
+    const originalCreateRecord = client.createRecord.bind(client);
+    client.createRecord = async (table: string, fields: Record<string, unknown>) => {
+      if (table === "flashcards") throw new Error("falha ao gravar card");
+      return originalCreateRecord(table, fields);
+    };
+    try {
+      await expect(createNewWordsPractice({ count: 3 })).rejects.toThrow("falha ao gravar card");
+      const session = [...client.records.values()].find((record) => record.id.startsWith("practiceSessions"));
+      expect(session?.fields.type).toBe("new_words");
+      expect(session?.fields.status).toBe("failed");
+    } finally {
+      client.createRecord = originalCreateRecord;
+    }
+  });
 });

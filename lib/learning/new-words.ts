@@ -170,6 +170,7 @@ export async function createNewWordsPractice(input: { count?: unknown }) {
   if (!usable.length) throw new LearningStateError("Não foi possível montar as frases agora. Tente novamente em instantes.", 502);
 
   // 4. Sessão preparing → cards → active (mesmo ciclo dos flashcards).
+  const operationStartedAt = Date.now();
   const session = await client.createRecord<PracticeSessionFields>("practiceSessions", {
     Name: `Palavras novas · ${now.slice(0, 10)}`,
     user_id: user.id,
@@ -196,52 +197,60 @@ export async function createNewWordsPractice(input: { count?: unknown }) {
 
   const sentences: NewWordsSentence[] = [];
   let position = 0;
-  for (const word of usable) {
-    for (const generated of generation.sentencesByWord.get(word.wordId) ?? []) {
-      const record = await client.createRecord<FlashcardFields>("flashcards", {
-        user_id: user.id,
-        practice_session_id: session.id,
-        target_word_id: word.wordId,
-        target_sense_id: word.senseId,
-        supporting_word_ids: "[]",
-        card_type: "translation",
-        prompt: generated.text,
-        expected_answer: generated.translation,
-        accepted_answers: "[]",
-        translation: generated.translation,
-        explanation: "",
-        sentence: generated.text,
-        audio_text: generated.text,
-        difficulty: 1,
-        initial_position: position,
-        generation_source: "ai",
-        created_at: now
-      });
-      sentences.push({
-        id: record.id,
-        sessionId: session.id,
-        targetWordId: word.wordId,
-        targetSenseId: word.senseId,
-        sentence: generated.text,
-        translation: generated.translation,
-        audioText: generated.text,
-        position
-      });
-      position += 1;
+  try {
+    for (const word of usable) {
+      for (const generated of generation.sentencesByWord.get(word.wordId) ?? []) {
+        const record = await client.createRecord<FlashcardFields>("flashcards", {
+          user_id: user.id,
+          practice_session_id: session.id,
+          target_word_id: word.wordId,
+          target_sense_id: word.senseId,
+          supporting_word_ids: "[]",
+          card_type: "translation",
+          prompt: generated.text,
+          expected_answer: generated.translation,
+          accepted_answers: "[]",
+          translation: generated.translation,
+          explanation: "",
+          sentence: generated.text,
+          audio_text: generated.text,
+          difficulty: 1,
+          initial_position: position,
+          generation_source: "ai",
+          created_at: now
+        });
+        sentences.push({
+          id: record.id,
+          sessionId: session.id,
+          targetWordId: word.wordId,
+          targetSenseId: word.senseId,
+          sentence: generated.text,
+          translation: generated.translation,
+          audioText: generated.text,
+          position
+        });
+        position += 1;
+      }
     }
-  }
 
-  // Exemplo da primeira frase vira exemplo do sentido primário.
-  for (const word of usable) {
-    const first = sentences.find((sentence) => sentence.targetWordId === word.wordId);
-    if (first) await updateWordSense(word.senseId, { example_sentence: first.sentence }).catch(() => undefined);
-  }
+    // Exemplo da primeira frase vira exemplo do sentido primário.
+    for (const word of usable) {
+      const first = sentences.find((sentence) => sentence.targetWordId === word.wordId);
+      if (first) await updateWordSense(word.senseId, { example_sentence: first.sentence }).catch(() => undefined);
+    }
 
-  await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, {
-    status: "active",
-    unique_card_count: sentences.length,
-    updated_at: new Date().toISOString()
-  });
+    await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, {
+      status: "active",
+      unique_card_count: sentences.length,
+      updated_at: new Date().toISOString()
+    });
+  } catch (error) {
+    // Mesmo padrão de createFlashcardPractice: sessão órfã em "preparing" nunca
+    // fica retida (bloquearia novas sessões com 409 e a retomada só vê "active").
+    await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, { status: "failed", updated_at: new Date().toISOString() }).catch(() => undefined);
+    await client.createEvent(user.id, "new_words_session_creation_failed", { session_id: session.id, duration_ms: Date.now() - operationStartedAt, error_type: safeErrorType(error) }).catch(() => undefined);
+    throw error;
+  }
   await client.createEvent(user.id, "new_words_session_started", {
     session_id: session.id,
     requested_count: count,
@@ -321,6 +330,9 @@ function parseJsonObject(content: string): Record<string, unknown> {
 }
 
 function dateValue(value: string | undefined) { const time = value ? new Date(value).getTime() : 0; return Number.isNaN(time) ? 0 : time; }
+
+// Igual ao safeErrorType privado de flashcards.ts: rotula o erro para eventos.
+function safeErrorType(error: unknown) { return error instanceof LearningStateError ? `learning_state_${error.status}` : error instanceof Error ? error.name.slice(0, 80) : "unknown"; }
 
 function listSenses(client: ReturnType<typeof getTeableClient>, wordId: string) {
   return client.listRecordsWhere<WordSenseFields>("wordSenses", "word_id", wordId);
