@@ -21,3 +21,6 @@ pnpm-debug.log*
 
 # Mimosa security-scan plugin state
 .mimosa/
+
+# SDD scratch (ledger, briefs, review packages)
+.superpowers/
