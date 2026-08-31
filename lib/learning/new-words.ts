@@ -5,16 +5,20 @@ import { getTeableClient, TeableRecord, TeableRequestError } from "@/lib/supabas
 import { LearningStateError } from "./access";
 import { WordFields, WordSenseFields } from "./conversations";
 import { getActiveLanguageProfile, getSessionUser } from "./profile";
-import { canonicalVocabularyKey } from "./vocabulary-selection";
-import { canonicalSenseKey, createWordSense, nextSenseOrderFromList, updateWordSense } from "./word-senses";
-import { type FlashcardAttemptFields, type FlashcardFields, type PracticeSessionFields } from "./flashcards";
+import { canonicalVocabularyKey, normalizeVocabularyToken } from "./vocabulary-selection";
+import { canonicalSenseKey, createWordSense, listSensesByWordIds, matchesCanonicalSenseKey, nextSenseOrderFromList, updateWordSense } from "./word-senses";
+import { applyReviewToSense as applySenseReview, type FlashcardAttemptFields, type FlashcardFields, type PracticeSessionFields } from "./flashcards";
+import { compareFlashcardAnswer, normalizeFlashcardAnswer } from "./flashcard-answer";
+import { inferRecallRating } from "./flashcard-queue";
 import {
   normalizeNewWordsSessionSize,
   SENTENCES_PER_WORD,
+  type JudgedTranslation,
   type NewWordPreview,
+  type NewWordsAttemptResult,
   type NewWordsSentence
 } from "./new-words-contracts";
-import { validateGeneratedSentences, validateProposedWords, type ExistingBankWord, type GeneratedSentence } from "./new-words-validation";
+import { fallbackJudgment, mapVerdictToMatch, sanitizeJudgment, validateGeneratedSentences, validateProposedWords, type ExistingBankWord, type GeneratedSentence } from "./new-words-validation";
 
 export type { FlashcardFields, PracticeSessionFields };
 
@@ -319,6 +323,207 @@ export async function abandonNewWordsPractice(sessionId: string) {
   await client.createEvent(user.id, "new_words_session_abandoned", { session_id: session.id });
   return { sessionId: session.id, status: "abandoned" as const };
 }
+
+// ---------- Julgamento da tentativa ----------
+
+type JudgeInput = {
+  sessionId?: unknown; clientAttemptId?: unknown; sentenceId?: unknown; userTranslation?: unknown;
+  responseTimeMs?: unknown; usedSpeech?: unknown; audioReplayCount?: unknown; usedSlowAudio?: unknown; audioFailed?: unknown;
+};
+
+export async function judgeNewWordsAttempt(input: JudgeInput): Promise<NewWordsAttemptResult> {
+  const sessionId = typeof input.sessionId === "string" ? input.sessionId : "";
+  const clientAttemptId = typeof input.clientAttemptId === "string" ? input.clientAttemptId : "";
+  const sentenceId = typeof input.sentenceId === "string" ? input.sentenceId : "";
+  const userTranslation = typeof input.userTranslation === "string" ? input.userTranslation.trim().slice(0, 300) : "";
+  if (!sessionId || !isOperationId(clientAttemptId)) throw new LearningStateError("Identificador da tentativa inválido.", 422);
+  if (!userTranslation) throw new LearningStateError("Escreva a tradução antes de enviar.", 422);
+
+  const client = getTeableClient();
+  const user = await getSessionUser();
+  const profile = await getActiveLanguageProfile(user);
+  if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
+  const scopeFilters = [
+    { field: "user_id", value: user.id },
+    { field: "language_profile_id", value: profile.id }
+  ];
+  const [sessions, attemptRecords] = await Promise.all([
+    client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters),
+    client.listRecordsWhere<FlashcardAttemptFields>("flashcardAttempts", "user_id", user.id)
+  ]);
+  const session = sessions.find((item) => item.id === sessionId && item.fields.type === SESSION_TYPE && item.fields.status === "active");
+  if (!session) throw new LearningStateError("Sessão ativa não encontrada.", 404);
+
+  const sessionAttempts = attemptRecords
+    .filter((record) => record.fields.practice_session_id === sessionId && !record.fields.undone_at)
+    .sort((a, b) => dateValue(a.fields.created_at || a.createdTime) - dateValue(b.fields.created_at || b.createdTime) || a.id.localeCompare(b.id));
+
+  // Idempotência: mesma clientAttemptId devolve o julgamento persistido.
+  const sentences = await listSentences(client, user.id, sessionId);
+  const existing = sessionAttempts.find((record) => record.fields.client_attempt_id === clientAttemptId);
+  if (existing) {
+    const stored = parseJsonObject(existing.fields.judgment_json ?? "") as JudgedTranslation;
+    const reference = sentences.find((sentence) => sentence.id === existing.fields.flashcard_id)?.translation ?? "";
+    return {
+      sentenceId: existing.fields.flashcard_id,
+      clientAttemptId,
+      judgment: stored && stored.verdict ? stored : fallbackJudgment(userTranslation, reference),
+      rating: existing.fields.final_rating,
+      senseCreated: false
+    };
+  }
+
+  const answeredIds = new Set(sessionAttempts.map((record) => record.fields.flashcard_id));
+  const next = sentences.find((sentence) => !answeredIds.has(sentence.id));
+  if (!next || next.id !== sentenceId) throw new LearningStateError("A tentativa não corresponde à próxima frase da sessão.", 409);
+
+  // Contexto pedagógico: palavra + sentidos cadastrados.
+  const words = await client.listRecordsWhereAll<WordFields>("words", scopeFilters);
+  const word = words.find((item) => item.id === next.targetWordId);
+  if (!word) throw new LearningStateError("Palavra da frase não encontrada.", 404);
+  const senses = (await listSensesByWordIds([word.id])).get(word.id) ?? [];
+
+  // 1) IA professora; 2) fallback determinístico se a IA falhar.
+  let judgment = await requestTeacherJudgment(next, word, senses, userTranslation).catch(() => null) ?? fallbackJudgment(userTranslation, next.translation);
+  // Correção determinística tem precedência em acertos óbvios: tradução
+  // idêntica à referência é "correct" mesmo se a IA titubeou.
+  if (compareFlashcardAnswer(userTranslation, next.translation) === "exact") {
+    judgment = { ...judgment, verdict: "correct", correctedTranslation: next.translation };
+  }
+
+  // Expansão de significados: tradução válida diferente das cadastradas.
+  let senseCreated = false;
+  if ((judgment.verdict === "correct" || judgment.verdict === "acceptable") && judgment.newSenseTranslation) {
+    senseCreated = await expandWordSense(user.id, profile.id, word, senses, judgment.newSenseTranslation, next.sentence);
+    if (senseCreated) {
+      await client.createEvent(user.id, "new_words_sense_expanded", {
+        session_id: sessionId, word_id: word.id, translation: judgment.newSenseTranslation, sentence: next.sentence
+      });
+    }
+  }
+
+  // Persiste a tentativa + aplica a revisão SRS no sentido primário.
+  const matchResult = mapVerdictToMatch(judgment.verdict);
+  const responseTimeMs = Math.max(0, Math.min(300_000, Math.round(Number(input.responseTimeMs) || 0)));
+  const rating = inferRecallRating({ match: matchResult, forgot: false, responseTimeMs, cardType: "target_to_native" });
+  const now = new Date().toISOString();
+  const targetSense = senses.find((item) => item.id === next.targetSenseId);
+  const record = await client.createRecord<FlashcardAttemptFields>("flashcardAttempts", {
+    user_id: user.id,
+    practice_session_id: sessionId,
+    flashcard_id: next.id,
+    word_id: word.id,
+    sense_id: next.targetSenseId || "",
+    presentation_number: 1,
+    client_attempt_id: clientAttemptId,
+    user_answer: userTranslation,
+    normalized_answer: normalizeFlashcardAnswer(userTranslation),
+    match_result: matchResult,
+    suggested_rating: rating,
+    final_rating: rating,
+    was_correct: judgment.verdict === "correct" || judgment.verdict === "acceptable",
+    response_time_ms: responseTimeMs,
+    used_speech: input.usedSpeech === true,
+    audio_replay_count: Math.max(0, Math.min(30, Math.round(Number(input.audioReplayCount) || 0))),
+    used_slow_audio: input.usedSlowAudio === true,
+    answered_after_audio_replay: Number(input.audioReplayCount) > 0,
+    audio_failed: input.audioFailed === true,
+    judgment_json: JSON.stringify(judgment),
+    created_at: now
+  });
+
+  if (targetSense) {
+    try {
+      await applySenseReview(client, word, targetSense, [{ rating, responseTimeMs, cardType: "target_to_native" }], new Date(now), user.fields.timezone ?? "UTC");
+      await client.updateRecord<FlashcardAttemptFields>("flashcardAttempts", record.id, { review_applied: true, resulting_review_state: "" });
+    } catch (error) {
+      await client.createEvent(user.id, "new_words_review_failed", { session_id: sessionId, sentence_id: next.id, message: error instanceof Error ? error.message : "unknown" }).catch(() => undefined);
+    }
+  }
+
+  await client.updateRecord<PracticeSessionFields>("practiceSessions", sessionId, {
+    presentation_count: sessionAttempts.length + 1,
+    updated_at: now
+  });
+  await client.createEvent(user.id, "new_words_attempt_judged", {
+    session_id: sessionId, sentence_id: next.id, verdict: judgment.verdict, rating, sense_created: senseCreated, response_time_ms: responseTimeMs
+  });
+
+  return { sentenceId: next.id, clientAttemptId, judgment, rating, senseCreated };
+}
+
+async function requestTeacherJudgment(
+  sentence: NewWordsSentence,
+  word: TeableRecord<WordFields>,
+  senses: TeableRecord<WordSenseFields>[],
+  userTranslation: string
+): Promise<JudgedTranslation> {
+  const knownSenses = senses.map((sense) => sense.fields.translation).filter(Boolean);
+  const ai = await createChatCompletion([
+    { role: "system", content: [
+      "Você é um professor de idiomas gentil e objetivo corrigindo a tradução de uma frase feita por um aluno brasileiro.",
+      `Frase no idioma alvo: "${sentence.sentence}".`,
+      `Tradução de referência: "${sentence.translation}".`,
+      `Palavra-alvo: "${word.fields.display_text || word.fields.lemma}" — significados cadastrados no banco: ${JSON.stringify(knownSenses)}.`,
+      "Avalie a tradução do aluno comparando com o significado da palavra-alvo na frase.",
+      "Regras:",
+      '- verdict "correct": tradução fiel ao sentido da frase (mesmo com palavras diferentes).',
+      '- verdict "acceptable": tradução correta na essência, com diferença de registro ou nuance.',
+      '- verdict "minor_error": ideia certa, mas com erro pequeno (ortografia/concordância no português).',
+      '- verdict "incorrect": sentido errado, incompleto ou não traduz a frase.',
+      '- feedback: 1 a 3 frases curtas em português brasileiro, em tom de professor; se correto, elogie e reforce o significado da palavra-alvo.',
+      '- corrected_translation: a melhor tradução em português (a de referência ou uma versão melhorada da do aluno).',
+      '- new_sense_translation: quando a tradução do aluno estiver certa mas revelar um significado/nuance da palavra-alvo DIFERENTE dos significados cadastrados, informe esse novo significado em português (curto); caso contrário, null.',
+      'Responda somente JSON válido: {"verdict":"correct|acceptable|minor_error|incorrect","feedback":"...","corrected_translation":"...","new_sense_translation":null}.'
+    ].join("\n") },
+    { role: "user", content: `Tradução do aluno: "${userTranslation}"` }
+  ], { temperature: 0.2, maxTokens: 320, timeoutMs: 12_000, responseFormat: "json", disableThinking: true });
+  const parsed = parseJsonObject(ai.content);
+  const judgment = sanitizeJudgment(parsed, sentence.translation);
+  if (!judgment) throw new Error("Resposta da IA malformada.");
+  return judgment;
+}
+
+async function expandWordSense(
+  userId: string,
+  profileId: string,
+  word: TeableRecord<WordFields>,
+  senses: TeableRecord<WordSenseFields>[],
+  translation: string,
+  exampleSentence: string
+) {
+  const lemma = word.fields.lemma || word.fields.display_text || "";
+  const senseKey = canonicalSenseKey(userId, profileId, lemma, translation);
+  const normalized = normalizeVocabularyToken(translation);
+  const alreadyKnown = senses.some((sense) =>
+    matchesCanonicalSenseKey(sense.fields.sense_key, senseKey) ||
+    (sense.fields.translation?.trim() && normalizeVocabularyToken(sense.fields.translation) === normalized)
+  );
+  if (alreadyKnown) return false;
+  try {
+    await createWordSense({
+      Name: lemma,
+      user_id: userId,
+      word_id: word.id,
+      sense_key: senseKey,
+      translation,
+      part_of_speech: word.fields.part_of_speech || undefined,
+      example_sentence: exampleSentence.slice(0, 300),
+      source: "session",
+      is_primary: false,
+      sense_order: nextSenseOrderFromList(senses),
+      total_uses: 1,
+      review_due_at: new Date(Date.now() + 7 * 86400000).toISOString(),
+      review_state: "new",
+      created_at: new Date().toISOString()
+    });
+    return true;
+  } catch {
+    return false; // Falha ao expandir não pode travar a sessão.
+  }
+}
+
+function isOperationId(value: string) { return /^[a-zA-Z0-9_-]{8,100}$/.test(value); }
 
 // ---------- helpers ----------
 
