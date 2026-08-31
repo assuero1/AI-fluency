@@ -1,6 +1,7 @@
 // lib/learning/new-words-validation.ts
 import { normalizeVocabularyToken, parseVocabularyForms } from "./vocabulary-selection";
-import { allowedFunctionWords } from "./sentence-validation";
+import { NEW_WORDS_SENTENCE_MAX_WORDS, NEW_WORDS_SENTENCE_MIN_WORDS, SENTENCES_PER_WORD } from "./new-words-contracts";
+import { allowedFunctionWords, countLexicalWords, lexicalTokens, targetOccurrenceCount } from "./sentence-validation";
 
 export type ProposedWord = { lemma: string; translation: string; partOfSpeech: string };
 export type ExistingBankWord = { lemma: string; displayText: string; formsJson?: string };
@@ -35,4 +36,62 @@ export function validateProposedWords(items: unknown, existingWords: ExistingBan
     });
   }
   return result;
+}
+
+export type GeneratedSentence = { text: string; translation: string };
+
+/**
+ * Valida as frases geradas pela IA contra o repertório do aluno: tamanho
+ * 2–6 palavras lexicais, alvo presente exatamente 1×, no máximo 1 token
+ * lexical fora do vocabulário conhecido + function words (escapatória para
+ * flexões), sem duplicatas, no máximo SENTENCES_PER_WORD por palavra.
+ */
+export function validateGeneratedSentences(
+  items: unknown,
+  newWords: Array<{ id: string; lemma: string }>,
+  knownWords: string[]
+) {
+  const sentencesByWord = new Map<string, GeneratedSentence[]>();
+  const droppedWordIds: string[] = [];
+  const rejectionReasons: Record<string, number> = {};
+  const reject = (reason: string) => { rejectionReasons[reason] = (rejectionReasons[reason] ?? 0) + 1; };
+  if (!Array.isArray(items)) return { sentencesByWord, droppedWordIds, rejectionReasons };
+
+  const knownTokens = new Set(knownWords.flatMap((word) => lexicalTokens(word)));
+  const targetByLemma = new Map(newWords.map((word) => [normalizeVocabularyTokenSafe(word.lemma), word]));
+  const seenSentences = new Set<string>();
+  const perWordCount = new Map<string, number>();
+
+  for (const item of items) {
+    if (!item || typeof item !== "object") { reject("invalid_shape"); continue; }
+    const record = item as Record<string, unknown>;
+    const text = typeof record.text === "string" ? record.text.trim() : "";
+    const translation = typeof record.translation === "string" ? record.translation.trim() : "";
+    const lemma = typeof record.word === "string" ? normalizeVocabularyTokenSafe(record.word) : "";
+    const target = targetByLemma.get(lemma);
+    if (!text || !translation || !target) { reject("invalid_shape"); continue; }
+    const lexicalCount = countLexicalWords(text);
+    if (lexicalCount < NEW_WORDS_SENTENCE_MIN_WORDS || lexicalCount > NEW_WORDS_SENTENCE_MAX_WORDS) { reject("too_many_words"); continue; }
+    if (/```|https?:\/\/|\b(?:json|translation)\b/iu.test(text)) { reject("technical_tokens"); continue; }
+    if (targetOccurrenceCount(text, target.lemma) !== 1) { reject("target_occurrences"); continue; }
+    const targetTokens = new Set(lexicalTokens(target.lemma));
+    const unknown = lexicalTokens(text).filter((token) =>
+      !knownTokens.has(token) && !targetTokens.has(token) && !allowedFunctionWords.has(token)
+    );
+    if (new Set(unknown).size > 1) { reject("unknown_words"); continue; }
+    const normalizedSentence = text.toLocaleLowerCase();
+    if (seenSentences.has(normalizedSentence)) { reject("duplicate"); continue; }
+    if ((perWordCount.get(target.id) ?? 0) >= SENTENCES_PER_WORD) { reject("too_many_per_word"); continue; }
+    seenSentences.add(normalizedSentence);
+    perWordCount.set(target.id, (perWordCount.get(target.id) ?? 0) + 1);
+    sentencesByWord.set(target.id, [...(sentencesByWord.get(target.id) ?? []), { text, translation }]);
+  }
+  for (const word of newWords) {
+    if (!sentencesByWord.get(word.id)?.length) droppedWordIds.push(word.id);
+  }
+  return { sentencesByWord, droppedWordIds, rejectionReasons };
+}
+
+function normalizeVocabularyTokenSafe(value: string) {
+  return value.normalize("NFKC").trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
 }
