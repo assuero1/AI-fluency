@@ -55,7 +55,7 @@ export type WordSenseListItem = {
   partOfSpeech: string;
   exampleSentence: string;
   isPrimary: boolean;
-  source: "chat" | "manual" | "backfill";
+  source: "chat" | "manual" | "backfill" | "session";
   reviewState: "new" | "learning" | "review" | "difficult" | "suspended";
   reviewDueAt: string;
   reviewStreak: number;

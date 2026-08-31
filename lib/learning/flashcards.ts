@@ -96,6 +96,7 @@ export type FlashcardAttemptFields = {
   review_applied?: boolean;
   resulting_review_state?: string;
   review_snapshot?: string;
+  judgment_json?: string;
   undone_at?: string;
   created_at: string;
 };

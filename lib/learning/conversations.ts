@@ -100,7 +100,7 @@ export type WordSenseFields = {
   translation: string;
   part_of_speech?: string;
   example_sentence?: string;
-  source?: "chat" | "manual" | "backfill";
+  source?: "chat" | "manual" | "backfill" | "session";
   is_primary?: boolean;
   sense_order?: number;
   total_uses?: number;
