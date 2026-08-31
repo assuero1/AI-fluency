@@ -274,7 +274,7 @@ export function NewWordsTrainer() {
     </section>
     {resumable ? <div className="modal-backdrop" role="presentation"><section aria-labelledby="resume-new-words" aria-modal="true" className="confirmation-modal" role="dialog">
       <h2 className="section-title" id="resume-new-words">Sessão em andamento</h2>
-      <p className="row-meta">{resumable.answeredCount >= resumable.sentenceCount ? "Todas as frases já foram traduzidas. Toque em continuar para ver o resultado." : `Você já traduziu ${resumable.answeredCount} frases desta sessão.`}</p>
+      <p className="row-meta">{resumable.answeredCount >= resumable.sentenceCount ? "Todas as frases já foram traduzidas. Toque em continuar para ver o resultado." : `Você já traduziu ${resumable.answeredCount} ${resumable.answeredCount === 1 ? "frase" : "frases"} desta sessão.`}</p>
       <div className="flashcard-resume-actions">
         <button className="green-button" disabled={busy} onClick={() => void resume()} type="button">Continuar sessão</button>
         <button className="danger-button" disabled={busy} onClick={() => { setResumable(null); void abandonResumable(resumable.sessionId); }} type="button">Abandonar</button>
