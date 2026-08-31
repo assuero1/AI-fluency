@@ -27,8 +27,9 @@ export function NewWordsTrainer() {
   const [current, setCurrent] = useState<NewWordsSentence | null>(null);
   const [input, setInput] = useState("");
   const [judgment, setJudgment] = useState<JudgedTranslation | null>(null);
+  const [senseCreated, setSenseCreated] = useState(false);
   const [result, setResult] = useState<NewWordsSessionResult | null>(null);
-  const [resumable, setResumable] = useState<{ sessionId: string; nextSentenceId: string; answeredCount: number } | null>(null);
+  const [resumable, setResumable] = useState<{ sessionId: string; nextSentenceId: string; answeredCount: number; sentenceCount: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [audioFailed, setAudioFailed] = useState(false);
@@ -49,9 +50,13 @@ export function NewWordsTrainer() {
     void (async () => {
       try {
         const response = await fetch("/api/practice/new-words", { cache: "no-store" });
-        const data = await response.json() as { ok?: boolean; activeSession?: { sessionId: string; nextSentenceId: string; answeredCount: number; languageCode: string; languageName: string } | null };
-        if (response.ok && data.ok && data.activeSession && data.activeSession.nextSentenceId) {
-          setResumable(data.activeSession);
+        const data = await response.json() as { ok?: boolean; activeSession?: { sessionId: string; nextSentenceId: string; answeredCount: number; sentences: unknown[]; languageCode: string; languageName: string } | null };
+        // O modal é ofertado mesmo com nextSentenceId vazio: sessão com todas
+        // as frases respondidas (último "Continuar" não dado, ou complete que
+        // falhou) precisa de caminho para o complete/abandono — senão o
+        // "Começar" viraria 409 permanente, sem saída pela UI.
+        if (response.ok && data.ok && data.activeSession) {
+          setResumable({ sessionId: data.activeSession.sessionId, nextSentenceId: data.activeSession.nextSentenceId, answeredCount: data.activeSession.answeredCount, sentenceCount: data.activeSession.sentences.length });
           setLanguageCode(data.activeSession.languageCode ?? "en");
           setLanguageName(data.activeSession.languageName ?? "idioma estudado");
         }
@@ -110,12 +115,23 @@ export function NewWordsTrainer() {
       const data = await response.json() as { ok?: boolean; activeSession?: { sessionId: string; sentences: NewWordsSentence[]; words: NewWordPreview[]; answeredSentenceIds: string[]; nextSentenceId: string; languageCode: string; languageName: string } | null };
       const active = data.activeSession;
       if (!response.ok || !data.ok || !active) throw new Error("Não foi possível retomar a sessão.");
-      setSessionId(active.sessionId); setCompletionId(crypto.randomUUID());
-      setSentences(active.sentences); setWords(active.words ?? []);
-      setAnsweredIds(new Set(active.answeredSentenceIds));
-      setCurrent(active.sentences.find((sentence) => sentence.id === active.nextSentenceId) ?? null);
       setLanguageCode(active.languageCode ?? "en"); setLanguageName(active.languageName ?? "idioma estudado");
-      setResumable(null); setResult(null); resetAttempt();
+      const next = active.sentences.find((sentence) => sentence.id === active.nextSentenceId);
+      if (next) {
+        setSessionId(active.sessionId); setCompletionId(crypto.randomUUID());
+        setSentences(active.sentences); setWords(active.words ?? []);
+        setAnsweredIds(new Set(active.answeredSentenceIds));
+        setCurrent(next);
+        setResumable(null); setResult(null); resetAttempt();
+        return;
+      }
+      // nextSentenceId vazio (ou ausente das frases): tudo já foi julgado e a
+      // sessão só precisa do complete para mostrar o resultado. Se falhar, o
+      // erro fica inline e o modal continua com Continuar/Abandonar.
+      const completeResponse = await fetch("/api/practice/new-words/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: active.sessionId, clientCompletionId: crypto.randomUUID() }) });
+      const completeData = await completeResponse.json() as { ok?: boolean; error?: string } & Partial<NewWordsSessionResult>;
+      if (!completeResponse.ok || !completeData.ok || typeof completeData.score !== "number") throw new Error(completeData.error ?? "Não foi possível concluir a sessão.");
+      setResult(completeData as NewWordsSessionResult); setCurrent(null); setResumable(null);
     } catch (resumeError) { setError(resumeError instanceof Error ? resumeError.message : "Não foi possível retomar."); }
     finally { setBusy(false); }
   }
@@ -133,7 +149,7 @@ export function NewWordsTrainer() {
       }) });
       const data = await response.json() as { ok?: boolean; error?: string; attempt?: { judgment: JudgedTranslation; senseCreated: boolean } };
       if (!response.ok || !data.ok || !data.attempt) throw new Error(data.error ?? "Não foi possível avaliar a tradução.");
-      setJudgment(data.attempt.judgment);
+      setJudgment(data.attempt.judgment); setSenseCreated(Boolean(data.attempt.senseCreated));
       setAnsweredIds((previous) => new Set([...previous, current.id]));
     } catch (submitError) { setError(submitError instanceof Error ? submitError.message : "Não foi possível avaliar a tradução."); }
     finally { setBusy(false); }
@@ -165,7 +181,7 @@ export function NewWordsTrainer() {
   }
 
   function resetAttempt() {
-    setInput(""); setJudgment(null); setAudioFailed(false); setUsedSpeech(false); setAudioReplayCount(0);
+    setInput(""); setJudgment(null); setSenseCreated(false); setAudioFailed(false); setUsedSpeech(false); setAudioReplayCount(0);
     setError(""); setStartedAt(Date.now());
     setTimeout(() => inputRef.current?.focus(), 0);
   }
@@ -239,7 +255,7 @@ export function NewWordsTrainer() {
         <div><span>Sua tradução</span><strong>{input}</strong></div>
         <p className={`answer-match ${judgment.verdict === "correct" ? "exact" : judgment.verdict === "acceptable" ? "acceptable" : judgment.verdict}`}>{verdictLabel(judgment.verdict)}</p>
         <p className="row-meta">{judgment.feedback}</p>
-        {judgment.newSenseTranslation ? <p className="speech-status">Registrado: “{judgment.newSenseTranslation}” entrou como novo significado desta palavra.</p> : null}
+        {judgment.newSenseTranslation ? <p className="speech-status">{senseCreated ? `Registrado: “${judgment.newSenseTranslation}” entrou como novo significado desta palavra.` : "Esse significado já estava registrado."}</p> : null}
         <div className="recall-rating-grid"><button className="suggested" disabled={busy} onClick={() => void continueToNext()} type="button">Continuar</button></div>
       </section>}
       {busy ? <p className="speech-status"><Loader2 className="spin" /> Salvando...</p> : null}
@@ -258,11 +274,12 @@ export function NewWordsTrainer() {
     </section>
     {resumable ? <div className="modal-backdrop" role="presentation"><section aria-labelledby="resume-new-words" aria-modal="true" className="confirmation-modal" role="dialog">
       <h2 className="section-title" id="resume-new-words">Sessão em andamento</h2>
-      <p className="row-meta">Você já traduziu {resumable.answeredCount} frases desta sessão.</p>
+      <p className="row-meta">{resumable.answeredCount >= resumable.sentenceCount ? "Todas as frases já foram traduzidas. Toque em continuar para ver o resultado." : `Você já traduziu ${resumable.answeredCount} frases desta sessão.`}</p>
       <div className="flashcard-resume-actions">
         <button className="green-button" disabled={busy} onClick={() => void resume()} type="button">Continuar sessão</button>
         <button className="danger-button" disabled={busy} onClick={() => { setResumable(null); void abandonResumable(resumable.sessionId); }} type="button">Abandonar</button>
       </div>
+      {error ? <p className="inline-error" role="alert">{error}</p> : null}
     </section></div> : null}
     <section className="section">
       <h2 className="section-title">Quantas palavras quer aprender?</h2>
