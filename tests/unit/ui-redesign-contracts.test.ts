@@ -51,6 +51,12 @@ describe("chunky playful redesign contracts", () => {
     expect(read("app/resumo/page.tsx")).toContain('section="chat"');
   });
 
+  it("exposes the new-words practice from the main words screen", () => {
+    const wordsPage = read("app/palavras/page.tsx");
+    expect(wordsPage).toContain('href="/palavras/novas"');
+    expect(wordsPage).toContain("Aprender palavras novas");
+  });
+
   it("removes hardcoded brand greens from component JSX", () => {
     expect(read("components/HomeDashboard.tsx")).not.toContain('color="#2f9d4a"');
     expect(read("components/ChatConversation.tsx")).not.toContain('color="#2f9d4a"');
