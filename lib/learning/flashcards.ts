@@ -61,7 +61,9 @@ export type FlashcardFields = {
   target_word_id: string;
   target_sense_id?: string;
   supporting_word_ids: string;
-  card_type: Flashcard["type"];
+  // "translation" é exclusivo da sessão de palavras novas (migration 0007);
+  // o seletor de tipos dos flashcards tradicionais continua limitado a FlashcardType.
+  card_type: Flashcard["type"] | "translation";
   prompt: string;
   expected_answer: string;
   accepted_answers: string;
@@ -615,7 +617,7 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
 // SRS cache from the fresh senses (compat reads keep working). The double write is
 // not transactional: if the re-aggregation fails the word cache stays
 // stale until the next review — accepted, so we warn-log instead of failing.
-async function applyReviewToSense(
+export async function applyReviewToSense(
   client: ReturnType<typeof getTeableClient>,
   word: TeableRecord<WordFields>,
   sense: TeableRecord<WordSenseFields>,
@@ -1012,7 +1014,9 @@ export function flashcardRecordToCard(record: TeableRecord<FlashcardFields>): Fl
   return {
     id: record.id,
     sessionId: record.fields.practice_session_id,
-    type: record.fields.card_type,
+    // Cards "translation" (palavras novas) nunca chegam aqui: os chamadores
+    // filtram por sessões do tipo flashcards; isValidFlashcard também rejeita.
+    type: record.fields.card_type as Flashcard["type"],
     targetWordId: record.fields.target_word_id,
     // Legacy frozen cards have no target_sense_id: undefined keeps them on the
     // legacy review path (the SRS update writes the word directly).
