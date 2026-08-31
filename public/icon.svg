@@ -1,4 +1,62 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <rect width="512" height="512" rx="112" fill="#2f9d4a"/>
-  <path d="M156 348 234 136h48l78 212h-48l-15-45h-79l-15 45h-47Zm76-86h52l-26-78-26 78Z" fill="#fff"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">AI Fluency</title>
+  <desc id="desc">Balão de conversa com um livro aberto e um brilho</desc>
+  <defs>
+    <linearGradient id="brand" x1="84" y1="54" x2="432" y2="458" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#78d92d" />
+      <stop offset="1" stop-color="#4caf00" />
+    </linearGradient>
+    <linearGradient id="paper" x1="144" y1="132" x2="365" y2="375" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffefa" />
+      <stop offset="1" stop-color="#f4eee4" />
+    </linearGradient>
+  </defs>
+
+  <rect width="512" height="512" fill="url(#brand)" />
+
+  <!-- subtle offset gives the mark the app's chunky, tactile feel -->
+  <path
+    d="M190 130h150c44 0 80 36 80 80v78c0 44-36 80-80 80H237c-22 0-42 7-61 19l-46 29c-11 7-24-4-19-16l22-56c-19-15-31-38-31-64v-70c0-44 36-80 80-80Z"
+    fill="#3b9200"
+    opacity=".42"
+    transform="translate(0 14)"
+  />
+
+  <!-- conversation bubble -->
+  <path
+    d="M190 116h150c44 0 80 36 80 80v78c0 44-36 80-80 80H237c-22 0-42 7-61 19l-46 29c-11 7-24-4-19-16l22-56c-19-15-31-38-31-64v-70c0-44 36-80 80-80Z"
+    fill="url(#paper)"
+    stroke="#347f00"
+    stroke-linejoin="round"
+    stroke-width="12"
+  />
+
+  <!-- open book: conversation becomes practice -->
+  <path
+    d="M168 205c31-14 62-10 88 12v110c-30-21-61-24-88-7V205Z"
+    fill="#ddf5c2"
+    stroke="#58a700"
+    stroke-linejoin="round"
+    stroke-width="10"
+  />
+  <path
+    d="M344 205c-31-14-62-10-88 12v110c30-21 61-24 88-7V205Z"
+    fill="#c7eea2"
+    stroke="#58a700"
+    stroke-linejoin="round"
+    stroke-width="10"
+  />
+  <path d="M256 218v108" fill="none" stroke="#58a700" stroke-linecap="round" stroke-width="10" />
+  <path d="M186 243c23-8 45-5 70 8M326 243c-23-8-45-5-70 8" fill="none" stroke="#58a700" stroke-linecap="round" stroke-width="7" />
+  <path d="M186 276c22-7 45-4 70 8M326 276c-22-7-45-4-70 8" fill="none" stroke="#58a700" stroke-linecap="round" stroke-width="7" />
+
+  <!-- a small spark keeps the mark playful and signals AI -->
+  <path
+    d="m390 90 11 29 29 11-29 11-11 29-11-29-29-11 29-11 11-29Z"
+    fill="#ffc800"
+    stroke="#c89100"
+    stroke-linejoin="round"
+    stroke-width="6"
+  />
+  <circle cx="433" cy="87" r="9" fill="#fff3c4" />
 </svg>
