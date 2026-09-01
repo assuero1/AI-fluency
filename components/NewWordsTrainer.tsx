@@ -21,6 +21,18 @@ import { VoiceButton } from "./VoiceButton";
 type Recognition = { lang: string; interimResults: boolean; continuous: boolean; start(): void; stop(): void; abort(): void; onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null };
 type RecognitionConstructor = new () => Recognition;
 
+// Quando o proxy/deploy devolve HTML (página de erro, build antigo), o
+// response.json() lança um erro cru do navegador ("Unexpected token '<'").
+// Aqui convertemos isso numa mensagem acionável, com o código HTTP.
+async function readJsonOrThrow(response: Response): Promise<unknown> {
+  const text = await response.text();
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new Error(`O servidor respondeu algo inesperado (HTTP ${response.status}). Atualize a página e, se persistir, aguarde alguns minutos — o deploy pode estar em andamento.`);
+  }
+}
+
 export function NewWordsTrainer() {
   const [size, setSize] = useState<number>(5);
   const [sessionId, setSessionId] = useState("");
@@ -77,7 +89,7 @@ export function NewWordsTrainer() {
     void (async () => {
       try {
         const response = await fetch("/api/practice/new-words", { cache: "no-store" });
-        const data = await response.json() as { ok?: boolean; activeSession?: { sessionId: string; nextSentenceId: string; answeredCount: number; sentences: unknown[]; languageCode: string; languageName: string } | null };
+        const data = await readJsonOrThrow(response) as { ok?: boolean; activeSession?: { sessionId: string; nextSentenceId: string; answeredCount: number; sentences: unknown[]; languageCode: string; languageName: string } | null };
         // O modal é ofertado mesmo com nextSentenceId vazio: sessão com todas
         // as frases respondidas (último "Continuar" não dado, ou complete que
         // falhou) precisa de caminho para o complete/abandono — senão o
@@ -139,7 +151,7 @@ export function NewWordsTrainer() {
     unlockAudioForPlayback(audio);
     try {
       const response = await fetch("/api/practice/new-words", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ count: size }) });
-      const data = await response.json() as { ok?: boolean; error?: string; sessionId?: string; sentences?: NewWordsSentence[]; words?: NewWordPreview[]; requestedWordCount?: number; languageCode?: string; languageName?: string };
+      const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string; sessionId?: string; sentences?: NewWordsSentence[]; words?: NewWordPreview[]; requestedWordCount?: number; languageCode?: string; languageName?: string };
       if (!response.ok || !data.ok || !data.sessionId || !data.sentences?.length) throw new Error(data.error ?? "Não foi possível montar a sessão.");
       setSessionId(data.sessionId); setCompletionId(crypto.randomUUID());
       setSentences(data.sentences); setWords(data.words ?? []);
@@ -161,7 +173,7 @@ export function NewWordsTrainer() {
     unlockAudioForPlayback(audio);
     try {
       const response = await fetch("/api/practice/new-words", { cache: "no-store" });
-      const data = await response.json() as { ok?: boolean; activeSession?: { sessionId: string; sentences: NewWordsSentence[]; words: NewWordPreview[]; answeredSentenceIds: string[]; nextSentenceId: string; languageCode: string; languageName: string } | null };
+      const data = await readJsonOrThrow(response) as { ok?: boolean; activeSession?: { sessionId: string; sentences: NewWordsSentence[]; words: NewWordPreview[]; answeredSentenceIds: string[]; nextSentenceId: string; languageCode: string; languageName: string } | null };
       const active = data.activeSession;
       if (!response.ok || !data.ok || !active) throw new Error("Não foi possível retomar a sessão.");
       setLanguageCode(active.languageCode ?? "en"); setLanguageName(active.languageName ?? "idioma estudado");
@@ -178,7 +190,7 @@ export function NewWordsTrainer() {
       // sessão só precisa do complete para mostrar o resultado. Se falhar, o
       // erro fica inline e o modal continua com Continuar/Abandonar.
       const completeResponse = await fetch("/api/practice/new-words/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: active.sessionId, clientCompletionId: crypto.randomUUID() }) });
-      const completeData = await completeResponse.json() as { ok?: boolean; error?: string } & Partial<NewWordsSessionResult>;
+      const completeData = await readJsonOrThrow(completeResponse) as { ok?: boolean; error?: string } & Partial<NewWordsSessionResult>;
       if (!completeResponse.ok || !completeData.ok || typeof completeData.score !== "number") throw new Error(completeData.error ?? "Não foi possível concluir a sessão.");
       prefetchRef.current?.dispose();
       setResult(completeData as NewWordsSessionResult); setCurrent(null); setResumable(null);
@@ -197,7 +209,7 @@ export function NewWordsTrainer() {
         sessionId, clientAttemptId, sentenceId: current.id, userTranslation: input.trim(),
         responseTimeMs: Math.max(0, Date.now() - startedAt), usedSpeech, audioReplayCount, audioFailed
       }) });
-      const data = await response.json() as { ok?: boolean; error?: string; attempt?: { judgment: JudgedTranslation; senseCreated: boolean } };
+      const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string; attempt?: { judgment: JudgedTranslation; senseCreated: boolean } };
       if (!response.ok || !data.ok || !data.attempt) throw new Error(data.error ?? "Não foi possível avaliar a tradução.");
       setJudgment(data.attempt.judgment); setSenseCreated(Boolean(data.attempt.senseCreated));
       setAnsweredIds((previous) => new Set([...previous, current.id]));
@@ -219,7 +231,7 @@ export function NewWordsTrainer() {
     setBusy(true); setError("");
     try {
       const response = await fetch("/api/practice/new-words/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, clientCompletionId: completionId }) });
-      const data = await response.json() as { ok?: boolean; error?: string } & Partial<NewWordsSessionResult>;
+      const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string } & Partial<NewWordsSessionResult>;
       if (!response.ok || !data.ok || typeof data.score !== "number") throw new Error(data.error ?? "Não foi possível concluir a sessão.");
       prefetchRef.current?.dispose();
       setResult(data as NewWordsSessionResult); setCurrent(null); setResumable(null);
