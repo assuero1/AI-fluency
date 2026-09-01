@@ -41,4 +41,13 @@ describe("accessibility contracts", () => {
     expect(translation).toContain('aria-live="polite"');
     expect(translation).toContain('lang="pt-BR"');
   });
+
+  it("move o calendário para o perfil e expõe a aba Novas", () => {
+    const nav = read("components/BottomNav.tsx");
+    expect(nav).toContain('key: "novas"');
+    expect(nav).toContain('"/palavras/novas"');
+    expect(nav).not.toMatch(/key: "calendario"/);
+    expect(read("app/perfil/page.tsx")).toContain('href="/calendario"');
+    expect(read("components/FlashcardTrainer.tsx")).not.toContain("/palavras/novas");
+  });
 });

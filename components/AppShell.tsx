@@ -1,6 +1,6 @@
 import { BottomNav, NavKey } from "./BottomNav";
 
-export type SectionKey = "chat" | "palavras" | "calendario" | "progresso" | "neutral";
+export type SectionKey = "chat" | "palavras" | "novas" | "calendario" | "progresso" | "neutral";
 
 type AppShellProps = {
   children: React.ReactNode;

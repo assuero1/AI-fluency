@@ -1,3 +1,5 @@
+import Link from "next/link";
+import { CalendarDays } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { LogoutButton } from "@/components/LogoutButton";
 import { ProfilePreferences } from "@/components/ProfilePreferences";
@@ -14,6 +16,9 @@ export default async function ProfilePage() {
     <AppShell activeNav="perfil" section="neutral">
       <ScreenHeader title="Perfil" subtitle="Preferências da sua IA" />
       <ProfilePreferences initial={profile} streak={progress.streak} />
+      <div className="px-4 pb-6">
+        <Link className="outline-button full-button" href="/calendario"><CalendarDays /> Calendário</Link>
+      </div>
       <div className="px-4 pb-6">
         <LogoutButton />
       </div>

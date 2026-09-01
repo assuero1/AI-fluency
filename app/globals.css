@@ -60,6 +60,7 @@
 /* Cor de seção por tela — aplicada no .phone-shell via prop `section` do AppShell */
 .section-chat { --section: var(--chat); --section-deep: var(--chat-deep); --section-soft: var(--chat-soft); --section-text: var(--chat-deep); }
 .section-palavras { --section: var(--palavras); --section-deep: var(--palavras-deep); --section-soft: var(--palavras-soft); --section-text: var(--palavras-deep); }
+.section-novas { --section: var(--palavras); --section-deep: var(--palavras-deep); --section-soft: var(--palavras-soft); --section-text: var(--palavras-deep); }
 .section-calendario { --section: var(--calendario); --section-deep: var(--calendario-deep); --section-soft: var(--calendario-soft); --section-text: var(--calendario-deep); }
 .section-progresso { --section: var(--progresso); --section-deep: var(--progresso-deep); --section-soft: var(--progresso-soft); --section-text: var(--progresso-deep); }
 .section-neutral { --section: var(--neutral); --section-deep: var(--neutral-deep); --section-soft: var(--neutral-soft); --section-text: var(--neutral-deep); }

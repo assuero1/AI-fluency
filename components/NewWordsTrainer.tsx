@@ -11,6 +11,7 @@ import {
   type NewWordsSessionResult
 } from "@/lib/learning/new-words-contracts";
 import { unlockAudioForPlayback, requestSpeech, reportVoiceFailure } from "./voice-shared";
+import { AppShell } from "./AppShell";
 import { Pill } from "./Pill";
 import { VoiceButton } from "./VoiceButton";
 
@@ -43,6 +44,11 @@ export function NewWordsTrainer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<Recognition | null>(null);
+  // O trainer é o dono do próprio shell: cada tela alterna por estado, como o chat.
+  // A navegação some só durante a sessão ativa e volta no resultado.
+  const shell = (content: React.ReactNode, hideNav: boolean) => (
+    <AppShell activeNav="novas" section="novas" noNav={hideNav}>{content}</AppShell>
+  );
 
   useEffect(() => {
     const speechWindow = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
@@ -204,7 +210,7 @@ export function NewWordsTrainer() {
     setError(""); setListening(true); recognition.start();
   }
 
-  if (result) return <div className="flashcard-screen">
+  if (result) return shell(<div className="flashcard-screen">
     <audio ref={audioRef} className="sr-only" preload="auto" />
     <Link className="back-link" href="/palavras"><ArrowLeft /> Palavras</Link>
     <section className="flashcard-result">
@@ -224,13 +230,13 @@ export function NewWordsTrainer() {
       <Link className="outline-button full-button" href="/palavras">Voltar às palavras</Link>
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
     </section>
-  </div>;
+  </div>, false);
 
   if (current) {
     const wordIndex = words.findIndex((word) => word.wordId === current.targetWordId);
     const sentenceOfWord = sentences.filter((sentence) => sentence.targetWordId === current.targetWordId);
     const ordinalOfWord = sentenceOfWord.findIndex((sentence) => sentence.id === current.id) + 1;
-    return <div className="flashcard-screen">
+    return shell(<div className="flashcard-screen">
       <audio ref={audioRef} className="sr-only" preload="auto" />
       <div className="top-row">
         <button className="back-link button-reset" onClick={() => void abandonSession()} disabled={busy} type="button"><ArrowLeft /> Sair</button>
@@ -260,10 +266,10 @@ export function NewWordsTrainer() {
       </section>}
       {busy ? <p className="speech-status"><Loader2 className="spin" /> Salvando...</p> : null}
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
-    </div>;
+    </div>, true);
   }
 
-  return <div className="flashcard-screen">
+  return shell(<div className="flashcard-screen">
     {/* O MESMO elemento <audio> precisa existir em todas as telas: é ele que é
         destravado no gesto de "Começar" e reusado pelo autoplay de cada frase. */}
     <audio ref={audioRef} className="sr-only" preload="auto" />
@@ -296,7 +302,7 @@ export function NewWordsTrainer() {
       <p className="row-meta">Cada palavra vem em {3} frases curtas. Ouça, traduza e a IA corrige na hora.</p>
     </section>
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
-  </div>;
+  </div>, false);
 
   async function abandonResumable(targetSessionId: string) {
     setBusy(true);
