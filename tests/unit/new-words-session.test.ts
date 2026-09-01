@@ -98,6 +98,35 @@ describe("geração de frases para palavras novas", () => {
     expect(session.requestedWordCount).toBe(3);
   });
 
+  it("abre a sessão com o que já tem quando a reposição falha", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    try {
+      const { createNewWordsPractice } = await import("../../lib/learning/new-words");
+      createChatCompletion
+        // 1ª leva: propõe 3 palavras, mas só bread recebe frases válidas.
+        .mockResolvedValueOnce({ content: JSON.stringify({ words: [
+          { lemma: "bread", translation: "pão", part_of_speech: "noun" },
+          { lemma: "rice", translation: "arroz", part_of_speech: "noun" },
+          { lemma: "water", translation: "água", part_of_speech: "noun" }
+        ] }) })
+        .mockResolvedValueOnce({ content: JSON.stringify({ sentences: [
+          { text: "I eat bread", translation: "eu como pão", word: "bread" },
+          { text: "bread is good", translation: "pão é bom", word: "bread" },
+          { text: "want bread", translation: "quero pão", word: "bread" }
+        ] }) })
+        .mockResolvedValueOnce({ content: JSON.stringify({ sentences: [] }) })
+        // Reposição: a IA falha (500 após os retries) — a sessão não pode cair.
+        .mockRejectedValue(new Error("ia fora do ar"));
+      const session = await createNewWordsPractice({ count: 3 });
+      expect(session.words.map((word: { lemma: string }) => word.lemma)).toEqual(["bread"]);
+      expect(session.sentences).toHaveLength(3);
+      expect(session.requestedWordCount).toBe(3);
+      expect(warnSpy).toHaveBeenCalledWith("new words: top-up failed", expect.any(Error));
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
   it("marca a sessão como failed quando a gravação dos cards falha", async () => {
     const { createNewWordsPractice } = await import("../../lib/learning/new-words");
     createChatCompletion

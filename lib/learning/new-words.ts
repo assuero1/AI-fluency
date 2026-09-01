@@ -65,8 +65,9 @@ export async function generateSentencesForWords(newWords: Array<{ id: string; le
     { role: "user", content: `Nível: ${level}\nPalavras-alvo: ${JSON.stringify(targets.map((word) => word.lemma))}\nVocabulário conhecido: ${JSON.stringify(knownLemmas.slice(0, MAX_KNOWN_VOCABULARY_IN_PROMPT))}` }
   ], {
     temperature: 0.5,
-    // Proporcional ao volume: evita truncamento que omitia as últimas palavras.
-    maxTokens: Math.min(6000, 400 + targets.length * SENTENCES_PER_WORD * SENTENCE_TOKENS),
+    // Proporcional ao volume, com piso de 1600 (pedidos pequenos não podem
+    // truncar menos do que truncavam antes) e teto de 6000.
+    maxTokens: Math.min(6000, Math.max(1600, 400 + targets.length * SENTENCES_PER_WORD * SENTENCE_TOKENS)),
     timeoutMs: 25_000,
     responseFormat: "json",
     disableThinking: true
@@ -196,18 +197,25 @@ export async function createNewWordsPractice(input: { count?: unknown }) {
   let { usable, sentences } = firstBatch;
   const { generation } = firstBatch;
   // Reposição: completa o pedido com palavras novas enquanto houver déficit (máx. 2 rodadas).
+  // Falha na reposição não derruba a sessão: ela abre com as palavras que já tem
+  // (a UI avisa o déficit); erros da PRIMEIRA leva continuam propagando.
   for (let topUp = 0; topUp < 2 && usable.length < count; topUp += 1) {
-    const deficit = count - usable.length;
-    const extraProposals = await generateNewWordProposals(
-      knownWordsForPrompt.filter((word) => !proposedLemmas.has(normalizeVocabularyToken(word.lemma))),
-      bankWords, deficit, language, level
-    );
-    const fresh = extraProposals.filter((proposal) => !proposedLemmas.has(normalizeVocabularyToken(proposal.lemma)));
-    if (!fresh.length) break;
-    fresh.forEach((proposal) => proposedLemmas.add(normalizeVocabularyToken(proposal.lemma)));
-    const extra = await buildWordsWithSentences(fresh);
-    usable = [...usable, ...extra.usable];
-    sentences = [...sentences, ...extra.sentences];
+    try {
+      const deficit = count - usable.length;
+      const extraProposals = await generateNewWordProposals(
+        knownWordsForPrompt.filter((word) => !proposedLemmas.has(normalizeVocabularyToken(word.lemma))),
+        bankWords, deficit, language, level
+      );
+      const fresh = extraProposals.filter((proposal) => !proposedLemmas.has(normalizeVocabularyToken(proposal.lemma)));
+      if (!fresh.length) break;
+      fresh.forEach((proposal) => proposedLemmas.add(normalizeVocabularyToken(proposal.lemma)));
+      const extra = await buildWordsWithSentences(fresh);
+      usable = [...usable, ...extra.usable];
+      sentences = [...sentences, ...extra.sentences];
+    } catch (error) {
+      console.warn("new words: top-up failed", error);
+      break;
+    }
   }
   if (!usable.length) throw new LearningStateError("Não foi possível montar as frases agora. Tente novamente em instantes.", 502);
 

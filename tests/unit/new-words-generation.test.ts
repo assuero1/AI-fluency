@@ -46,4 +46,11 @@ describe("generateSentencesForWords (geração por rodadas)", () => {
     const options = createChatCompletion.mock.calls[0][1] as { maxTokens?: number };
     expect(options.maxTokens).toBeGreaterThan(1600);
   });
+
+  it("mantém o piso de 1600 maxTokens para pedidos pequenos", async () => {
+    createChatCompletion.mockResolvedValue({ content: JSON.stringify({ sentences: [] }) });
+    await generateSentencesForWords([{ id: "w1", lemma: "bread" }], [], "Inglês", "B1");
+    const options = createChatCompletion.mock.calls[0][1] as { maxTokens?: number };
+    expect(options.maxTokens).toBe(1600);
+  });
 });
