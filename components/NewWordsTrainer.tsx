@@ -13,6 +13,7 @@ import {
   type NewWordsSessionResult
 } from "@/lib/learning/new-words-contracts";
 import { unlockAudioForPlayback, requestSpeech, reportVoiceFailure } from "./voice-shared";
+import { createAudioPrefetchQueue, type AudioPrefetchQueue } from "@/lib/learning/audio-prefetch";
 import { AppShell } from "./AppShell";
 import { Pill } from "./Pill";
 import { VoiceButton } from "./VoiceButton";
@@ -48,6 +49,7 @@ export function NewWordsTrainer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<Recognition | null>(null);
+  const prefetchRef = useRef<AudioPrefetchQueue | null>(null);
   // O trainer é o dono do próprio shell: cada tela alterna por estado, como o chat.
   // A navegação some só durante a sessão ativa e volta no resultado.
   const shell = (content: React.ReactNode, hideNav: boolean) => (
@@ -84,6 +86,9 @@ export function NewWordsTrainer() {
       try {
         const audio = audioRef.current;
         if (!audio) return;
+        // Prioriza a frase corrente na fila de prefetch: requestSpeech deduplica
+        // por texto+idioma, então autoplay e fila compartilham a MESMA promessa.
+        prefetchRef.current?.jumpTo(current.audioText);
         const url = await requestSpeech(current.audioText, languageCode);
         if (cancelled) return;
         if (audio.src !== url) audio.src = url;
@@ -94,6 +99,21 @@ export function NewWordsTrainer() {
     })();
     return () => { cancelled = true; };
   }, [current, judgment, audioFailed, languageCode]);
+
+  // Prefetch do áudio das frases em background: sobe a fila quando a sessão
+  // monta, em ritmo seguro para o rate limit de síntese (~27/min). O cleanup
+  // cobre unmount, troca de lista e o fim/abandono (result muda as deps).
+  useEffect(() => {
+    if (!sentences.length || result) return;
+    prefetchRef.current?.dispose();
+    const queue = createAudioPrefetchQueue({
+      texts: sentences.map((sentence) => sentence.audioText),
+      request: (text) => requestSpeech(text, languageCode)
+    });
+    prefetchRef.current = queue;
+    queue.start();
+    return () => queue.dispose();
+  }, [sentences, result, languageCode]);
 
   async function start() {
     setBusy(true); setError(""); setShortfallNotice("");
@@ -145,6 +165,7 @@ export function NewWordsTrainer() {
       const completeResponse = await fetch("/api/practice/new-words/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId: active.sessionId, clientCompletionId: crypto.randomUUID() }) });
       const completeData = await completeResponse.json() as { ok?: boolean; error?: string } & Partial<NewWordsSessionResult>;
       if (!completeResponse.ok || !completeData.ok || typeof completeData.score !== "number") throw new Error(completeData.error ?? "Não foi possível concluir a sessão.");
+      prefetchRef.current?.dispose();
       setResult(completeData as NewWordsSessionResult); setCurrent(null); setResumable(null);
     } catch (resumeError) { setError(resumeError instanceof Error ? resumeError.message : "Não foi possível retomar."); }
     finally { setBusy(false); }
@@ -179,6 +200,7 @@ export function NewWordsTrainer() {
       const response = await fetch("/api/practice/new-words/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, clientCompletionId: completionId }) });
       const data = await response.json() as { ok?: boolean; error?: string } & Partial<NewWordsSessionResult>;
       if (!response.ok || !data.ok || typeof data.score !== "number") throw new Error(data.error ?? "Não foi possível concluir a sessão.");
+      prefetchRef.current?.dispose();
       setResult(data as NewWordsSessionResult); setCurrent(null); setResumable(null);
     } catch (finishError) { setError(finishError instanceof Error ? finishError.message : "Não foi possível concluir a sessão."); }
     finally { setBusy(false); }
@@ -191,6 +213,7 @@ export function NewWordsTrainer() {
       if (!response.ok) throw new Error("Não foi possível abandonar a sessão.");
       // O aviso de déficit não vai para resetAttempt (ele roda a cada questão e
       // apagaria o aviso no meio da sessão) — limpa aqui e no novo start.
+      prefetchRef.current?.dispose();
       setSessionId(""); setSentences([]); setCurrent(null); setJudgment(null); setResumable(null); setShortfallNotice(""); resetAttempt();
     } catch (abandonError) { setError(abandonError instanceof Error ? abandonError.message : "Não foi possível abandonar."); }
     finally { setBusy(false); }
