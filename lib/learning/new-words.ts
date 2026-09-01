@@ -58,11 +58,11 @@ export async function generateNewWordProposals(
 
 const SENTENCE_TOKENS = 90;
 
-/** Gera frases em até 2 rodadas; a 2ª pede somente as palavras que ficaram sem frase válida. */
+/** Gera frases em até 2 rodadas; a 2ª completa as palavras que ficaram com menos de SENTENCES_PER_WORD frases (zeradas ou parciais). */
 export async function generateSentencesForWords(newWords: Array<{ id: string; lemma: string }>, knownLemmas: string[], language: string, level: string) {
-  const buildCall = (targets: Array<{ id: string; lemma: string }>) => createChatCompletion([
-    { role: "system", content: `Crie frases curtas de treino de tradução em ${language}, adequadas ao nível informado. Para CADA palavra da lista, crie exatamente ${SENTENCES_PER_WORD} frases — nenhuma palavra pode ficar sem frases. Regras: cada frase tem de 2 a 6 palavras; usa a palavra-alvo exatamente uma vez, como fornecida; usa SOMENTE palavras da lista de vocabulário conhecido do aluno, a própria palavra-alvo e palavras gramaticais muito comuns (artigos, preposições, pronomes, auxiliares); sentido claro e não ambíguo. Responda somente JSON válido: {"sentences":[{"text":"...","translation":"...","word":"lemma-da-palavra-alvo"}]}, com translation em português brasileiro.` },
-    { role: "user", content: `Nível: ${level}\nPalavras-alvo: ${JSON.stringify(targets.map((word) => word.lemma))}\nVocabulário conhecido: ${JSON.stringify(knownLemmas.slice(0, MAX_KNOWN_VOCABULARY_IN_PROMPT))}` }
+  const buildCall = (targets: Array<{ id: string; lemma: string; faltam: number }>, pedeFaltantes: boolean) => createChatCompletion([
+    { role: "system", content: `Crie frases curtas de treino de tradução em ${language}, adequadas ao nível informado. ${pedeFaltantes ? "Crie para cada palavra exatamente o número de frases indicado — nenhuma palavra pode ficar sem frases." : `Para CADA palavra da lista, crie exatamente ${SENTENCES_PER_WORD} frases — nenhuma palavra pode ficar sem frases.`} Regras: cada frase tem de 2 a 6 palavras; usa a palavra-alvo exatamente uma vez, como fornecida; usa SOMENTE palavras da lista de vocabulário conhecido do aluno, a própria palavra-alvo e palavras gramaticais muito comuns (artigos, preposições, pronomes, auxiliares); sentido claro e não ambíguo. Responda somente JSON válido: {"sentences":[{"text":"...","translation":"...","word":"lemma-da-palavra-alvo"}]}, com translation em português brasileiro.` },
+    { role: "user", content: `Nível: ${level}\n${pedeFaltantes ? `Palavras-alvo (com quantas frases faltam): ${JSON.stringify(targets.map((word) => ({ lemma: word.lemma, faltam: word.faltam })))}` : `Palavras-alvo: ${JSON.stringify(targets.map((word) => word.lemma))}`}\nVocabulário conhecido: ${JSON.stringify(knownLemmas.slice(0, MAX_KNOWN_VOCABULARY_IN_PROMPT))}` }
   ], {
     temperature: 0.5,
     // Proporcional ao volume, com piso de 1600 (pedidos pequenos não podem
@@ -73,24 +73,32 @@ export async function generateSentencesForWords(newWords: Array<{ id: string; le
     disableThinking: true
   });
 
-  const combined = { sentencesByWord: new Map<string, GeneratedSentence[]>(), droppedWordIds: [...newWords.map((word) => word.id)], rejectionReasons: {} as Record<string, number> };
+  const combined = { sentencesByWord: new Map<string, GeneratedSentence[]>(), droppedWordIds: [] as string[], rejectionReasons: {} as Record<string, number> };
+  const missingCount = (wordId: string) => SENTENCES_PER_WORD - (combined.sentencesByWord.get(wordId)?.length ?? 0);
   let pending = newWords;
   for (let round = 0; round < 2 && pending.length; round += 1) {
     if (round > 0) await new Promise((resolve) => setTimeout(resolve, 600));
     try {
-      const ai = await buildCall(pending);
+      const ai = await buildCall(pending.map((word) => ({ ...word, faltam: missingCount(word.id) })), round > 0);
       const parsed = parseJsonObject(ai.content) as { sentences?: unknown };
       const validated = validateGeneratedSentences(parsed.sentences, pending, knownLemmas);
-      for (const [wordId, sentences] of validated.sentencesByWord) {
-        combined.sentencesByWord.set(wordId, [...(combined.sentencesByWord.get(wordId) ?? []), ...sentences]);
-      }
       for (const [reason, count] of Object.entries(validated.rejectionReasons)) {
         combined.rejectionReasons[reason] = (combined.rejectionReasons[reason] ?? 0) + count;
       }
-      combined.droppedWordIds = newWords.filter((word) => !combined.sentencesByWord.get(word.id)?.length).map((word) => word.id);
+      // Merge com teto por palavra: soma o que a palavra já tinha com as frases
+      // novas (descartando textos repetidos de rodadas anteriores) e corta no teto.
+      for (const word of pending) {
+        const existing = combined.sentencesByWord.get(word.id) ?? [];
+        const knownTexts = new Set(existing.map((sentence) => sentence.text.trim().toLowerCase()));
+        const fresh = (validated.sentencesByWord.get(word.id) ?? []).filter((sentence) => !knownTexts.has(sentence.text.trim().toLowerCase()));
+        combined.sentencesByWord.set(word.id, [...existing, ...fresh].slice(0, SENTENCES_PER_WORD));
+      }
     } catch { /* rodada falhou: segue para a próxima ou devolve o que tem */ }
-    pending = newWords.filter((word) => combined.droppedWordIds.includes(word.id));
+    // Pendente = palavra com menos frases que o teto (zerada OU parcial).
+    pending = newWords.filter((word) => missingCount(word.id) > 0);
   }
+  // Dropped segue como palavras que ficaram com ZERO frases após todas as rodadas.
+  combined.droppedWordIds = newWords.filter((word) => !combined.sentencesByWord.get(word.id)?.length).map((word) => word.id);
   return combined;
 }
 
