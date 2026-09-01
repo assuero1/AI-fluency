@@ -2,7 +2,7 @@
 
 import { ArrowLeft, Loader2, Mic, MicOff, Sparkles, Trophy } from "lucide-react";
 import Link from "next/link";
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   newWordsSessionSizes,
   SENTENCES_PER_WORD,
@@ -50,6 +50,21 @@ export function NewWordsTrainer() {
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<Recognition | null>(null);
   const prefetchRef = useRef<AudioPrefetchQueue | null>(null);
+  // Auto-avanço: 2s após o julgamento a próxima frase abre sozinha; tocar na
+  // barrinha adianta. O ref permite cancelar em novo agendamento, reset,
+  // abandono e unmount (sem avanço fantasma).
+  const autoAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelAutoAdvance = useCallback(() => {
+    if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null; }
+  }, []);
+
+  const advanceNow = () => {
+    cancelAutoAdvance();
+    void continueToNext();
+  };
+
+  useEffect(() => cancelAutoAdvance, [cancelAutoAdvance]);
   // O trainer é o dono do próprio shell: cada tela alterna por estado, como o chat.
   // A navegação some só durante a sessão ativa e volta no resultado.
   const shell = (content: React.ReactNode, hideNav: boolean) => (
@@ -186,12 +201,18 @@ export function NewWordsTrainer() {
       if (!response.ok || !data.ok || !data.attempt) throw new Error(data.error ?? "Não foi possível avaliar a tradução.");
       setJudgment(data.attempt.judgment); setSenseCreated(Boolean(data.attempt.senseCreated));
       setAnsweredIds((previous) => new Set([...previous, current.id]));
+      // O julgamento fica visível 2s (a barrinha dá o feedback visual do tempo)
+      // e a próxima frase abre sozinha; tocar na barrinha adianta.
+      cancelAutoAdvance();
+      autoAdvanceRef.current = setTimeout(() => { autoAdvanceRef.current = null; void continueToNext(); }, 2000);
     } catch (submitError) { setError(submitError instanceof Error ? submitError.message : "Não foi possível avaliar a tradução."); }
     finally { setBusy(false); }
   }
 
   async function continueToNext() {
-    if (!current) return;
+    // Guarda de busy: sem o botão Continuar (disabled), a barrinha e o timer
+    // precisam dela para não disparar dois avanços/complete em paralelo.
+    if (!current || busy) return;
     const index = sentences.findIndex((sentence) => sentence.id === current.id);
     const next = sentences[index + 1];
     if (next) { setCurrent(next); resetAttempt(); return; }
@@ -214,12 +235,14 @@ export function NewWordsTrainer() {
       // O aviso de déficit não vai para resetAttempt (ele roda a cada questão e
       // apagaria o aviso no meio da sessão) — limpa aqui e no novo start.
       prefetchRef.current?.dispose();
+      cancelAutoAdvance();
       setSessionId(""); setSentences([]); setCurrent(null); setJudgment(null); setResumable(null); setShortfallNotice(""); resetAttempt();
     } catch (abandonError) { setError(abandonError instanceof Error ? abandonError.message : "Não foi possível abandonar."); }
     finally { setBusy(false); }
   }
 
   function resetAttempt() {
+    cancelAutoAdvance();
     setInput(""); setJudgment(null); setSenseCreated(false); setAudioFailed(false); setUsedSpeech(false); setAudioReplayCount(0);
     setError(""); setStartedAt(Date.now());
     setTimeout(() => inputRef.current?.focus(), 0);
@@ -309,7 +332,9 @@ export function NewWordsTrainer() {
         <p className={`answer-match ${judgment.verdict === "correct" ? "exact" : judgment.verdict === "acceptable" ? "acceptable" : judgment.verdict}`}>{verdictLabel(judgment.verdict)}</p>
         <p className="row-meta">{judgment.feedback}</p>
         {judgment.newSenseTranslation ? <p className="speech-status">{senseCreated ? `Registrado: “${judgment.newSenseTranslation}” entrou como novo significado desta palavra.` : "Esse significado já estava registrado."}</p> : null}
-        <div className="recall-rating-grid"><button className="suggested" disabled={busy} onClick={() => void continueToNext()} type="button">Continuar</button></div>
+        <button aria-label="Avançar para a próxima frase" className="auto-advance" onClick={advanceNow} type="button">
+          <span className="auto-advance-bar" />
+        </button>
       </section>}
       {busy ? <p className="speech-status"><Loader2 className="spin" /> Salvando...</p> : null}
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
