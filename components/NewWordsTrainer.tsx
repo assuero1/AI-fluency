@@ -228,6 +228,9 @@ export function NewWordsTrainer() {
   }
 
   async function abandonSession() {
+    // Cancela ANTES do fetch: com "Sair" no meio da contagem de 2s, um timer
+    // armado poderia disparar POST /complete concorrente ao abandon.
+    cancelAutoAdvance();
     setBusy(true); setError("");
     try {
       const response = await fetch("/api/practice/new-words/abandon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId }) });
@@ -235,7 +238,6 @@ export function NewWordsTrainer() {
       // O aviso de déficit não vai para resetAttempt (ele roda a cada questão e
       // apagaria o aviso no meio da sessão) — limpa aqui e no novo start.
       prefetchRef.current?.dispose();
-      cancelAutoAdvance();
       setSessionId(""); setSentences([]); setCurrent(null); setJudgment(null); setResumable(null); setShortfallNotice(""); resetAttempt();
     } catch (abandonError) { setError(abandonError instanceof Error ? abandonError.message : "Não foi possível abandonar."); }
     finally { setBusy(false); }
