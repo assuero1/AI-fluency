@@ -85,6 +85,29 @@ export async function warmCaptionedMessage(text: string, languageCode: string | 
   ));
 }
 
+/**
+ * Pré-sintetiza textos no cache (best-effort): concorrência 3 e erros
+ * engolidos por item. Espelha a seleção de voz da rota /api/voice/synthesize,
+ * senão o audioId aquecido não bate com o que o cliente vai pedir.
+ */
+export async function warmCachedSpeech(texts: string[], languageCode: string | undefined) {
+  if (!texts.length) return;
+  const config = getKokoroConfig();
+  if (!config.baseUrl || !config.apiKey) return;
+  const requested = normalizeSpeechLanguage(languageCode);
+  const speechLanguage = supportedSpeechLanguages.has(requested) ? requested : "en";
+  const voice = selectKokoroVoice(speechLanguage, config.voicesByLanguage, config.defaultVoice);
+  const queue = [...texts];
+  const workers = Array.from({ length: Math.min(3, queue.length) }, async () => {
+    while (queue.length) {
+      const text = queue.shift();
+      if (text === undefined) break;
+      await getOrCreateCachedSpeech(text, { voice, format: config.outputFormat, speed: config.speed }).catch(() => undefined);
+    }
+  });
+  await Promise.all(workers);
+}
+
 export async function prepareCachedSpeech(input: string, options?: { voice?: string; format?: string; speed?: number }): Promise<CachedSpeech> {
   const config = getKokoroConfig();
   let request: ReturnType<typeof resolveSynthesisRequest>;

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { createChatCompletion } from "@/lib/ai/client";
+import { warmCachedSpeech } from "@/lib/kokoro/cache";
 import { getTeableClient, TeableRecord, TeableRequestError } from "@/lib/supabase/client";
 import { LearningStateError } from "./access";
 import { WordFields, WordSenseFields } from "./conversations";
@@ -316,8 +317,13 @@ export async function createNewWordsPractice(input: { count?: unknown }) {
     rejection_reasons: generation.rejectionReasons
   });
 
+  // Warm das 2 primeiras frases aguardado: a frase 1 toca instantânea. O resto
+  // vai no after() da rota (resposta não espera). Best-effort: erro não propaga.
+  const warmTexts = cards.map((card) => card.audioText);
+  await warmCachedSpeech(warmTexts.slice(0, 2), profile.fields.language_code).catch(() => undefined);
+
   // Déficit (se houver) é sinalizado para a UI avisar; `words` carrega o tamanho real.
-  return { sessionId: session.id, sentences: cards, words: usable, requestedWordCount: count, languageCode: profile.fields.language_code, languageName: profile.fields.language_name };
+  return { sessionId: session.id, sentences: cards, words: usable, requestedWordCount: count, pendingWarmTexts: warmTexts.slice(2), languageCode: profile.fields.language_code, languageName: profile.fields.language_name };
 }
 
 // ---------- Retomada ----------
