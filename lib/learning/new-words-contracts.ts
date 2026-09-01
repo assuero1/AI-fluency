@@ -62,3 +62,20 @@ export type NewWordsSessionResult = {
 export function normalizeNewWordsSessionSize(value: unknown): NewWordsSessionSize {
   return (newWordsSessionSizes as readonly unknown[]).includes(value) ? (value as NewWordsSessionSize) : 3;
 }
+
+/** Separa a frase na ocorrência inteira da palavra-alvo (case-insensitive) para destaque na UI. */
+export function splitSentenceAroundTarget(sentence: string, lemma: string): { before: string; match: string; after: string } | null {
+  const trimmedLemma = lemma.trim();
+  if (!trimmedLemma) return null;
+  const pattern = new RegExp(`(^|\\s|[.,;:!?¿¡])${trimmedLemma.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=$|\\s|[.,;:!?¿¡])`, "iu");
+  const found = sentence.match(pattern);
+  if (!found || found.index === undefined) return null;
+  const leading = found[1] ?? "";
+  const matchStart = found.index + leading.length;
+  const matchEnd = matchStart + found[0].length - leading.length;
+  return {
+    before: sentence.slice(0, matchStart),
+    match: sentence.slice(matchStart, matchEnd),
+    after: sentence.slice(matchEnd)
+  };
+}

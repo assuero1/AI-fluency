@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   newWordsSessionSizes,
+  splitSentenceAroundTarget,
   type JudgedTranslation,
   type NewWordPreview,
   type NewWordsSentence,
@@ -246,7 +247,20 @@ export function NewWordsTrainer() {
       <div className="flashcard-kind"><Pill tone="info">Traduza a frase{sentenceOfWord.length > 1 ? ` (${ordinalOfWord}/${sentenceOfWord.length} desta palavra)` : ""}</Pill></div>
       <section className="active-recall-card" aria-label="Frase para traduzir">
         <span>Traduza para o português</span>
-        <strong>{current.sentence}</strong>
+        <strong>
+          {(() => {
+            const word = words.find((candidate) => candidate.wordId === current.targetWordId);
+            const parts = word ? splitSentenceAroundTarget(current.sentence, word.lemma) : null;
+            if (!parts) return current.sentence;
+            return <>{parts.before}<mark className="sentence-target-word">{parts.match}</mark>{parts.after}</>;
+          })()}
+        </strong>
+        <p className="sentence-target-translation">
+          {(() => {
+            const word = words.find((candidate) => candidate.wordId === current.targetWordId);
+            return word ? `${word.lemma} · ${word.translation}` : "";
+          })()}
+        </p>
         {!audioFailed ? <VoiceButton compact languageCode={languageCode} label="Ouvir novamente" text={current.audioText} onPlayback={() => setAudioReplayCount((count) => count + 1)} onAudioFailure={() => setAudioFailed(true)} /> : <p className="flashcard-audio-fallback" role="status">Áudio indisponível. Continue pelo texto.</p>}
       </section>
       {!judgment ? <form className="flashcard-attempt" onSubmit={submitTranslation}>

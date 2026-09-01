@@ -2340,6 +2340,8 @@ textarea:focus-visible,
 .active-recall-card > span, .flashcard-reveal span { color: var(--muted); font-size: 13px; text-transform: uppercase; letter-spacing: .1em; }
 .active-recall-card > strong { font-size: clamp(30px, 7vw, 48px); line-height: 1.15; }
 .active-recall-card .voice-icon-button { margin-top: 4px; }
+.sentence-target-word { background: var(--section-soft, rgba(88, 204, 2, 0.16)); color: var(--section-text, #4a9c02); border-radius: 6px; padding: 0 4px; }
+.sentence-target-translation { margin: 4px 0 0; font-size: 0.85rem; color: var(--text-soft, #6b7280); }
 .flashcard-listening-controls { display: grid; grid-template-columns: auto auto; align-items: center; gap: 10px; }
 .flashcard-listening-controls .audio-pill { min-height: 48px; }
 .flashcard-listening-controls .voice-icon-button { width: 48px; height: 48px; margin: 0; }
