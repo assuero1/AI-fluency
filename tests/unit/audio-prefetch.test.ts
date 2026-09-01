@@ -7,7 +7,8 @@ describe("fila de prefetch de áudio", () => {
   it("agenda as chamadas com espaçamento e na ordem", async () => {
     const request = vi.fn().mockResolvedValue("url");
     const { createAudioPrefetchQueue } = await import("../../lib/learning/audio-prefetch");
-    const queue = createAudioPrefetchQueue({ texts: ["a", "b", "c"], request, spacingMs: 1000 });
+    // burstCount: 0 desliga o burst e mantém o espaçamento fixo original.
+    const queue = createAudioPrefetchQueue({ texts: ["a", "b", "c"], request, spacingMs: 1000, burstCount: 0 });
     queue.start();
     await vi.advanceTimersByTimeAsync(0);
     expect(request).toHaveBeenCalledTimes(1);
@@ -21,7 +22,7 @@ describe("fila de prefetch de áudio", () => {
   it("jumpTo prioriza um texto pendente sem duplicar", async () => {
     const request = vi.fn().mockResolvedValue("url");
     const { createAudioPrefetchQueue } = await import("../../lib/learning/audio-prefetch");
-    const queue = createAudioPrefetchQueue({ texts: ["a", "b", "c"], request, spacingMs: 1000 });
+    const queue = createAudioPrefetchQueue({ texts: ["a", "b", "c"], request, spacingMs: 1000, burstCount: 0 });
     queue.start();
     await vi.advanceTimersByTimeAsync(0);
     queue.jumpTo("c");
@@ -37,11 +38,26 @@ describe("fila de prefetch de áudio", () => {
       .mockRejectedValueOnce(new Error("fail"))
       .mockResolvedValue("url");
     const { createAudioPrefetchQueue } = await import("../../lib/learning/audio-prefetch");
-    const queue = createAudioPrefetchQueue({ texts: ["a", "b"], request, spacingMs: 1000 });
+    const queue = createAudioPrefetchQueue({ texts: ["a", "b"], request, spacingMs: 1000, burstCount: 0 });
     queue.start();
     await vi.advanceTimersByTimeAsync(0);
     queue.dispose();
     await vi.advanceTimersByTimeAsync(5000);
     expect(request).toHaveBeenCalledTimes(1);
+  });
+
+  it("bursta as primeiras frases e espaça o restante", async () => {
+    const request = vi.fn().mockResolvedValue("url");
+    const { createAudioPrefetchQueue } = await import("../../lib/learning/audio-prefetch");
+    const queue = createAudioPrefetchQueue({ texts: ["a", "b", "c", "d", "e"], request, spacingMs: 2000, burstCount: 3, burstSpacingMs: 250 });
+    queue.start();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(request).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(request).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(250);
+    expect(request).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(request).toHaveBeenCalledTimes(4);
   });
 });
