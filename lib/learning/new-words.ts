@@ -56,28 +56,41 @@ export async function generateNewWordProposals(
 
 // ---------- Geração das frases ----------
 
-export async function generateNewWordSentences(newWords: Array<{ id: string; lemma: string }>, knownLemmas: string[], language: string, level: string) {
-  const request = () => createChatCompletion([
-    { role: "system", content: `Crie frases curtas de treino de tradução em ${language}, adequadas ao nível informado. Para cada palavra nova, crie exatamente ${SENTENCES_PER_WORD} frases. Regras: cada frase tem de 2 a 6 palavras; usa a palavra nova exatamente uma vez, como fornecida; usa SOMENTE palavras da lista de vocabulário conhecido do aluno, a própria palavra nova e palavras gramaticais muito comuns (artigos, preposições, pronomes, auxiliares); sentido claro e não ambíguo. Responda somente JSON válido: {"sentences":[{"text":"...","translation":"...","word":"lemma-da-palavra-nova"}]}, com translation em português brasileiro.` },
-    { role: "user", content: `Nível: ${level}\nPalavras novas: ${JSON.stringify(newWords.map((word) => word.lemma))}\nVocabulário conhecido: ${JSON.stringify(knownLemmas.slice(0, MAX_KNOWN_VOCABULARY_IN_PROMPT))}` }
-  ], { temperature: 0.5, maxTokens: 1600, timeoutMs: 20_000, responseFormat: "json", disableThinking: true });
-  const emptyResult: ReturnType<typeof validateGeneratedSentences> = {
-    sentencesByWord: new Map<string, GeneratedSentence[]>(),
-    droppedWordIds: newWords.map((word) => word.id),
-    rejectionReasons: {}
-  };
-  let last = emptyResult;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 600));
+const SENTENCE_TOKENS = 90;
+
+/** Gera frases em até 2 rodadas; a 2ª pede somente as palavras que ficaram sem frase válida. */
+export async function generateSentencesForWords(newWords: Array<{ id: string; lemma: string }>, knownLemmas: string[], language: string, level: string) {
+  const buildCall = (targets: Array<{ id: string; lemma: string }>) => createChatCompletion([
+    { role: "system", content: `Crie frases curtas de treino de tradução em ${language}, adequadas ao nível informado. Para CADA palavra da lista, crie exatamente ${SENTENCES_PER_WORD} frases — nenhuma palavra pode ficar sem frases. Regras: cada frase tem de 2 a 6 palavras; usa a palavra-alvo exatamente uma vez, como fornecida; usa SOMENTE palavras da lista de vocabulário conhecido do aluno, a própria palavra-alvo e palavras gramaticais muito comuns (artigos, preposições, pronomes, auxiliares); sentido claro e não ambíguo. Responda somente JSON válido: {"sentences":[{"text":"...","translation":"...","word":"lemma-da-palavra-alvo"}]}, com translation em português brasileiro.` },
+    { role: "user", content: `Nível: ${level}\nPalavras-alvo: ${JSON.stringify(targets.map((word) => word.lemma))}\nVocabulário conhecido: ${JSON.stringify(knownLemmas.slice(0, MAX_KNOWN_VOCABULARY_IN_PROMPT))}` }
+  ], {
+    temperature: 0.5,
+    // Proporcional ao volume: evita truncamento que omitia as últimas palavras.
+    maxTokens: Math.min(6000, 400 + targets.length * SENTENCES_PER_WORD * SENTENCE_TOKENS),
+    timeoutMs: 25_000,
+    responseFormat: "json",
+    disableThinking: true
+  });
+
+  const combined = { sentencesByWord: new Map<string, GeneratedSentence[]>(), droppedWordIds: [...newWords.map((word) => word.id)], rejectionReasons: {} as Record<string, number> };
+  let pending = newWords;
+  for (let round = 0; round < 2 && pending.length; round += 1) {
+    if (round > 0) await new Promise((resolve) => setTimeout(resolve, 600));
     try {
-      const ai = await request();
+      const ai = await buildCall(pending);
       const parsed = parseJsonObject(ai.content) as { sentences?: unknown };
-      const validated = validateGeneratedSentences(parsed.sentences, newWords, knownLemmas);
-      last = validated;
-      if (validated.droppedWordIds.length < newWords.length) return validated;
-    } catch { /* tenta de novo e depois devolve o último resultado */ }
+      const validated = validateGeneratedSentences(parsed.sentences, pending, knownLemmas);
+      for (const [wordId, sentences] of validated.sentencesByWord) {
+        combined.sentencesByWord.set(wordId, [...(combined.sentencesByWord.get(wordId) ?? []), ...sentences]);
+      }
+      for (const [reason, count] of Object.entries(validated.rejectionReasons)) {
+        combined.rejectionReasons[reason] = (combined.rejectionReasons[reason] ?? 0) + count;
+      }
+      combined.droppedWordIds = newWords.filter((word) => !combined.sentencesByWord.get(word.id)?.length).map((word) => word.id);
+    } catch { /* rodada falhou: segue para a próxima ou devolve o que tem */ }
+    pending = newWords.filter((word) => combined.droppedWordIds.includes(word.id));
   }
-  return last;
+  return combined;
 }
 
 // ---------- Criação da sessão ----------
@@ -114,65 +127,88 @@ export async function createNewWordsPractice(input: { count?: unknown }) {
   // 1. IA propõe as palavras novas (validadas deterministicamente contra o banco).
   const proposals = await generateNewWordProposals(knownWordsForPrompt, bankWords, count, language, level);
 
-  // 2. Persiste as palavras + sentido primário (idempotente por canonical_key/sense_key).
+  // 2. Persiste as palavras + sentido primário (idempotente por canonical_key/sense_key)
+  //    e gera as frases (validadas); encapsulado para a reposição reutilizar o mesmo caminho.
   const now = new Date().toISOString();
   const reviewDue = new Date(Date.now() + 7 * 86400000).toISOString();
-  const created: NewWordPreview[] = [];
-  for (const proposal of proposals) {
-    const canonicalKey = canonicalVocabularyKey(user.id, profile.id, proposal.lemma);
-    let word: TeableRecord<WordFields> | undefined = allWords.find((item) => item.fields.canonical_key === canonicalKey);
-    if (!word) {
-      try {
-        word = await client.createRecord<WordFields>("words", {
+  const knownLemmas = knownWordsForPrompt.map((word) => word.lemma);
+  const buildWordsWithSentences = async (proposalList: typeof proposals) => {
+    const created: NewWordPreview[] = [];
+    for (const proposal of proposalList) {
+      const canonicalKey = canonicalVocabularyKey(user.id, profile.id, proposal.lemma);
+      let word: TeableRecord<WordFields> | undefined = allWords.find((item) => item.fields.canonical_key === canonicalKey);
+      if (!word) {
+        try {
+          word = await client.createRecord<WordFields>("words", {
+            Name: proposal.lemma,
+            user_id: user.id,
+            language_profile_id: profile.id,
+            lemma: proposal.lemma,
+            canonical_key: canonicalKey,
+            display_text: proposal.lemma,
+            forms_json: "[]",
+            translation: proposal.translation,
+            part_of_speech: proposal.partOfSpeech,
+            familiarity_score: 1,
+            total_uses: 0,
+            last_used_at: now,
+            first_used_at: now,
+            review_due_at: reviewDue
+          });
+          allWords.push(word);
+        } catch (error) {
+          if (!(error instanceof TeableRequestError) || ![400, 409, 422].includes(error.status)) throw error;
+          const refreshed = await client.listRecordsWhereAll<WordFields>("words", scopeFilters);
+          word = refreshed.find((item) => item.fields.canonical_key === canonicalKey);
+          if (!word) throw error;
+        }
+      }
+      const existingSenses = (await listSenses(client, word.id));
+      let sense = existingSenses.find((item) => item.fields.sense_key === canonicalSenseKey(user.id, profile.id, proposal.lemma, proposal.translation));
+      if (!sense) {
+        sense = await createWordSense({
           Name: proposal.lemma,
           user_id: user.id,
-          language_profile_id: profile.id,
-          lemma: proposal.lemma,
-          canonical_key: canonicalKey,
-          display_text: proposal.lemma,
-          forms_json: "[]",
+          word_id: word.id,
+          sense_key: canonicalSenseKey(user.id, profile.id, proposal.lemma, proposal.translation),
           translation: proposal.translation,
-          part_of_speech: proposal.partOfSpeech,
-          familiarity_score: 1,
+          part_of_speech: proposal.partOfSpeech || undefined,
+          source: "session",
+          is_primary: true,
+          sense_order: nextSenseOrderFromList(existingSenses),
           total_uses: 0,
-          last_used_at: now,
-          first_used_at: now,
-          review_due_at: reviewDue
+          review_due_at: reviewDue,
+          review_state: "new",
+          created_at: now
         });
-        allWords.push(word);
-      } catch (error) {
-        if (!(error instanceof TeableRequestError) || ![400, 409, 422].includes(error.status)) throw error;
-        const refreshed = await client.listRecordsWhereAll<WordFields>("words", scopeFilters);
-        word = refreshed.find((item) => item.fields.canonical_key === canonicalKey);
-        if (!word) throw error;
       }
+      created.push({ wordId: word.id, senseId: sense.id, lemma: proposal.lemma, translation: proposal.translation, partOfSpeech: proposal.partOfSpeech });
     }
-    const existingSenses = (await listSenses(client, word.id));
-    let sense = existingSenses.find((item) => item.fields.sense_key === canonicalSenseKey(user.id, profile.id, proposal.lemma, proposal.translation));
-    if (!sense) {
-      sense = await createWordSense({
-        Name: proposal.lemma,
-        user_id: user.id,
-        word_id: word.id,
-        sense_key: canonicalSenseKey(user.id, profile.id, proposal.lemma, proposal.translation),
-        translation: proposal.translation,
-        part_of_speech: proposal.partOfSpeech || undefined,
-        source: "session",
-        is_primary: true,
-        sense_order: nextSenseOrderFromList(existingSenses),
-        total_uses: 0,
-        review_due_at: reviewDue,
-        review_state: "new",
-        created_at: now
-      });
-    }
-    created.push({ wordId: word.id, senseId: sense.id, lemma: proposal.lemma, translation: proposal.translation, partOfSpeech: proposal.partOfSpeech });
-  }
+    const generation = await generateSentencesForWords(created.map((word) => ({ id: word.wordId, lemma: word.lemma })), knownLemmas, language, level);
+    const usable = created.filter((word) => generation.sentencesByWord.get(word.wordId)?.length);
+    const sentences = usable.flatMap((word) => (generation.sentencesByWord.get(word.wordId) ?? []).map((generated) => ({ word, generated })));
+    return { usable, sentences, generation };
+  };
 
-  // 3. IA gera as frases (validadas); palavras sem frase nenhuma saem da sessão.
-  const knownLemmas = knownWordsForPrompt.map((word) => word.lemma);
-  const generation = await generateNewWordSentences(created.map((word) => ({ id: word.wordId, lemma: word.lemma })), knownLemmas, language, level);
-  const usable = created.filter((word) => generation.sentencesByWord.get(word.wordId)?.length);
+  // 1ª leva de palavras + frases.
+  const proposedLemmas = new Set(proposals.map((proposal) => normalizeVocabularyToken(proposal.lemma)));
+  const firstBatch = await buildWordsWithSentences(proposals);
+  let { usable, sentences } = firstBatch;
+  const { generation } = firstBatch;
+  // Reposição: completa o pedido com palavras novas enquanto houver déficit (máx. 2 rodadas).
+  for (let topUp = 0; topUp < 2 && usable.length < count; topUp += 1) {
+    const deficit = count - usable.length;
+    const extraProposals = await generateNewWordProposals(
+      knownWordsForPrompt.filter((word) => !proposedLemmas.has(normalizeVocabularyToken(word.lemma))),
+      bankWords, deficit, language, level
+    );
+    const fresh = extraProposals.filter((proposal) => !proposedLemmas.has(normalizeVocabularyToken(proposal.lemma)));
+    if (!fresh.length) break;
+    fresh.forEach((proposal) => proposedLemmas.add(normalizeVocabularyToken(proposal.lemma)));
+    const extra = await buildWordsWithSentences(fresh);
+    usable = [...usable, ...extra.usable];
+    sentences = [...sentences, ...extra.sentences];
+  }
   if (!usable.length) throw new LearningStateError("Não foi possível montar as frases agora. Tente novamente em instantes.", 502);
 
   // 4. Sessão preparing → cards → active (mesmo ciclo dos flashcards).
@@ -201,53 +237,51 @@ export async function createNewWordsPractice(input: { count?: unknown }) {
     updated_at: now
   });
 
-  const sentences: NewWordsSentence[] = [];
+  const cards: NewWordsSentence[] = [];
   let position = 0;
   try {
-    for (const word of usable) {
-      for (const generated of generation.sentencesByWord.get(word.wordId) ?? []) {
-        const record = await client.createRecord<FlashcardFields>("flashcards", {
-          user_id: user.id,
-          practice_session_id: session.id,
-          target_word_id: word.wordId,
-          target_sense_id: word.senseId,
-          supporting_word_ids: "[]",
-          card_type: "translation",
-          prompt: generated.text,
-          expected_answer: generated.translation,
-          accepted_answers: "[]",
-          translation: generated.translation,
-          explanation: "",
-          sentence: generated.text,
-          audio_text: generated.text,
-          difficulty: 1,
-          initial_position: position,
-          generation_source: "ai",
-          created_at: now
-        });
-        sentences.push({
-          id: record.id,
-          sessionId: session.id,
-          targetWordId: word.wordId,
-          targetSenseId: word.senseId,
-          sentence: generated.text,
-          translation: generated.translation,
-          audioText: generated.text,
-          position
-        });
-        position += 1;
-      }
+    for (const { word, generated } of sentences) {
+      const record = await client.createRecord<FlashcardFields>("flashcards", {
+        user_id: user.id,
+        practice_session_id: session.id,
+        target_word_id: word.wordId,
+        target_sense_id: word.senseId,
+        supporting_word_ids: "[]",
+        card_type: "translation",
+        prompt: generated.text,
+        expected_answer: generated.translation,
+        accepted_answers: "[]",
+        translation: generated.translation,
+        explanation: "",
+        sentence: generated.text,
+        audio_text: generated.text,
+        difficulty: 1,
+        initial_position: position,
+        generation_source: "ai",
+        created_at: now
+      });
+      cards.push({
+        id: record.id,
+        sessionId: session.id,
+        targetWordId: word.wordId,
+        targetSenseId: word.senseId,
+        sentence: generated.text,
+        translation: generated.translation,
+        audioText: generated.text,
+        position
+      });
+      position += 1;
     }
 
     // Exemplo da primeira frase vira exemplo do sentido primário.
     for (const word of usable) {
-      const first = sentences.find((sentence) => sentence.targetWordId === word.wordId);
+      const first = cards.find((sentence) => sentence.targetWordId === word.wordId);
       if (first) await updateWordSense(word.senseId, { example_sentence: first.sentence }).catch(() => undefined);
     }
 
     await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, {
       status: "active",
-      unique_card_count: sentences.length,
+      unique_card_count: cards.length,
       updated_at: new Date().toISOString()
     });
   } catch (error) {
@@ -261,12 +295,13 @@ export async function createNewWordsPractice(input: { count?: unknown }) {
     session_id: session.id,
     requested_count: count,
     word_count: usable.length,
-    sentence_count: sentences.length,
+    sentence_count: cards.length,
     dropped_word_ids: generation.droppedWordIds,
     rejection_reasons: generation.rejectionReasons
   });
 
-  return { sessionId: session.id, sentences, words: usable, languageCode: profile.fields.language_code, languageName: profile.fields.language_name };
+  // Déficit (se houver) é sinalizado para a UI avisar; `words` carrega o tamanho real.
+  return { sessionId: session.id, sentences: cards, words: usable, requestedWordCount: count, languageCode: profile.fields.language_code, languageName: profile.fields.language_name };
 }
 
 // ---------- Retomada ----------

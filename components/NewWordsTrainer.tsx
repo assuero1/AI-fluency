@@ -34,6 +34,8 @@ export function NewWordsTrainer() {
   const [resumable, setResumable] = useState<{ sessionId: string; nextSentenceId: string; answeredCount: number; sentenceCount: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  // Aviso informativo (não bloqueante) quando a sessão abre com menos palavras que o pedido.
+  const [shortfallNotice, setShortfallNotice] = useState("");
   const [audioFailed, setAudioFailed] = useState(false);
   const [audioReplayCount, setAudioReplayCount] = useState(0);
   const [usedSpeech, setUsedSpeech] = useState(false);
@@ -93,7 +95,7 @@ export function NewWordsTrainer() {
   }, [current, judgment, audioFailed, languageCode]);
 
   async function start() {
-    setBusy(true); setError("");
+    setBusy(true); setError(""); setShortfallNotice("");
     // Destrava o áudio ainda no gesto do clique (iOS): todo autoplay seguinte
     // acontece no mesmo elemento já destravado.
     const audio = audioRef.current ?? new Audio();
@@ -101,12 +103,16 @@ export function NewWordsTrainer() {
     unlockAudioForPlayback(audio);
     try {
       const response = await fetch("/api/practice/new-words", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ count: size }) });
-      const data = await response.json() as { ok?: boolean; error?: string; sessionId?: string; sentences?: NewWordsSentence[]; words?: NewWordPreview[]; languageCode?: string; languageName?: string };
+      const data = await response.json() as { ok?: boolean; error?: string; sessionId?: string; sentences?: NewWordsSentence[]; words?: NewWordPreview[]; requestedWordCount?: number; languageCode?: string; languageName?: string };
       if (!response.ok || !data.ok || !data.sessionId || !data.sentences?.length) throw new Error(data.error ?? "Não foi possível montar a sessão.");
       setSessionId(data.sessionId); setCompletionId(crypto.randomUUID());
       setSentences(data.sentences); setWords(data.words ?? []);
       setAnsweredIds(new Set()); setCurrent(data.sentences[0]); setLanguageCode(data.languageCode ?? "en"); setLanguageName(data.languageName ?? "idioma estudado");
       setResumable(null); setResult(null); resetAttempt();
+      if ((data.words?.length ?? 0) < size) {
+        setError(""); // sem erro bloqueante; aviso informativo durante a sessão
+        setShortfallNotice(`Conseguimos montar frases para ${data.words?.length ?? 0} de ${size} palavras. As demais entram na próxima sessão.`);
+      }
     } catch (startError) { setError(startError instanceof Error ? startError.message : "Não foi possível montar a sessão."); }
     finally { setBusy(false); }
   }
@@ -182,7 +188,9 @@ export function NewWordsTrainer() {
     try {
       const response = await fetch("/api/practice/new-words/abandon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId }) });
       if (!response.ok) throw new Error("Não foi possível abandonar a sessão.");
-      setSessionId(""); setSentences([]); setCurrent(null); setJudgment(null); setResumable(null); resetAttempt();
+      // O aviso de déficit não vai para resetAttempt (ele roda a cada questão e
+      // apagaria o aviso no meio da sessão) — limpa aqui e no novo start.
+      setSessionId(""); setSentences([]); setCurrent(null); setJudgment(null); setResumable(null); setShortfallNotice(""); resetAttempt();
     } catch (abandonError) { setError(abandonError instanceof Error ? abandonError.message : "Não foi possível abandonar."); }
     finally { setBusy(false); }
   }
@@ -244,6 +252,7 @@ export function NewWordsTrainer() {
         <Pill>{answeredIds.size}/{sentences.length} frases{wordIndex >= 0 ? ` · palavra ${wordIndex + 1}/${words.length}` : ""}</Pill>
       </div>
       <div className="progress-line"><span style={{ width: `${(answeredIds.size / Math.max(1, sentences.length)) * 100}%` }} /></div>
+      {shortfallNotice ? <p className="row-meta">{shortfallNotice}</p> : null}
       <div className="flashcard-kind"><Pill tone="info">Traduza a frase{sentenceOfWord.length > 1 ? ` (${ordinalOfWord}/${sentenceOfWord.length} desta palavra)` : ""}</Pill></div>
       <section className="active-recall-card" aria-label="Frase para traduzir">
         <span>Traduza para o português</span>
