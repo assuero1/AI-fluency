@@ -36,7 +36,6 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
       <Link className="flashcard-entry" href="/palavras/treino">
         <div className="flashcard-entry-icon"><Brain /></div><div className="row-copy"><div className="eyebrow"><Sparkles size={14} /> Revisão inteligente</div><div className="row-title">Treinar com cards</div><div className="row-meta">{data.dailyQueue && data.dailyQueue.dueCount + data.dailyQueue.newCount > 0 ? `Hoje: ${data.dailyQueue.dueCount} revisões + ${data.dailyQueue.newCount} novas` : "Palavras e frases do seu vocabulário"}</div></div><ChevronRight />
       </Link>
-      <Link className="outline-button full-button" href="/palavras/novas"><Sparkles /> Aprender palavras novas</Link>
       <section className="section">
         <div className="word-summary">
           <div>

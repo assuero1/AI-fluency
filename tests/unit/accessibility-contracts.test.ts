@@ -49,5 +49,6 @@ describe("accessibility contracts", () => {
     expect(nav).not.toMatch(/key: "calendario"/);
     expect(read("app/perfil/page.tsx")).toContain('href="/calendario"');
     expect(read("components/FlashcardTrainer.tsx")).not.toContain("/palavras/novas");
+    expect(read("app/palavras/page.tsx")).not.toContain("/palavras/novas");
   });
 });
