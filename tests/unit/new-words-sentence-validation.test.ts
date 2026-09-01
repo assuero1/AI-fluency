@@ -19,6 +19,23 @@ describe("validateGeneratedSentences", () => {
     expect(droppedWordIds).toEqual([]);
   });
 
+  it("aceita até SENTENCES_PER_WORD (6) frases por palavra e rejeita a sétima", () => {
+    const { sentencesByWord, rejectionReasons } = validateGeneratedSentences(
+      [
+        { text: "I eat bread", translation: "eu como pão", word: "bread" },
+        { text: "bread is good", translation: "pão é bom", word: "bread" },
+        { text: "want bread", translation: "quero pão", word: "bread" },
+        { text: "I want bread", translation: "eu quero pão", word: "bread" },
+        { text: "i want to eat bread", translation: "eu quero comer pão", word: "bread" },
+        { text: "want good bread", translation: "quero pão bom", word: "bread" },
+        { text: "i eat good bread", translation: "eu como pão bom", word: "bread" }
+      ],
+      newWords, known
+    );
+    expect(sentencesByWord.get("w1")).toHaveLength(6);
+    expect(rejectionReasons.too_many_per_word).toBe(1);
+  });
+
   it("rejeita frase longa, sem o alvo, com alvo duplicado e com desconhecidas demais", () => {
     const { sentencesByWord, rejectionReasons } = validateGeneratedSentences(
       [

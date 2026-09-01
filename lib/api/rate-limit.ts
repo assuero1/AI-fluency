@@ -30,7 +30,7 @@ export const apiRateLimitRules: ApiRateLimitRule[] = [
   { name: "explain-selection", pattern: /^\/api\/explain-selection$/, limitPerMinute: 40 },
   { name: "topics-suggest", pattern: /^\/api\/topics\/suggest$/, limitPerMinute: 10 },
   { name: "new-words-create", pattern: /^\/api\/practice\/new-words$/, limitPerMinute: 6 },
-  { name: "new-words-judge", pattern: /^\/api\/practice\/new-words\/(judge|complete|abandon)$/, limitPerMinute: 30 },
+  { name: "new-words-judge", pattern: /^\/api\/practice\/new-words\/(judge|complete|abandon)$/, limitPerMinute: 60 },
   { name: "flashcards-create", pattern: /^\/api\/practice\/flashcards$/, limitPerMinute: 6 },
   { name: "settings-test", pattern: /^\/api\/settings\/test-(ai|kokoro|supabase)$/, limitPerMinute: 6 }
 ];

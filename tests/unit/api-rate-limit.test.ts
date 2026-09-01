@@ -73,6 +73,14 @@ describe("api rate limit", () => {
     }
   });
 
+  it("new-words-judge tem teto de 60/min e cobre judge/complete/abandon", () => {
+    const rule = matchApiRateLimitRule("/api/practice/new-words/judge");
+    expect(rule?.name).toBe("new-words-judge");
+    expect(rule?.limitPerMinute).toBe(60);
+    expect(matchApiRateLimitRule("/api/practice/new-words/complete")?.name).toBe("new-words-judge");
+    expect(matchApiRateLimitRule("/api/practice/new-words")?.name).toBe("new-words-create");
+  });
+
   it("leaves cheap and non-API paths alone", () => {
     expect(matchApiRateLimitRule("/api/profile")).toBeNull();
     expect(matchApiRateLimitRule("/api/words")).toBeNull();

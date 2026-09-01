@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import {
   newWordsSessionSizes,
+  SENTENCES_PER_WORD,
   splitSentenceAroundTarget,
   type JudgedTranslation,
   type NewWordPreview,
@@ -315,14 +316,14 @@ export function NewWordsTrainer() {
       <div className="flashcard-choice-grid">
         {newWordsSessionSizes.map((option) => (
           <button key={option} className={size === option ? "choice-card active" : "choice-card"} disabled={busy} onClick={() => setSize(option)} type="button">
-            <div><strong>{option}</strong><span>palavras · {option * 3} frases</span></div>
+            <div><strong>{option}</strong><span>palavras · {option * SENTENCES_PER_WORD} frases</span></div>
           </button>
         ))}
       </div>
       <button className="green-button full-button" disabled={busy} onClick={() => void start()} type="button">
         {busy ? <><Loader2 className="spin" /> Escolhendo palavras e montando frases...</> : <><Sparkles /> Começar com {size} palavra{size === 1 ? "" : "s"}</>}
       </button>
-      <p className="row-meta">Cada palavra vem em {3} frases curtas. Ouça, traduza e a IA corrige na hora.</p>
+      <p className="row-meta">Cada palavra vem em {SENTENCES_PER_WORD} frases curtas. Ouça, traduza e a IA corrige na hora.</p>
     </section>
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
   </div>, false);

@@ -1,8 +1,8 @@
 export const newWordsSessionSizes = [3, 5, 8] as const;
 export type NewWordsSessionSize = (typeof newWordsSessionSizes)[number];
 
-/** Frases por palavra nova. */
-export const SENTENCES_PER_WORD = 3;
+/** Frases por palavra nova (spec 2026-09-01: mais de 5). */
+export const SENTENCES_PER_WORD = 6;
 /** Limites de palavras lexicais por frase (spec: 2 a 6 palavras totais). */
 export const NEW_WORDS_SENTENCE_MIN_WORDS = 2;
 export const NEW_WORDS_SENTENCE_MAX_WORDS = 6;
