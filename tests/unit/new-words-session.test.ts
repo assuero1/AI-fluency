@@ -257,3 +257,63 @@ describe("geração de frases para palavras novas", () => {
     expect(await getActiveNewWordsPractice()).toBeNull();
   });
 });
+
+describe("julgamento de tentativas (judgeNewWordsAttempt)", () => {
+  beforeEach(() => {
+    client.reset();
+    // Os testes de geração acima acumulam chamadas na IA: zera para as asserções de chamada abaixo.
+    vi.clearAllMocks();
+  });
+
+  function seedActiveSession() {
+    return (async () => {
+      const now = new Date().toISOString();
+      const session = await client.createRecord("practiceSessions", {
+        type: "new_words", status: "active", focus: JSON.stringify({ count: 1 }), started_at: now, created_at: now
+      });
+      const word = await client.createRecord("words", { user_id: "user-1", lemma: "bread", display_text: "bread", translation: "pão" });
+      const card = await client.createRecord("flashcards", {
+        user_id: "user-1", practice_session_id: session.id, card_type: "translation",
+        target_word_id: word.id, target_sense_id: "",
+        prompt: "I eat bread", sentence: "I eat bread", audio_text: "I eat bread",
+        expected_answer: "eu como pão", translation: "eu como pão", initial_position: 0
+      });
+      return { sessionId: session.id, sentenceId: card.id };
+    })();
+  }
+
+  it("tradução idêntica à referência pula a IA e persiste match exact / was_correct", async () => {
+    const { judgeNewWordsAttempt } = await import("../../lib/learning/new-words");
+    const { sessionId, sentenceId } = await seedActiveSession();
+    // Se a IA fosse chamada, diria "incorrect": o teste prova que ela nem roda.
+    createChatCompletion.mockResolvedValue({ content: JSON.stringify({ verdict: "incorrect", feedback: "não é isso", corrected_translation: "outra coisa" }) });
+
+    const result = await judgeNewWordsAttempt({
+      sessionId, clientAttemptId: "attempt-exact-001", sentenceId, userTranslation: "Eu como pão."
+    });
+
+    expect(createChatCompletion).not.toHaveBeenCalled();
+    expect(result.sentenceId).toBe(sentenceId);
+    expect(result.judgment).toEqual({ verdict: "correct", feedback: "Isso mesmo!", correctedTranslation: "eu como pão" });
+    expect(result.senseCreated).toBe(false);
+    const attempt = [...client.records.values()].find((record) => record.fields.client_attempt_id === "attempt-exact-001");
+    expect(attempt?.fields.match_result).toBe("exact");
+    expect(attempt?.fields.was_correct).toBe(true);
+  });
+
+  it("tradução não-exata continua no fluxo com IA (com fallback se a IA falhar)", async () => {
+    const { judgeNewWordsAttempt } = await import("../../lib/learning/new-words");
+    const { sessionId, sentenceId } = await seedActiveSession();
+    createChatCompletion.mockRejectedValue(new Error("ia fora do ar"));
+
+    const result = await judgeNewWordsAttempt({
+      sessionId, clientAttemptId: "attempt-loose-001", sentenceId, userTranslation: "como pão eu"
+    });
+
+    expect(createChatCompletion).toHaveBeenCalledTimes(1);
+    expect(result.judgment.verdict).toBe("incorrect");
+    const attempt = [...client.records.values()].find((record) => record.fields.client_attempt_id === "attempt-loose-001");
+    expect(attempt?.fields.match_result).toBe("incorrect");
+    expect(attempt?.fields.was_correct).toBe(false);
+  });
+});

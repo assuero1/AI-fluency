@@ -15,6 +15,8 @@ import {
 } from "@/lib/learning/new-words-contracts";
 import { unlockAudioForPlayback, requestSpeech, reportVoiceFailure } from "./voice-shared";
 import { createAudioPrefetchQueue, type AudioPrefetchQueue } from "@/lib/learning/audio-prefetch";
+import { compareFlashcardAnswer } from "@/lib/learning/flashcard-answer";
+import { playButtonSound } from "@/lib/client/ui-sound";
 import { AppShell } from "./AppShell";
 import { Pill } from "./Pill";
 import { VoiceButton } from "./VoiceButton";
@@ -30,6 +32,9 @@ type ReadyNewWordsSession = Extract<ActiveNewWordsPractice, { preparing: false; 
 const POLL_INTERVAL_MS = 2500;
 const MAX_POLL_ATTEMPTS = 40;
 const PREPARING_ERROR = "Não foi possível montar as frases agora. Tente novamente em instantes.";
+// Auto-avanço: o julgamento fica visível 4s antes da próxima frase abrir
+// sozinha (a barrinha animada acompanha a contagem).
+const AUTO_ADVANCE_MS = 4000;
 
 // Quando o proxy/deploy devolve HTML (página de erro, build antigo), o
 // response.json() lança um erro cru do navegador ("Unexpected token '<'").
@@ -58,8 +63,6 @@ export function NewWordsTrainer() {
   const [resumable, setResumable] = useState<{ sessionId: string; nextSentenceId: string; answeredCount: number; sentenceCount: number } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  // Aviso informativo (não bloqueante) quando a sessão abre com menos palavras que o pedido.
-  const [shortfallNotice, setShortfallNotice] = useState("");
   const [audioFailed, setAudioFailed] = useState(false);
   const [audioReplayCount, setAudioReplayCount] = useState(0);
   const [usedSpeech, setUsedSpeech] = useState(false);
@@ -72,7 +75,7 @@ export function NewWordsTrainer() {
   const inputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<Recognition | null>(null);
   const prefetchRef = useRef<AudioPrefetchQueue | null>(null);
-  // Auto-avanço: 2s após o julgamento a próxima frase abre sozinha; tocar na
+  // Auto-avanço: 4s após o julgamento a próxima frase abre sozinha; tocar na
   // barrinha adianta. O ref permite cancelar em novo agendamento, reset,
   // abandono e unmount (sem avanço fantasma).
   const autoAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -82,7 +85,7 @@ export function NewWordsTrainer() {
   const [preparing, setPreparing] = useState(false);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const cancelledRef = useRef(false);
-  const requestedCountRef = useRef(0);
+  const inflightJudgeRef = useRef<Promise<unknown> | null>(null);
 
   const cancelAutoAdvance = useCallback(() => {
     if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null; }
@@ -126,6 +129,8 @@ export function NewWordsTrainer() {
       cancelledRef.current = true;
       if (pollTimerRef.current) { clearTimeout(pollTimerRef.current); pollTimerRef.current = null; }
       recognitionRef.current?.abort(); recognitionRef.current = null;
+      // O judge em background não é cancelável: só descarta a espera.
+      inflightJudgeRef.current?.catch(() => undefined); inflightJudgeRef.current = null;
     };
   }, []);
 
@@ -211,15 +216,10 @@ export function NewWordsTrainer() {
     setCurrent(next);
     setLanguageCode(active.languageCode ?? "en"); setLanguageName(active.languageName ?? "idioma estudado");
     setResumable(null); setResult(null); setPreparing(false); resetAttempt();
-    const requested = requestedCountRef.current || size;
-    if ((active.words?.length ?? 0) < requested) {
-      // sem erro bloqueante; aviso informativo durante a sessão
-      setShortfallNotice(`Conseguimos montar frases para ${active.words?.length ?? 0} de ${requested} palavras. As demais entram na próxima sessão.`);
-    }
   }
 
   async function start() {
-    setBusy(true); setError(""); setShortfallNotice("");
+    setBusy(true); setError("");
     // Destrava o áudio ainda no gesto do clique (iOS): todo autoplay seguinte
     // acontece no mesmo elemento já destravado. O polling de preparação não
     // depende de gesto — o elemento permanece destravado para os plays futuros.
@@ -236,7 +236,6 @@ export function NewWordsTrainer() {
         if (response.status === 409 || /em andamento/i.test(data.error ?? "")) {
           const snapshot = await fetchActiveSession();
           if (snapshot?.preparing) {
-            requestedCountRef.current = snapshot.requestedWordCount || size;
             enterPreparation(snapshot.sessionId);
             return;
           }
@@ -244,7 +243,6 @@ export function NewWordsTrainer() {
         throw new Error(data.error ?? "Não foi possível montar a sessão.");
       }
       if (!data.ok || !data.sessionId || data.status !== "preparing") throw new Error(data.error ?? "Não foi possível montar a sessão.");
-      requestedCountRef.current = data.requestedWordCount ?? size;
       enterPreparation(data.sessionId);
     } catch (startError) { setError(startError instanceof Error ? startError.message : "Não foi possível montar a sessão."); }
     finally { setBusy(false); }
@@ -285,28 +283,65 @@ export function NewWordsTrainer() {
 
   async function submitTranslation(event?: FormEvent) {
     event?.preventDefault();
+    // Som de confirmação no gesto: o AudioContext só destrava dentro do gesto
+    // do usuário, então toca aqui (antes de qualquer await) e só no Traduzir.
+    playButtonSound();
     if (!current || judgment || busy || !input.trim()) return;
     recognitionRef.current?.stop();
-    setBusy(true); setError("");
+    const translation = input.trim();
     const clientAttemptId = crypto.randomUUID();
+    const judgeBody = JSON.stringify({
+      sessionId, clientAttemptId, sentenceId: current.id, userTranslation: translation,
+      responseTimeMs: Math.max(0, Date.now() - startedAt), usedSpeech, audioReplayCount, audioFailed
+    });
+    // Match exato detectado no cliente (mesma regra do servidor): reveal
+    // imediato, sem esperar o servidor. O POST do judge segue em background —
+    // o registro persistido continua sendo o do servidor — e o continueToNext
+    // espera essa promise antes de avançar/complete. Sem busy: nada a esperar.
+    if (compareFlashcardAnswer(translation, current.translation) === "exact") {
+      setJudgment({ verdict: "correct", feedback: "", correctedTranslation: current.translation });
+      setAnsweredIds((previous) => new Set([...previous, current.id]));
+      cancelAutoAdvance();
+      autoAdvanceRef.current = setTimeout(() => { autoAdvanceRef.current = null; void continueToNext(); }, AUTO_ADVANCE_MS);
+      const backgroundJudge = fetch("/api/practice/new-words/judge", { method: "POST", headers: { "Content-Type": "application/json" }, body: judgeBody })
+        .then(async (response) => {
+          const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string; attempt?: { judgment: JudgedTranslation; senseCreated: boolean } };
+          if (!response.ok || !data.ok || !data.attempt) throw new Error(data.error ?? "Não foi possível avaliar a tradução.");
+          return data;
+        });
+      inflightJudgeRef.current = backgroundJudge;
+      return;
+    }
+    // Demais traduções: aguarda o julgamento da IA (busy/spinner).
+    setBusy(true); setError("");
     try {
-      const response = await fetch("/api/practice/new-words/judge", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
-        sessionId, clientAttemptId, sentenceId: current.id, userTranslation: input.trim(),
-        responseTimeMs: Math.max(0, Date.now() - startedAt), usedSpeech, audioReplayCount, audioFailed
-      }) });
+      const response = await fetch("/api/practice/new-words/judge", { method: "POST", headers: { "Content-Type": "application/json" }, body: judgeBody });
       const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string; attempt?: { judgment: JudgedTranslation; senseCreated: boolean } };
       if (!response.ok || !data.ok || !data.attempt) throw new Error(data.error ?? "Não foi possível avaliar a tradução.");
       setJudgment(data.attempt.judgment); setSenseCreated(Boolean(data.attempt.senseCreated));
       setAnsweredIds((previous) => new Set([...previous, current.id]));
-      // O julgamento fica visível 2s (a barrinha dá o feedback visual do tempo)
+      // O julgamento fica visível 4s (a barrinha dá o feedback visual do tempo)
       // e a próxima frase abre sozinha; tocar na barrinha adianta.
       cancelAutoAdvance();
-      autoAdvanceRef.current = setTimeout(() => { autoAdvanceRef.current = null; void continueToNext(); }, 2000);
+      autoAdvanceRef.current = setTimeout(() => { autoAdvanceRef.current = null; void continueToNext(); }, AUTO_ADVANCE_MS);
     } catch (submitError) { setError(submitError instanceof Error ? submitError.message : "Não foi possível avaliar a tradução."); }
     finally { setBusy(false); }
   }
 
   async function continueToNext() {
+    // Judge em background (reveal otimista): espera a tentativa ser persistida
+    // ANTES de avançar/complete — sem isso o complete pode rodar com frases
+    // pendentes e o avanço pode pedir frase já julgada (409). Se o judge
+    // falhou, mostra o mesmo erro inline e não avança.
+    if (inflightJudgeRef.current) {
+      try { await inflightJudgeRef.current; }
+      catch (judgeError) {
+        inflightJudgeRef.current = null;
+        setError(judgeError instanceof Error ? judgeError.message : "Não foi possível avaliar a tradução.");
+        return;
+      }
+      inflightJudgeRef.current = null;
+    }
     // Guarda de busy: sem o botão Continuar (disabled), a barrinha e o timer
     // precisam dela para não disparar dois avanços/complete em paralelo.
     if (!current || busy) return;
@@ -325,17 +360,18 @@ export function NewWordsTrainer() {
   }
 
   async function abandonSession() {
-    // Cancela ANTES do fetch: com "Sair" no meio da contagem de 2s, um timer
+    // Cancela ANTES do fetch: com "Sair" no meio da contagem de 4s, um timer
     // armado poderia disparar POST /complete concorrente ao abandon.
     cancelAutoAdvance();
     setBusy(true); setError("");
     try {
       const response = await fetch("/api/practice/new-words/abandon", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId }) });
       if (!response.ok) throw new Error("Não foi possível abandonar a sessão.");
-      // O aviso de déficit não vai para resetAttempt (ele roda a cada questão e
-      // apagaria o aviso no meio da sessão) — limpa aqui e no novo start.
+      // O judge em background (reveal otimista) deixou de ser esperado: a sessão
+      // foi abandonada — apenas evita rejeição não tratada (o fetch não é cancelável).
+      inflightJudgeRef.current?.catch(() => undefined); inflightJudgeRef.current = null;
       prefetchRef.current?.dispose();
-      setSessionId(""); setSentences([]); setCurrent(null); setJudgment(null); setResumable(null); setShortfallNotice(""); resetAttempt();
+      setSessionId(""); setSentences([]); setCurrent(null); setJudgment(null); setResumable(null); resetAttempt();
     } catch (abandonError) { setError(abandonError instanceof Error ? abandonError.message : "Não foi possível abandonar."); }
     finally { setBusy(false); }
   }
@@ -389,8 +425,6 @@ export function NewWordsTrainer() {
 
   if (current) {
     const wordIndex = words.findIndex((word) => word.wordId === current.targetWordId);
-    const sentenceOfWord = sentences.filter((sentence) => sentence.targetWordId === current.targetWordId);
-    const ordinalOfWord = sentenceOfWord.findIndex((sentence) => sentence.id === current.id) + 1;
     return shell(<div className="flashcard-screen">
       <audio ref={audioRef} className="sr-only" preload="auto" />
       <div className="top-row">
@@ -398,8 +432,6 @@ export function NewWordsTrainer() {
         <Pill>{answeredIds.size}/{sentences.length} frases{wordIndex >= 0 ? ` · palavra ${wordIndex + 1}/${words.length}` : ""}</Pill>
       </div>
       <div className="progress-line"><span style={{ width: `${(answeredIds.size / Math.max(1, sentences.length)) * 100}%` }} /></div>
-      {shortfallNotice ? <p className="row-meta">{shortfallNotice}</p> : null}
-      <div className="flashcard-kind"><Pill tone="info">Traduza a frase{sentenceOfWord.length > 1 ? ` (${ordinalOfWord}/${sentenceOfWord.length} desta palavra)` : ""}</Pill></div>
       <section className="active-recall-card" aria-label="Frase para traduzir">
         <span>Traduza para o português</span>
         <strong>
@@ -429,7 +461,6 @@ export function NewWordsTrainer() {
         <div><span>Tradução esperada</span><strong>{judgment.correctedTranslation}</strong></div>
         <div><span>Sua tradução</span><strong>{input}</strong></div>
         <p className={`answer-match ${judgment.verdict === "correct" ? "exact" : judgment.verdict === "acceptable" ? "acceptable" : judgment.verdict}`}>{verdictLabel(judgment.verdict)}</p>
-        <p className="row-meta">{judgment.feedback}</p>
         {judgment.newSenseTranslation ? <p className="speech-status">{senseCreated ? `Registrado: “${judgment.newSenseTranslation}” entrou como novo significado desta palavra.` : "Esse significado já estava registrado."}</p> : null}
         <button aria-label="Avançar para a próxima frase" className="auto-advance" onClick={advanceNow} type="button">
           <span className="auto-advance-bar" />
@@ -470,7 +501,7 @@ export function NewWordsTrainer() {
       <button className="green-button full-button" disabled={busy || preparing} onClick={() => void start()} type="button">
         {busy || preparing ? <><Loader2 className="spin" /> Preparando suas frases...</> : <><Sparkles /> Começar com {size} palavra{size === 1 ? "" : "s"}</>}
       </button>
-      {preparing ? <p className="row-meta" role="status">A IA está escolhendo as palavras e montando as frases — leva alguns segundos e esta tela atualiza sozinha.</p> : <p className="row-meta">Cada palavra vem em {SENTENCES_PER_WORD} frases curtas. Ouça, traduza e a IA corrige na hora.</p>}
+      <p className="row-meta">Cada palavra vem em {SENTENCES_PER_WORD} frases curtas. Ouça, traduza e a IA corrige na hora.</p>
     </section>
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
   </div>, false);

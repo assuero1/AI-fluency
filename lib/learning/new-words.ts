@@ -615,12 +615,15 @@ export async function judgeNewWordsAttempt(input: JudgeInput): Promise<NewWordsA
   if (!word) throw new LearningStateError("Palavra da frase não encontrada.", 404);
   const senses = (await listSensesByWordIds([word.id])).get(word.id) ?? [];
 
-  // 1) IA professora; 2) fallback determinístico se a IA falhar.
-  let judgment = await requestTeacherJudgment(next, word, senses, userTranslation).catch(() => null) ?? fallbackJudgment(userTranslation, next.translation);
-  // Correção determinística tem precedência em acertos óbvios: tradução
-  // idêntica à referência é "correct" mesmo se a IA titubeou.
+  // Match exato nem chama a IA: tradução idêntica à referência é "correct"
+  // determinístico — pula a chamada (julgamento instantâneo) e não há novo
+  // significado a explorar quando a tradução é a própria referência.
+  let judgment: JudgedTranslation;
   if (compareFlashcardAnswer(userTranslation, next.translation) === "exact") {
-    judgment = { ...judgment, verdict: "correct", correctedTranslation: next.translation };
+    judgment = { verdict: "correct", feedback: "Isso mesmo!", correctedTranslation: next.translation };
+  } else {
+    // 1) IA professora; 2) fallback determinístico se a IA falhar.
+    judgment = await requestTeacherJudgment(next, word, senses, userTranslation).catch(() => null) ?? fallbackJudgment(userTranslation, next.translation);
   }
 
   // Expansão de significados: tradução válida diferente das cadastradas.
