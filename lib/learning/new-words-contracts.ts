@@ -63,7 +63,7 @@ export type NewWordsSessionResult = {
 export type PreparingNewWordsSession = { preparing: true; sessionId: string; requestedWordCount: number };
 
 /** Falha recente na geração (últimos 10 minutos): a UI mostra erro acionável. */
-export type FailedNewWordsSession = { preparing: false; failed: true; sessionId: string };
+export type FailedNewWordsSession = { preparing: false; failed: true; sessionId: string; failedReason?: string };
 
 /** Sessão ativa pronta para jogar (mesmo payload de antes, com preparing: false). */
 export type ReadyNewWordsSession = {

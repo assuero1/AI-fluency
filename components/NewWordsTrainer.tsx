@@ -193,7 +193,11 @@ export function NewWordsTrainer() {
       const active = await fetchActiveSession();
       if (cancelledRef.current) return;
       if (active && active.sessionId === targetSessionId) {
-        if ("failed" in active && active.failed) { giveUp(); return; }
+        if ("failed" in active && active.failed) {
+          setPreparing(false);
+          setError(`Não foi possível montar as frases agora${active.failedReason ? ` (${active.failedReason})` : ""}. Tente novamente em instantes.`);
+          return;
+        }
         // Pronto: segue exatamente como o fluxo antigo (o burst de prefetch
         // sobe no effect existente ao setSentences).
         if (!active.preparing && active.sentences.length) { applyDeck(active); return; }

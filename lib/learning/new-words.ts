@@ -51,7 +51,10 @@ export async function generateNewWordProposals(
       // que o aluno já tem; o filtro descarta e devolve só as inéditas.
       const words = validateProposedWords(parsed.words, bankWords, count);
       if (words.length) return words;
-    } catch { /* tenta de novo e depois falha */ }
+    } catch (error) {
+      // Diagnóstico: loga o erro bruto da IA antes da próxima tentativa/queda final.
+      console.error(`new words: AI call failed (tentativa ${attempt + 1})`, error);
+    }
   }
   throw new LearningStateError("Não foi possível escolher palavras novas agora. Tente novamente em instantes.", 502);
 }
@@ -95,7 +98,10 @@ export async function generateSentencesForWords(newWords: Array<{ id: string; le
         const fresh = (validated.sentencesByWord.get(word.id) ?? []).filter((sentence) => !knownTexts.has(sentence.text.trim().toLowerCase()));
         combined.sentencesByWord.set(word.id, [...existing, ...fresh].slice(0, SENTENCES_PER_WORD));
       }
-    } catch { /* rodada falhou: segue para a próxima ou devolve o que tem */ }
+    } catch (error) {
+      // Diagnóstico: loga o erro bruto da IA antes da próxima rodada/fim.
+      console.error(`new words: AI call failed (tentativa ${round + 1})`, error);
+    }
     // Pendente = palavra com menos frases que o teto (zerada OU parcial).
     pending = newWords.filter((word) => missingCount(word.id) > 0);
   }
@@ -387,7 +393,10 @@ export async function generateNewWordsDeck(sessionId: string): Promise<void> {
       const sessions = await client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", [{ field: "user_id", value: userId }]).catch(() => []);
       const session = sessions.find((item) => item.id === sessionId && item.fields.type === SESSION_TYPE && item.fields.status === "preparing");
       if (session) {
-        await client.updateRecord<PracticeSessionFields>("practiceSessions", sessionId, { status: "failed", updated_at: new Date().toISOString() }).catch(() => undefined);
+        // Diagnóstico: guarda a mensagem real da falha no focus (a UI exibe o motivo).
+        const reason = error instanceof Error ? error.message.slice(0, 200) : "erro desconhecido";
+        const focus = parseJsonObject(session.fields.focus ?? "{}") as Record<string, unknown>;
+        await client.updateRecord<PracticeSessionFields>("practiceSessions", sessionId, { status: "failed", focus: JSON.stringify({ ...focus, failed: true, failedReason: reason }), updated_at: new Date().toISOString() }).catch(() => undefined);
         await client.createEvent(userId, "new_words_session_creation_failed", { session_id: sessionId, duration_ms: Date.now() - operationStartedAt, error_type: safeErrorType(error) }).catch(() => undefined);
       }
     }
@@ -426,7 +435,13 @@ export async function getActiveNewWordsPractice(): Promise<ActiveNewWordsPractic
     // Falha recente (10 min) é acionável na UI; depois disso é lixo inerte.
     const createdAt = dateValue(session.fields.created_at);
     if (!(createdAt > 0 && Date.now() - createdAt < 10 * 60_000)) return null;
-    return { preparing: false, failed: true, sessionId: session.id };
+    const focus = parseJsonObject(session.fields.focus ?? "{}") as { failedReason?: unknown };
+    return {
+      preparing: false,
+      failed: true,
+      sessionId: session.id,
+      ...(typeof focus.failedReason === "string" && focus.failedReason ? { failedReason: focus.failedReason } : {})
+    };
   }
   const [sentences, attempts] = await Promise.all([
     listSentences(client, user.id, session.id),

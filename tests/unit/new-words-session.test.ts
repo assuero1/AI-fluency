@@ -215,6 +215,29 @@ describe("geração de frases para palavras novas", () => {
     }
   });
 
+  it("falha da IA marca failed com failedReason no focus e o GET devolve o motivo", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { startNewWordsPractice, generateNewWordsDeck, getActiveNewWordsPractice } = await import("../../lib/learning/new-words");
+      // IA fora do ar: toda chamada rejeita (retries incluídos).
+      createChatCompletion.mockRejectedValue(new Error("ia fora do ar"));
+      const { sessionId } = await startNewWordsPractice({ count: 3 });
+      await generateNewWordsDeck(sessionId);
+      const session = client.records.get(sessionId);
+      expect(session?.fields.status).toBe("failed");
+      const focus = JSON.parse(String(session?.fields.focus)) as { failed?: boolean; failedReason?: string };
+      expect(focus.failed).toBe(true);
+      expect(focus.failedReason).toBe("Não foi possível escolher palavras novas agora. Tente novamente em instantes.");
+      // O erro bruto da IA aparece no log de cada tentativa antes da queda final.
+      expect(errorSpy).toHaveBeenCalledWith("new words: AI call failed (tentativa 1)", expect.any(Error));
+      expect(errorSpy).toHaveBeenCalledWith("new words: deck generation failed", expect.any(Error));
+      const payload = await getActiveNewWordsPractice();
+      expect(payload).toEqual({ preparing: false, failed: true, sessionId, failedReason: "Não foi possível escolher palavras novas agora. Tente novamente em instantes." });
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
   it("não ativa sessão abandonada durante a geração do deck", async () => {
     const { startNewWordsPractice, generateNewWordsDeck } = await import("../../lib/learning/new-words");
     createChatCompletion
