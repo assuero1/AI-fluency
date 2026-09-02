@@ -7,6 +7,7 @@ import {
   newWordsSessionSizes,
   SENTENCES_PER_WORD,
   splitSentenceAroundTarget,
+  type ActiveNewWordsPractice,
   type JudgedTranslation,
   type NewWordPreview,
   type NewWordsSentence,
@@ -20,6 +21,15 @@ import { VoiceButton } from "./VoiceButton";
 
 type Recognition = { lang: string; interimResults: boolean; continuous: boolean; start(): void; stop(): void; abort(): void; onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null };
 type RecognitionConstructor = new () => Recognition;
+
+type ReadyNewWordsSession = Extract<ActiveNewWordsPractice, { preparing: false; failed?: false }>;
+
+// Criação assíncrona: o POST devolve a sessão em "preparing" e o deck é gerado
+// em background; o GET é consultado em ritmo fixo até ficar pronto (40 tentativas
+// de 2,5s ≈ 100s cobrem a geração típica de 15–40s com folga).
+const POLL_INTERVAL_MS = 2500;
+const MAX_POLL_ATTEMPTS = 40;
+const PREPARING_ERROR = "Não foi possível montar as frases agora. Tente novamente em instantes.";
 
 // Quando o proxy/deploy devolve HTML (página de erro, build antigo), o
 // response.json() lança um erro cru do navegador ("Unexpected token '<'").
@@ -66,6 +76,13 @@ export function NewWordsTrainer() {
   // barrinha adianta. O ref permite cancelar em novo agendamento, reset,
   // abandono e unmount (sem avanço fantasma).
   const autoAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Espera da criação assíncrona: enquanto "preparing", o GET é consultado em
+  // ritmo fixo; cancelledRef para o polling no unmount (a tela não tem botão
+  // Sair durante a preparação).
+  const [preparing, setPreparing] = useState(false);
+  const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const cancelledRef = useRef(false);
+  const requestedCountRef = useRef(0);
 
   const cancelAutoAdvance = useCallback(() => {
     if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null; }
@@ -84,24 +101,32 @@ export function NewWordsTrainer() {
   );
 
   useEffect(() => {
+    cancelledRef.current = false; // StrictMode (dev) remonta o efeito: reabilita o polling
     const speechWindow = window as typeof window & { SpeechRecognition?: RecognitionConstructor; webkitSpeechRecognition?: RecognitionConstructor };
     setSpeechSupported(Boolean(speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition));
     void (async () => {
       try {
         const response = await fetch("/api/practice/new-words", { cache: "no-store" });
-        const data = await readJsonOrThrow(response) as { ok?: boolean; activeSession?: { sessionId: string; nextSentenceId: string; answeredCount: number; sentences: unknown[]; languageCode: string; languageName: string } | null };
+        const data = await readJsonOrThrow(response) as { ok?: boolean; activeSession?: ActiveNewWordsPractice | null };
+        const active = data.activeSession;
         // O modal é ofertado mesmo com nextSentenceId vazio: sessão com todas
         // as frases respondidas (último "Continuar" não dado, ou complete que
         // falhou) precisa de caminho para o complete/abandono — senão o
         // "Começar" viraria 409 permanente, sem saída pela UI.
-        if (response.ok && data.ok && data.activeSession) {
-          setResumable({ sessionId: data.activeSession.sessionId, nextSentenceId: data.activeSession.nextSentenceId, answeredCount: data.activeSession.answeredCount, sentenceCount: data.activeSession.sentences.length });
-          setLanguageCode(data.activeSession.languageCode ?? "en");
-          setLanguageName(data.activeSession.languageName ?? "idioma estudado");
+        // Sessão "preparing" (app fechado durante a geração) e "failed"
+        // recente são ignoradas aqui: o fluxo delas começa no "Começar" (409 → GET).
+        if (response.ok && data.ok && active && !active.preparing && !active.failed) {
+          setResumable({ sessionId: active.sessionId, nextSentenceId: active.nextSentenceId, answeredCount: active.answeredCount, sentenceCount: active.sentences.length });
+          setLanguageCode(active.languageCode ?? "en");
+          setLanguageName(active.languageName ?? "idioma estudado");
         }
       } catch { /* overview é best-effort */ }
     })();
-    return () => { recognitionRef.current?.abort(); recognitionRef.current = null; };
+    return () => {
+      cancelledRef.current = true;
+      if (pollTimerRef.current) { clearTimeout(pollTimerRef.current); pollTimerRef.current = null; }
+      recognitionRef.current?.abort(); recognitionRef.current = null;
+    };
   }, []);
 
   // Autoplay da frase corrente: um único <audio> destravado no gesto de iniciar.
@@ -142,25 +167,85 @@ export function NewWordsTrainer() {
     return () => queue.dispose();
   }, [sentences, result, languageCode]);
 
+  async function fetchActiveSession(): Promise<ActiveNewWordsPractice | null> {
+    const response = await fetch("/api/practice/new-words", { cache: "no-store" });
+    const data = await readJsonOrThrow(response) as { ok?: boolean; activeSession?: ActiveNewWordsPractice | null };
+    return response.ok && data.ok ? data.activeSession ?? null : null;
+  }
+
+  function enterPreparation(targetSessionId: string) {
+    setPreparing(true); setResumable(null); setResult(null);
+    pollTimerRef.current = setTimeout(() => { pollTimerRef.current = null; void pollForDeck(targetSessionId, 1); }, POLL_INTERVAL_MS);
+  }
+
+  async function pollForDeck(targetSessionId: string, attempt: number): Promise<void> {
+    if (cancelledRef.current) return;
+    const giveUp = () => { setPreparing(false); setError(PREPARING_ERROR); };
+    const scheduleNext = () => {
+      pollTimerRef.current = setTimeout(() => { pollTimerRef.current = null; void pollForDeck(targetSessionId, attempt + 1); }, POLL_INTERVAL_MS);
+    };
+    try {
+      const active = await fetchActiveSession();
+      if (cancelledRef.current) return;
+      if (active && active.sessionId === targetSessionId) {
+        if ("failed" in active && active.failed) { giveUp(); return; }
+        // Pronto: segue exatamente como o fluxo antigo (o burst de prefetch
+        // sobe no effect existente ao setSentences).
+        if (!active.preparing && active.sentences.length) { applyDeck(active); return; }
+      }
+      if (attempt >= MAX_POLL_ATTEMPTS) { giveUp(); return; }
+      scheduleNext();
+    } catch {
+      // Erro transitório de rede/HTML durante a espera: continua tentando até esgotar.
+      if (cancelledRef.current) return;
+      if (attempt >= MAX_POLL_ATTEMPTS) { giveUp(); return; }
+      scheduleNext();
+    }
+  }
+
+  function applyDeck(active: ReadyNewWordsSession) {
+    const next = active.sentences.find((sentence) => sentence.id === active.nextSentenceId) ?? active.sentences[0];
+    setSessionId(active.sessionId); setCompletionId(crypto.randomUUID());
+    setSentences(active.sentences); setWords(active.words ?? []);
+    setAnsweredIds(new Set(active.answeredSentenceIds));
+    setCurrent(next);
+    setLanguageCode(active.languageCode ?? "en"); setLanguageName(active.languageName ?? "idioma estudado");
+    setResumable(null); setResult(null); setPreparing(false); resetAttempt();
+    const requested = requestedCountRef.current || size;
+    if ((active.words?.length ?? 0) < requested) {
+      // sem erro bloqueante; aviso informativo durante a sessão
+      setShortfallNotice(`Conseguimos montar frases para ${active.words?.length ?? 0} de ${requested} palavras. As demais entram na próxima sessão.`);
+    }
+  }
+
   async function start() {
     setBusy(true); setError(""); setShortfallNotice("");
     // Destrava o áudio ainda no gesto do clique (iOS): todo autoplay seguinte
-    // acontece no mesmo elemento já destravado.
+    // acontece no mesmo elemento já destravado. O polling de preparação não
+    // depende de gesto — o elemento permanece destravado para os plays futuros.
     const audio = audioRef.current ?? new Audio();
     audioRef.current = audio;
     unlockAudioForPlayback(audio);
     try {
       const response = await fetch("/api/practice/new-words", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ count: size }) });
-      const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string; sessionId?: string; sentences?: NewWordsSentence[]; words?: NewWordPreview[]; requestedWordCount?: number; languageCode?: string; languageName?: string };
-      if (!response.ok || !data.ok || !data.sessionId || !data.sentences?.length) throw new Error(data.error ?? "Não foi possível montar a sessão.");
-      setSessionId(data.sessionId); setCompletionId(crypto.randomUUID());
-      setSentences(data.sentences); setWords(data.words ?? []);
-      setAnsweredIds(new Set()); setCurrent(data.sentences[0]); setLanguageCode(data.languageCode ?? "en"); setLanguageName(data.languageName ?? "idioma estudado");
-      setResumable(null); setResult(null); resetAttempt();
-      if ((data.words?.length ?? 0) < size) {
-        setError(""); // sem erro bloqueante; aviso informativo durante a sessão
-        setShortfallNotice(`Conseguimos montar frases para ${data.words?.length ?? 0} de ${size} palavras. As demais entram na próxima sessão.`);
+      const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string; sessionId?: string; status?: string; requestedWordCount?: number };
+      if (!response.ok) {
+        // 409 = já existe sessão em andamento (ex.: app fechado durante a
+        // preparação). Consulta o GET: se estiver "preparing", entra na espera
+        // em vez de mostrar erro.
+        if (response.status === 409 || /em andamento/i.test(data.error ?? "")) {
+          const snapshot = await fetchActiveSession();
+          if (snapshot?.preparing) {
+            requestedCountRef.current = snapshot.requestedWordCount || size;
+            enterPreparation(snapshot.sessionId);
+            return;
+          }
+        }
+        throw new Error(data.error ?? "Não foi possível montar a sessão.");
       }
+      if (!data.ok || !data.sessionId || data.status !== "preparing") throw new Error(data.error ?? "Não foi possível montar a sessão.");
+      requestedCountRef.current = data.requestedWordCount ?? size;
+      enterPreparation(data.sessionId);
     } catch (startError) { setError(startError instanceof Error ? startError.message : "Não foi possível montar a sessão."); }
     finally { setBusy(false); }
   }
@@ -377,15 +462,15 @@ export function NewWordsTrainer() {
       <h2 className="section-title">Quantas palavras quer aprender?</h2>
       <div className="flashcard-choice-grid">
         {newWordsSessionSizes.map((option) => (
-          <button key={option} className={size === option ? "choice-card active" : "choice-card"} disabled={busy} onClick={() => setSize(option)} type="button">
+          <button key={option} className={size === option ? "choice-card active" : "choice-card"} disabled={busy || preparing} onClick={() => setSize(option)} type="button">
             <div><strong>{option}</strong><span>palavras · {option * SENTENCES_PER_WORD} frases</span></div>
           </button>
         ))}
       </div>
-      <button className="green-button full-button" disabled={busy} onClick={() => void start()} type="button">
-        {busy ? <><Loader2 className="spin" /> Escolhendo palavras e montando frases...</> : <><Sparkles /> Começar com {size} palavra{size === 1 ? "" : "s"}</>}
+      <button className="green-button full-button" disabled={busy || preparing} onClick={() => void start()} type="button">
+        {busy || preparing ? <><Loader2 className="spin" /> Preparando suas frases...</> : <><Sparkles /> Começar com {size} palavra{size === 1 ? "" : "s"}</>}
       </button>
-      <p className="row-meta">Cada palavra vem em {SENTENCES_PER_WORD} frases curtas. Ouça, traduza e a IA corrige na hora.</p>
+      {preparing ? <p className="row-meta" role="status">A IA está escolhendo as palavras e montando as frases — leva alguns segundos e esta tela atualiza sozinha.</p> : <p className="row-meta">Cada palavra vem em {SENTENCES_PER_WORD} frases curtas. Ouça, traduza e a IA corrige na hora.</p>}
     </section>
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
   </div>, false);

@@ -15,6 +15,7 @@ import { inferRecallRating } from "./flashcard-queue";
 import {
   normalizeNewWordsSessionSize,
   SENTENCES_PER_WORD,
+  type ActiveNewWordsPractice,
   type JudgedTranslation,
   type NewWordPreview,
   type NewWordsAttemptResult,
@@ -105,144 +106,37 @@ export async function generateSentencesForWords(newWords: Array<{ id: string; le
 
 // ---------- Criação da sessão ----------
 
-export async function createNewWordsPractice(input: { count?: unknown }) {
+/**
+ * Cria a sessão em "preparing" e devolve na hora: a geração do deck (IA, 15–40s)
+ * roda em background via generateNewWordsDeck — é o que elimina o 502 de timeout
+ * do proxy na criação síncrona.
+ */
+export async function startNewWordsPractice(input: { count?: unknown }): Promise<{ sessionId: string; status: "preparing"; requestedWordCount: number }> {
   const count = normalizeNewWordsSessionSize(input.count);
   const client = getTeableClient();
   const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
   if (!profile) throw new LearningStateError("Configure um idioma antes de iniciar a sessão.", 409);
-  const scopeFilters = [
+  const sessions = await client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", [
     { field: "user_id", value: user.id },
     { field: "language_profile_id", value: profile.id }
-  ];
-  const [allWords, sessions] = await Promise.all([
-    client.listRecordsWhereAll<WordFields>("words", scopeFilters),
-    client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters)
   ]);
   const active = sessions.find((session) => session.fields.type === SESSION_TYPE && (session.fields.status === "active" || session.fields.status === "preparing"));
   if (active) throw new LearningStateError("Você já possui uma sessão de palavras novas em andamento. Continue-a antes de iniciar outra.", 409);
-
-  const language = profile.fields.language_name || profile.fields.language_code || "Inglês";
-  const level = profile.fields.level || "intermediário";
-  const bankWords: ExistingBankWord[] = allWords.map((word) => ({
-    lemma: word.fields.lemma || "",
-    displayText: word.fields.display_text || "",
-    formsJson: word.fields.forms_json
-  }));
-  // Lemma + tradução ajudam a IA a escolher palavras que combinem com o repertório.
-  const knownWordsForPrompt = allWords
-    .map((word) => ({ lemma: word.fields.display_text || word.fields.lemma || "", translation: word.fields.translation || "" }))
-    .filter((word) => word.lemma);
-
-  // 1. IA propõe as palavras novas (validadas deterministicamente contra o banco).
-  const proposals = await generateNewWordProposals(knownWordsForPrompt, bankWords, count, language, level);
-
-  // 2. Persiste as palavras + sentido primário (idempotente por canonical_key/sense_key)
-  //    e gera as frases (validadas); encapsulado para a reposição reutilizar o mesmo caminho.
   const now = new Date().toISOString();
-  const reviewDue = new Date(Date.now() + 7 * 86400000).toISOString();
-  const knownLemmas = knownWordsForPrompt.map((word) => word.lemma);
-  const buildWordsWithSentences = async (proposalList: typeof proposals) => {
-    const created: NewWordPreview[] = [];
-    for (const proposal of proposalList) {
-      const canonicalKey = canonicalVocabularyKey(user.id, profile.id, proposal.lemma);
-      let word: TeableRecord<WordFields> | undefined = allWords.find((item) => item.fields.canonical_key === canonicalKey);
-      if (!word) {
-        try {
-          word = await client.createRecord<WordFields>("words", {
-            Name: proposal.lemma,
-            user_id: user.id,
-            language_profile_id: profile.id,
-            lemma: proposal.lemma,
-            canonical_key: canonicalKey,
-            display_text: proposal.lemma,
-            forms_json: "[]",
-            translation: proposal.translation,
-            part_of_speech: proposal.partOfSpeech,
-            familiarity_score: 1,
-            total_uses: 0,
-            last_used_at: now,
-            first_used_at: now,
-            review_due_at: reviewDue
-          });
-          allWords.push(word);
-        } catch (error) {
-          if (!(error instanceof TeableRequestError) || ![400, 409, 422].includes(error.status)) throw error;
-          const refreshed = await client.listRecordsWhereAll<WordFields>("words", scopeFilters);
-          word = refreshed.find((item) => item.fields.canonical_key === canonicalKey);
-          if (!word) throw error;
-        }
-      }
-      const existingSenses = (await listSenses(client, word.id));
-      let sense = existingSenses.find((item) => item.fields.sense_key === canonicalSenseKey(user.id, profile.id, proposal.lemma, proposal.translation));
-      if (!sense) {
-        sense = await createWordSense({
-          Name: proposal.lemma,
-          user_id: user.id,
-          word_id: word.id,
-          sense_key: canonicalSenseKey(user.id, profile.id, proposal.lemma, proposal.translation),
-          translation: proposal.translation,
-          part_of_speech: proposal.partOfSpeech || undefined,
-          source: "session",
-          is_primary: true,
-          sense_order: nextSenseOrderFromList(existingSenses),
-          total_uses: 0,
-          review_due_at: reviewDue,
-          review_state: "new",
-          created_at: now
-        });
-      }
-      created.push({ wordId: word.id, senseId: sense.id, lemma: proposal.lemma, translation: proposal.translation, partOfSpeech: proposal.partOfSpeech });
-    }
-    const generation = await generateSentencesForWords(created.map((word) => ({ id: word.wordId, lemma: word.lemma })), knownLemmas, language, level);
-    const usable = created.filter((word) => generation.sentencesByWord.get(word.wordId)?.length);
-    const sentences = usable.flatMap((word) => (generation.sentencesByWord.get(word.wordId) ?? []).map((generated) => ({ word, generated })));
-    return { usable, sentences, generation };
-  };
-
-  // 1ª leva de palavras + frases.
-  const proposedLemmas = new Set(proposals.map((proposal) => normalizeVocabularyToken(proposal.lemma)));
-  const firstBatch = await buildWordsWithSentences(proposals);
-  let { usable, sentences } = firstBatch;
-  const { generation } = firstBatch;
-  // Reposição: completa o pedido com palavras novas enquanto houver déficit (máx. 2 rodadas).
-  // Falha na reposição não derruba a sessão: ela abre com as palavras que já tem
-  // (a UI avisa o déficit); erros da PRIMEIRA leva continuam propagando.
-  for (let topUp = 0; topUp < 2 && usable.length < count; topUp += 1) {
-    try {
-      const deficit = count - usable.length;
-      const extraProposals = await generateNewWordProposals(
-        knownWordsForPrompt.filter((word) => !proposedLemmas.has(normalizeVocabularyToken(word.lemma))),
-        bankWords, deficit, language, level
-      );
-      const fresh = extraProposals.filter((proposal) => !proposedLemmas.has(normalizeVocabularyToken(proposal.lemma)));
-      if (!fresh.length) break;
-      fresh.forEach((proposal) => proposedLemmas.add(normalizeVocabularyToken(proposal.lemma)));
-      const extra = await buildWordsWithSentences(fresh);
-      usable = [...usable, ...extra.usable];
-      sentences = [...sentences, ...extra.sentences];
-    } catch (error) {
-      console.warn("new words: top-up failed", error);
-      break;
-    }
-  }
-  if (!usable.length) throw new LearningStateError("Não foi possível montar as frases agora. Tente novamente em instantes.", 502);
-
-  // 4. Sessão preparing → cards → active (mesmo ciclo dos flashcards).
-  const operationStartedAt = Date.now();
   const session = await client.createRecord<PracticeSessionFields>("practiceSessions", {
     Name: `Palavras novas · ${now.slice(0, 10)}`,
     user_id: user.id,
     language_profile_id: profile.id,
     conversation_id: "",
     type: SESSION_TYPE,
-    focus: JSON.stringify({ count, wordIds: usable.map((word) => word.wordId) }),
+    focus: JSON.stringify({ count }),
     status: "preparing",
     started_at: now,
     ended_at: "",
     duration_seconds: 0,
     requested_word_count: count,
-    selected_word_count: usable.length,
+    selected_word_count: 0,
     unique_card_count: 0,
     presentation_count: 0,
     correct_count: 0,
@@ -253,14 +147,150 @@ export async function createNewWordsPractice(input: { count?: unknown }) {
     created_at: now,
     updated_at: now
   });
+  return { sessionId: session.id, status: "preparing", requestedWordCount: count };
+}
 
-  const cards: NewWordsSentence[] = [];
-  let position = 0;
+/**
+ * Gera o deck da sessão em "preparing" (IA propõe → words+senses → frases com
+ * rodadas → reposição → cards → ativa) e esquenta o áudio. Executa em background
+ * (after() da rota): qualquer erro marca a sessão como "failed" — estado que a
+ * UI trata — e é engolido aqui com console.error.
+ */
+export async function generateNewWordsDeck(sessionId: string): Promise<void> {
+  const client = getTeableClient();
+  const operationStartedAt = Date.now();
+  let userId = "";
   try {
+    const user = await getSessionUser();
+    userId = user.id;
+    const profile = await getActiveLanguageProfile(user);
+    if (!profile) throw new LearningStateError("Perfil de idioma não encontrado.", 409);
+    const scopeFilters = [
+      { field: "user_id", value: user.id },
+      { field: "language_profile_id", value: profile.id }
+    ];
+    const sessions = await client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters);
+    // Só prossegue se a sessão continua em "preparing": inexistente, de outro
+    // usuário ou já fora de preparing (ex.: abandonada) = nada a fazer.
+    const session = sessions.find((item) => item.id === sessionId && item.fields.type === SESSION_TYPE && item.fields.status === "preparing");
+    if (!session) return;
+    const focus = parseJsonObject(session.fields.focus ?? "{}") as { count?: unknown };
+    const count = normalizeNewWordsSessionSize(focus.count);
+
+    const allWords = await client.listRecordsWhereAll<WordFields>("words", scopeFilters);
+    const language = profile.fields.language_name || profile.fields.language_code || "Inglês";
+    const level = profile.fields.level || "intermediário";
+    const bankWords: ExistingBankWord[] = allWords.map((word) => ({
+      lemma: word.fields.lemma || "",
+      displayText: word.fields.display_text || "",
+      formsJson: word.fields.forms_json
+    }));
+    // Lemma + tradução ajudam a IA a escolher palavras que combinem com o repertório.
+    const knownWordsForPrompt = allWords
+      .map((word) => ({ lemma: word.fields.display_text || word.fields.lemma || "", translation: word.fields.translation || "" }))
+      .filter((word) => word.lemma);
+
+    // 1. IA propõe as palavras novas (validadas deterministicamente contra o banco).
+    const proposals = await generateNewWordProposals(knownWordsForPrompt, bankWords, count, language, level);
+
+    // 2. Persiste as palavras + sentido primário (idempotente por canonical_key/sense_key)
+    //    e gera as frases (validadas); encapsulado para a reposição reutilizar o mesmo caminho.
+    const now = new Date().toISOString();
+    const reviewDue = new Date(Date.now() + 7 * 86400000).toISOString();
+    const knownLemmas = knownWordsForPrompt.map((word) => word.lemma);
+    const buildWordsWithSentences = async (proposalList: typeof proposals) => {
+      const created: NewWordPreview[] = [];
+      for (const proposal of proposalList) {
+        const canonicalKey = canonicalVocabularyKey(user.id, profile.id, proposal.lemma);
+        let word: TeableRecord<WordFields> | undefined = allWords.find((item) => item.fields.canonical_key === canonicalKey);
+        if (!word) {
+          try {
+            word = await client.createRecord<WordFields>("words", {
+              Name: proposal.lemma,
+              user_id: user.id,
+              language_profile_id: profile.id,
+              lemma: proposal.lemma,
+              canonical_key: canonicalKey,
+              display_text: proposal.lemma,
+              forms_json: "[]",
+              translation: proposal.translation,
+              part_of_speech: proposal.partOfSpeech,
+              familiarity_score: 1,
+              total_uses: 0,
+              last_used_at: now,
+              first_used_at: now,
+              review_due_at: reviewDue
+            });
+            allWords.push(word);
+          } catch (error) {
+            if (!(error instanceof TeableRequestError) || ![400, 409, 422].includes(error.status)) throw error;
+            const refreshed = await client.listRecordsWhereAll<WordFields>("words", scopeFilters);
+            word = refreshed.find((item) => item.fields.canonical_key === canonicalKey);
+            if (!word) throw error;
+          }
+        }
+        const existingSenses = (await listSenses(client, word.id));
+        let sense = existingSenses.find((item) => item.fields.sense_key === canonicalSenseKey(user.id, profile.id, proposal.lemma, proposal.translation));
+        if (!sense) {
+          sense = await createWordSense({
+            Name: proposal.lemma,
+            user_id: user.id,
+            word_id: word.id,
+            sense_key: canonicalSenseKey(user.id, profile.id, proposal.lemma, proposal.translation),
+            translation: proposal.translation,
+            part_of_speech: proposal.partOfSpeech || undefined,
+            source: "session",
+            is_primary: true,
+            sense_order: nextSenseOrderFromList(existingSenses),
+            total_uses: 0,
+            review_due_at: reviewDue,
+            review_state: "new",
+            created_at: now
+          });
+        }
+        created.push({ wordId: word.id, senseId: sense.id, lemma: proposal.lemma, translation: proposal.translation, partOfSpeech: proposal.partOfSpeech });
+      }
+      const generation = await generateSentencesForWords(created.map((word) => ({ id: word.wordId, lemma: word.lemma })), knownLemmas, language, level);
+      const usable = created.filter((word) => generation.sentencesByWord.get(word.wordId)?.length);
+      const sentences = usable.flatMap((word) => (generation.sentencesByWord.get(word.wordId) ?? []).map((generated) => ({ word, generated })));
+      return { usable, sentences, generation };
+    };
+
+    // 1ª leva de palavras + frases.
+    const proposedLemmas = new Set(proposals.map((proposal) => normalizeVocabularyToken(proposal.lemma)));
+    const firstBatch = await buildWordsWithSentences(proposals);
+    let { usable, sentences } = firstBatch;
+    const { generation } = firstBatch;
+    // Reposição: completa o pedido com palavras novas enquanto houver déficit (máx. 2 rodadas).
+    // Falha na reposição não derruba a sessão: ela abre com as palavras que já tem
+    // (a UI avisa o déficit); erros da PRIMEIRA leva continuam propagando.
+    for (let topUp = 0; topUp < 2 && usable.length < count; topUp += 1) {
+      try {
+        const deficit = count - usable.length;
+        const extraProposals = await generateNewWordProposals(
+          knownWordsForPrompt.filter((word) => !proposedLemmas.has(normalizeVocabularyToken(word.lemma))),
+          bankWords, deficit, language, level
+        );
+        const fresh = extraProposals.filter((proposal) => !proposedLemmas.has(normalizeVocabularyToken(proposal.lemma)));
+        if (!fresh.length) break;
+        fresh.forEach((proposal) => proposedLemmas.add(normalizeVocabularyToken(proposal.lemma)));
+        const extra = await buildWordsWithSentences(fresh);
+        usable = [...usable, ...extra.usable];
+        sentences = [...sentences, ...extra.sentences];
+      } catch (error) {
+        console.warn("new words: top-up failed", error);
+        break;
+      }
+    }
+    if (!usable.length) throw new LearningStateError("Não foi possível montar as frases agora. Tente novamente em instantes.", 502);
+
+    // 3. Grava os cards da sessão (mesmo ciclo dos flashcards).
+    const cards: NewWordsSentence[] = [];
+    let position = 0;
     for (const { word, generated } of sentences) {
       const record = await client.createRecord<FlashcardFields>("flashcards", {
         user_id: user.id,
-        practice_session_id: session.id,
+        practice_session_id: sessionId,
         target_word_id: word.wordId,
         target_sense_id: word.senseId,
         supporting_word_ids: "[]",
@@ -279,7 +309,7 @@ export async function createNewWordsPractice(input: { count?: unknown }) {
       });
       cards.push({
         id: record.id,
-        sessionId: session.id,
+        sessionId,
         targetWordId: word.wordId,
         targetSenseId: word.senseId,
         sentence: generated.text,
@@ -296,39 +326,55 @@ export async function createNewWordsPractice(input: { count?: unknown }) {
       if (first) await updateWordSense(word.senseId, { example_sentence: first.sentence }).catch(() => undefined);
     }
 
-    await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, {
+    // 4. Relê antes de ativar: o usuário pode ter abandonado durante a geração
+    //    (não há botão de sair na espera, mas o app pode ter fechado) — nesse
+    //    caso a sessão permanece como está e o deck é descartado.
+    const freshSession = (await client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", scopeFilters))
+      .find((item) => item.id === sessionId && item.fields.type === SESSION_TYPE);
+    if (!freshSession || freshSession.fields.status !== "preparing") return;
+
+    await client.updateRecord<PracticeSessionFields>("practiceSessions", sessionId, {
       status: "active",
+      focus: JSON.stringify({ count, wordIds: usable.map((word) => word.wordId) }),
+      selected_word_count: usable.length,
       unique_card_count: cards.length,
       updated_at: new Date().toISOString()
     });
+    await client.createEvent(user.id, "new_words_session_started", {
+      session_id: sessionId,
+      requested_count: count,
+      word_count: usable.length,
+      sentence_count: cards.length,
+      dropped_word_ids: generation.droppedWordIds,
+      rejection_reasons: generation.rejectionReasons
+    });
+
+    // Warm das 2 primeiras frases AGUARDADO (a frase 1 toca instantânea); o resto
+    // é fogo-e-esqueça — a geração já roda dentro do after(), então o serverless
+    // mantém a execução. Best-effort: erro não propaga.
+    const warmTexts = cards.map((card) => card.audioText);
+    await warmCachedSpeech(warmTexts.slice(0, 2), profile.fields.language_code).catch(() => undefined);
+    if (warmTexts.length > 2) {
+      void warmCachedSpeech(warmTexts.slice(2), profile.fields.language_code).catch(() => undefined);
+    }
   } catch (error) {
-    // Mesmo padrão de createFlashcardPractice: sessão órfã em "preparing" nunca
-    // fica retida (bloquearia novas sessões com 409 e a retomada só vê "active").
-    await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, { status: "failed", updated_at: new Date().toISOString() }).catch(() => undefined);
-    await client.createEvent(user.id, "new_words_session_creation_failed", { session_id: session.id, duration_ms: Date.now() - operationStartedAt, error_type: safeErrorType(error) }).catch(() => undefined);
-    throw error;
+    // Best-effort: marca "failed" (é isso que sinaliza a UI) sem pisotear um
+    // status que já mudou (ex.: abandonada durante a geração) e engole o erro.
+    if (userId) {
+      const sessions = await client.listRecordsWhereAll<PracticeSessionFields>("practiceSessions", [{ field: "user_id", value: userId }]).catch(() => []);
+      const session = sessions.find((item) => item.id === sessionId && item.fields.type === SESSION_TYPE && item.fields.status === "preparing");
+      if (session) {
+        await client.updateRecord<PracticeSessionFields>("practiceSessions", sessionId, { status: "failed", updated_at: new Date().toISOString() }).catch(() => undefined);
+        await client.createEvent(userId, "new_words_session_creation_failed", { session_id: sessionId, duration_ms: Date.now() - operationStartedAt, error_type: safeErrorType(error) }).catch(() => undefined);
+      }
+    }
+    console.error("new words: deck generation failed", error);
   }
-  await client.createEvent(user.id, "new_words_session_started", {
-    session_id: session.id,
-    requested_count: count,
-    word_count: usable.length,
-    sentence_count: cards.length,
-    dropped_word_ids: generation.droppedWordIds,
-    rejection_reasons: generation.rejectionReasons
-  });
-
-  // Warm das 2 primeiras frases aguardado: a frase 1 toca instantânea. O resto
-  // vai no after() da rota (resposta não espera). Best-effort: erro não propaga.
-  const warmTexts = cards.map((card) => card.audioText);
-  await warmCachedSpeech(warmTexts.slice(0, 2), profile.fields.language_code).catch(() => undefined);
-
-  // Déficit (se houver) é sinalizado para a UI avisar; `words` carrega o tamanho real.
-  return { sessionId: session.id, sentences: cards, words: usable, requestedWordCount: count, pendingWarmTexts: warmTexts.slice(2), languageCode: profile.fields.language_code, languageName: profile.fields.language_name };
 }
 
 // ---------- Retomada ----------
 
-export async function getActiveNewWordsPractice() {
+export async function getActiveNewWordsPractice(): Promise<ActiveNewWordsPractice | null> {
   const client = getTeableClient();
   const user = await getSessionUser();
   const profile = await getActiveLanguageProfile(user);
@@ -337,10 +383,22 @@ export async function getActiveNewWordsPractice() {
     { field: "user_id", value: user.id },
     { field: "language_profile_id", value: profile.id }
   ]);
+  // A mais recente entre active/preparing/failed define o que a UI vê: preparing
+  // vira polling, failed recente vira erro acionável, active segue como antes.
   const session = sessions
-    .filter((item) => item.fields.type === SESSION_TYPE && item.fields.status === "active")
+    .filter((item) => item.fields.type === SESSION_TYPE && (item.fields.status === "active" || item.fields.status === "preparing" || item.fields.status === "failed"))
     .sort((a, b) => dateValue(b.fields.started_at || b.fields.created_at) - dateValue(a.fields.started_at || a.fields.created_at))[0];
   if (!session) return null;
+  if (session.fields.status === "preparing") {
+    const focus = parseJsonObject(session.fields.focus ?? "{}") as { count?: unknown };
+    return { preparing: true, sessionId: session.id, requestedWordCount: normalizeNewWordsSessionSize(focus.count) };
+  }
+  if (session.fields.status === "failed") {
+    // Falha recente (10 min) é acionável na UI; depois disso é lixo inerte.
+    const createdAt = dateValue(session.fields.created_at);
+    if (!(createdAt > 0 && Date.now() - createdAt < 10 * 60_000)) return null;
+    return { preparing: false, failed: true, sessionId: session.id };
+  }
   const [sentences, attempts] = await Promise.all([
     listSentences(client, user.id, session.id),
     client.listRecordsWhere<FlashcardAttemptFields>("flashcardAttempts", "practice_session_id", session.id)
@@ -349,6 +407,7 @@ export async function getActiveNewWordsPractice() {
   const next = sentences.find((sentence) => !answeredIds.has(sentence.id));
   await client.createEvent(user.id, "new_words_session_resumed", { session_id: session.id, answered_count: answeredIds.size });
   return {
+    preparing: false,
     sessionId: session.id,
     sentences,
     answeredCount: answeredIds.size,

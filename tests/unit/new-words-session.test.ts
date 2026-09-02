@@ -61,8 +61,24 @@ describe("geração de frases para palavras novas", () => {
     expect(sentencesByWord.get("w1")?.[0].translation).toBe("pão é bom");
   });
 
+  it("start cria a sessão em preparing e devolve na hora", async () => {
+    const { startNewWordsPractice } = await import("../../lib/learning/new-words");
+    const result = await startNewWordsPractice({ count: 8 });
+    expect(result).toEqual({ sessionId: expect.any(String), status: "preparing", requestedWordCount: 8 });
+    const session = client.records.get(result.sessionId);
+    expect(session?.fields.type).toBe("new_words");
+    expect(session?.fields.status).toBe("preparing");
+    expect(JSON.parse(String(session?.fields.focus))).toEqual({ count: 8 });
+  });
+
+  it("start recusa nova sessão (409) quando já existe uma em preparing", async () => {
+    const { startNewWordsPractice } = await import("../../lib/learning/new-words");
+    await startNewWordsPractice({ count: 3 });
+    await expect(startNewWordsPractice({ count: 3 })).rejects.toMatchObject({ status: 409 });
+  });
+
   it("recompõe o pedido com a reposição quando a 1ª leva perde palavras", async () => {
-    const { createNewWordsPractice } = await import("../../lib/learning/new-words");
+    const { startNewWordsPractice, generateNewWordsDeck, getActiveNewWordsPractice } = await import("../../lib/learning/new-words");
     createChatCompletion
       // 1ª leva: propõe 3 palavras para o pedido de 3.
       .mockResolvedValueOnce({ content: JSON.stringify({ words: [
@@ -92,16 +108,21 @@ describe("geração de frases para palavras novas", () => {
         { text: "I want honey", translation: "eu quero mel", word: "honey" },
         { text: "honey and milk", translation: "mel e leite", word: "honey" }
       ] }) });
-    const session = await createNewWordsPractice({ count: 3 });
-    expect(session.words.map((word: { lemma: string }) => word.lemma)).toEqual(["bread", "milk", "honey"]);
-    expect(session.sentences).toHaveLength(9);
-    expect(session.requestedWordCount).toBe(3);
+    const { sessionId } = await startNewWordsPractice({ count: 3 });
+    await generateNewWordsDeck(sessionId);
+    const session = client.records.get(sessionId);
+    expect(session?.fields.status).toBe("active");
+    expect(session?.fields.unique_card_count).toBe(9);
+    const payload = await getActiveNewWordsPractice();
+    if (!payload || payload.preparing || payload.failed) throw new Error("esperava sessão ativa pronta");
+    expect(payload.words.map((word) => word.lemma)).toEqual(["bread", "milk", "honey"]);
+    expect(payload.sentences).toHaveLength(9);
   });
 
   it("abre a sessão com o que já tem quando a reposição falha", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
     try {
-      const { createNewWordsPractice } = await import("../../lib/learning/new-words");
+      const { startNewWordsPractice, generateNewWordsDeck, getActiveNewWordsPractice } = await import("../../lib/learning/new-words");
       createChatCompletion
         // 1ª leva: propõe 3 palavras, mas só bread recebe frases válidas.
         .mockResolvedValueOnce({ content: JSON.stringify({ words: [
@@ -117,18 +138,54 @@ describe("geração de frases para palavras novas", () => {
         .mockResolvedValueOnce({ content: JSON.stringify({ sentences: [] }) })
         // Reposição: a IA falha (500 após os retries) — a sessão não pode cair.
         .mockRejectedValue(new Error("ia fora do ar"));
-      const session = await createNewWordsPractice({ count: 3 });
-      expect(session.words.map((word: { lemma: string }) => word.lemma)).toEqual(["bread"]);
-      expect(session.sentences).toHaveLength(3);
-      expect(session.requestedWordCount).toBe(3);
+      const { sessionId } = await startNewWordsPractice({ count: 3 });
+      await generateNewWordsDeck(sessionId);
+      expect(client.records.get(sessionId)?.fields.status).toBe("active");
+      const payload = await getActiveNewWordsPractice();
+      if (!payload || payload.preparing || payload.failed) throw new Error("esperava sessão ativa pronta");
+      expect(payload.words.map((word) => word.lemma)).toEqual(["bread"]);
+      expect(payload.sentences).toHaveLength(3);
       expect(warnSpy).toHaveBeenCalledWith("new words: top-up failed", expect.any(Error));
     } finally {
       warnSpy.mockRestore();
     }
   });
 
-  it("marca a sessão como failed quando a gravação dos cards falha", async () => {
-    const { createNewWordsPractice } = await import("../../lib/learning/new-words");
+  it("marca a sessão como failed (sem propagar erro) quando a geração falha", async () => {
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const { startNewWordsPractice, generateNewWordsDeck } = await import("../../lib/learning/new-words");
+      createChatCompletion
+        .mockResolvedValueOnce({ content: JSON.stringify({ words: [{ lemma: "bread", translation: "pão", part_of_speech: "noun" }] }) })
+        .mockResolvedValueOnce({ content: JSON.stringify({ sentences: [
+          { text: "I eat bread", translation: "eu como pão", word: "bread" },
+          { text: "bread is good", translation: "pão é bom", word: "bread" },
+          { text: "want bread", translation: "quero pão", word: "bread" }
+        ] }) })
+        // Reposição não acha palavra nova (só reproõe bread) e desiste sem erro.
+        .mockResolvedValueOnce({ content: JSON.stringify({ words: [{ lemma: "bread", translation: "pão", part_of_speech: "noun" }] }) });
+      const { sessionId } = await startNewWordsPractice({ count: 3 });
+      const originalCreateRecord = client.createRecord.bind(client);
+      client.createRecord = async (table: string, fields: Record<string, unknown>) => {
+        if (table === "flashcards") throw new Error("falha ao gravar card");
+        return originalCreateRecord(table, fields);
+      };
+      try {
+        // A geração roda em background: o erro é sinalizado no status "failed",
+        // não propagado.
+        await expect(generateNewWordsDeck(sessionId)).resolves.toBeUndefined();
+        expect(client.records.get(sessionId)?.fields.status).toBe("failed");
+        expect(errorSpy).toHaveBeenCalled();
+      } finally {
+        client.createRecord = originalCreateRecord;
+      }
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  it("não ativa sessão abandonada durante a geração do deck", async () => {
+    const { startNewWordsPractice, generateNewWordsDeck } = await import("../../lib/learning/new-words");
     createChatCompletion
       .mockResolvedValueOnce({ content: JSON.stringify({ words: [{ lemma: "bread", translation: "pão", part_of_speech: "noun" }] }) })
       .mockResolvedValueOnce({ content: JSON.stringify({ sentences: [
@@ -136,20 +193,36 @@ describe("geração de frases para palavras novas", () => {
         { text: "bread is good", translation: "pão é bom", word: "bread" },
         { text: "want bread", translation: "quero pão", word: "bread" }
       ] }) })
-      // Reposição não acha palavra nova (só reproõe bread) e desiste sem erro.
+      // Reposição não acha palavra nova e desiste sem erro.
       .mockResolvedValueOnce({ content: JSON.stringify({ words: [{ lemma: "bread", translation: "pão", part_of_speech: "noun" }] }) });
+    const { sessionId } = await startNewWordsPractice({ count: 3 });
     const originalCreateRecord = client.createRecord.bind(client);
     client.createRecord = async (table: string, fields: Record<string, unknown>) => {
-      if (table === "flashcards") throw new Error("falha ao gravar card");
-      return originalCreateRecord(table, fields);
+      const record = await originalCreateRecord(table, fields);
+      // O usuário abandona enquanto os cards são gravados.
+      if (table === "flashcards") client.records.get(sessionId)!.fields.status = "abandoned";
+      return record;
     };
     try {
-      await expect(createNewWordsPractice({ count: 3 })).rejects.toThrow("falha ao gravar card");
-      const session = [...client.records.values()].find((record) => record.id.startsWith("practiceSessions"));
-      expect(session?.fields.type).toBe("new_words");
-      expect(session?.fields.status).toBe("failed");
+      await generateNewWordsDeck(sessionId);
+      expect(client.records.get(sessionId)?.fields.status).toBe("abandoned");
     } finally {
       client.createRecord = originalCreateRecord;
     }
+  });
+
+  it("getActiveNewWordsPractice sinaliza preparing e failed recente", async () => {
+    const { getActiveNewWordsPractice } = await import("../../lib/learning/new-words");
+    const now = new Date().toISOString();
+    const session = await client.createRecord("practiceSessions", {
+      type: "new_words", status: "preparing", focus: JSON.stringify({ count: 5 }),
+      started_at: now, created_at: now, requested_word_count: 5
+    });
+    expect(await getActiveNewWordsPractice()).toEqual({ preparing: true, sessionId: session.id, requestedWordCount: 5 });
+    await client.updateRecord("practiceSessions", session.id, { status: "failed" });
+    expect(await getActiveNewWordsPractice()).toEqual({ preparing: false, failed: true, sessionId: session.id });
+    // Falha antiga (mais de 10 minutos) é lixo inerte: não aparece para a UI.
+    await client.updateRecord("practiceSessions", session.id, { created_at: new Date(Date.now() - 11 * 60_000).toISOString() });
+    expect(await getActiveNewWordsPractice()).toBeNull();
   });
 });

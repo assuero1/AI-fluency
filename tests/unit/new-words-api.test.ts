@@ -2,12 +2,19 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { newWords } = vi.hoisted(() => ({ newWords: {
   getActiveNewWordsPractice: vi.fn(),
-  createNewWordsPractice: vi.fn(),
+  startNewWordsPractice: vi.fn(),
+  generateNewWordsDeck: vi.fn(),
   judgeNewWordsAttempt: vi.fn(),
   completeNewWordsPractice: vi.fn(),
   abandonNewWordsPractice: vi.fn()
 } }));
 vi.mock("../../lib/learning/new-words", () => newWords);
+// O after() do Next executa a callback só depois da resposta; nos testes ela
+// roda na hora (mantemos o restante do módulo real — as rotas usam NextResponse).
+vi.mock("next/server", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("next/server")>()),
+  after: (callback: () => unknown) => callback()
+}));
 
 import { GET as getRoute, POST as postRoute } from "../../app/api/practice/new-words/route";
 import { POST as judgeRoute } from "../../app/api/practice/new-words/judge/route";
@@ -29,11 +36,26 @@ describe("rotas /api/practice/new-words", () => {
     expect(data.activeSession.sessionId).toBe("s1");
   });
 
-  it("POST cria a sessão com 201", async () => {
-    newWords.createNewWordsPractice.mockResolvedValue({ sessionId: "s1", sentences: [{ id: "c1" }], words: [], languageCode: "en", languageName: "Inglês" });
+  it("POST responde na hora com a sessão em preparing e agenda a geração do deck", async () => {
+    newWords.startNewWordsPractice.mockResolvedValue({ sessionId: "s1", status: "preparing", requestedWordCount: 5 });
+    newWords.generateNewWordsDeck.mockResolvedValue(undefined);
     const response = await postRoute(jsonRequest({ count: 5 }));
+    const data = await response.json();
     expect(response.status).toBe(201);
-    expect(newWords.createNewWordsPractice).toHaveBeenCalledWith({ count: 5 });
+    expect(data).toMatchObject({ ok: true, sessionId: "s1", status: "preparing", requestedWordCount: 5 });
+    expect(newWords.startNewWordsPractice).toHaveBeenCalledWith({ count: 5 });
+    // after() mockado executa na hora: o deck é gerado com o sessionId devolvido.
+    expect(newWords.generateNewWordsDeck).toHaveBeenCalledWith("s1");
+  });
+
+  it("POST repassa o 409 de sessão em andamento e não gera deck", async () => {
+    const { LearningStateError } = await import("../../lib/learning/access");
+    newWords.startNewWordsPractice.mockRejectedValue(new LearningStateError("Você já possui uma sessão de palavras novas em andamento. Continue-a antes de iniciar outra.", 409));
+    const response = await postRoute(jsonRequest({ count: 5 }));
+    expect(response.status).toBe(409);
+    const data = await response.json();
+    expect(data.error).toContain("em andamento");
+    expect(newWords.generateNewWordsDeck).not.toHaveBeenCalled();
   });
 
   it("judge repassa o body e devolve o julgamento", async () => {

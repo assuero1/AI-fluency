@@ -59,6 +59,29 @@ export type NewWordsSessionResult = {
   words: NewWordPreview[];
 };
 
+/** Sessão em preparação: o deck ainda está sendo gerado; o app faz polling do GET. */
+export type PreparingNewWordsSession = { preparing: true; sessionId: string; requestedWordCount: number };
+
+/** Falha recente na geração (últimos 10 minutos): a UI mostra erro acionável. */
+export type FailedNewWordsSession = { preparing: false; failed: true; sessionId: string };
+
+/** Sessão ativa pronta para jogar (mesmo payload de antes, com preparing: false). */
+export type ReadyNewWordsSession = {
+  preparing: false;
+  failed?: false;
+  sessionId: string;
+  sentences: NewWordsSentence[];
+  answeredCount: number;
+  answeredSentenceIds: string[];
+  nextSentenceId: string;
+  languageCode: string;
+  languageName: string;
+  words: NewWordPreview[];
+};
+
+/** Payload de activeSession no GET /api/practice/new-words (null = nada em andamento). */
+export type ActiveNewWordsPractice = PreparingNewWordsSession | FailedNewWordsSession | ReadyNewWordsSession;
+
 export function normalizeNewWordsSessionSize(value: unknown): NewWordsSessionSize {
   return (newWordsSessionSizes as readonly unknown[]).includes(value) ? (value as NewWordsSessionSize) : 3;
 }
