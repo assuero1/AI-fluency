@@ -279,6 +279,99 @@ describe("geração de frases para palavras novas", () => {
     await client.updateRecord("practiceSessions", session.id, { created_at: new Date(Date.now() - 11 * 60_000).toISOString() });
     expect(await getActiveNewWordsPractice()).toBeNull();
   });
+
+  it("retry de propostas traz feedback das recusadas e devolve palavras novas", async () => {
+    createChatCompletion.mockClear();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      const { generateNewWordProposals } = await import("../../lib/learning/new-words");
+      createChatCompletion
+        // Tentativa 1: 3 candidatas, todas já conhecidas do aluno (validação zera).
+        .mockResolvedValueOnce({ content: JSON.stringify({ words: [
+          { lemma: "apple", translation: "maçã", part_of_speech: "noun" },
+          { lemma: "go", translation: "ir", part_of_speech: "verb" },
+          { lemma: "went", translation: "foi", part_of_speech: "verb" }
+        ] }) })
+        // Tentativa 2: 3 candidatas inéditas.
+        .mockResolvedValueOnce({ content: JSON.stringify({ words: [
+          { lemma: "bread", translation: "pão", part_of_speech: "noun" },
+          { lemma: "milk", translation: "leite", part_of_speech: "noun" },
+          { lemma: "honey", translation: "mel", part_of_speech: "noun" }
+        ] }) });
+      const bank = [
+        { lemma: "apple", displayText: "apple", formsJson: '["apples"]' },
+        { lemma: "go", displayText: "go", formsJson: '["went","gone"]' }
+      ];
+      const result = await generateNewWordProposals([{ lemma: "banana", translation: "banana" }], bank, 3, "Inglês", "B1");
+      expect(createChatCompletion).toHaveBeenCalledTimes(2);
+      expect(result.map((word) => word.lemma)).toEqual(["bread", "milk", "honey"]);
+      const attempt1 = createChatCompletion.mock.calls[0][0] as Array<{ role: string; content: string }>;
+      const attempt2 = createChatCompletion.mock.calls[1][0] as Array<{ role: string; content: string }>;
+      // Tentativa 1 pede o dobro (count 3 → 6 candidatas) e não fala de recusadas.
+      expect(attempt1[1].content).toContain("6 candidatas");
+      expect(attempt1[1].content).not.toContain("recusadas");
+      expect(attempt1[0].content).not.toContain("NÃO repita");
+      // Tentativa 2 carrega o bloco de recusadas com os lemmas da tentativa 1.
+      expect(attempt2[1].content).toContain("IMPORTANTE: estas palavras foram recusadas por já existirem no vocabulário do aluno ou serem inválidas — escolha OUTRAS completamente diferentes:");
+      expect(attempt2[1].content).toContain('["apple","go","went"]');
+      expect(attempt2[0].content).toContain("NÃO repita nenhuma palavra da lista de recusadas.");
+      // Observabilidade: aceitas/alvo por tentativa e quantas foram pedidas.
+      expect(logSpy).toHaveBeenCalledWith("new words: propostas aceitas 0/3 (pedidas 6)");
+      expect(logSpy).toHaveBeenCalledWith("new words: propostas aceitas 3/3 (pedidas 6)");
+    } finally {
+      logSpy.mockRestore();
+    }
+  });
+
+  it("pede o dobro de candidatas e usa só o pedido na leva principal", async () => {
+    createChatCompletion.mockClear();
+    const { startNewWordsPractice, generateNewWordsDeck, getActiveNewWordsPractice } = await import("../../lib/learning/new-words");
+    createChatCompletion
+      // 6 candidatas válidas para um pedido de 3.
+      .mockResolvedValueOnce({ content: JSON.stringify({ words: [
+        { lemma: "bread", translation: "pão", part_of_speech: "noun" },
+        { lemma: "milk", translation: "leite", part_of_speech: "noun" },
+        { lemma: "honey", translation: "mel", part_of_speech: "noun" },
+        { lemma: "rice", translation: "arroz", part_of_speech: "noun" },
+        { lemma: "water", translation: "água", part_of_speech: "noun" },
+        { lemma: "cheese", translation: "queijo", part_of_speech: "noun" }
+      ] }) })
+      // Frases só para as 3 primeiras (6 por palavra) — o excedente é fatiado fora.
+      .mockResolvedValueOnce({ content: JSON.stringify({ sentences: [
+        { text: "I eat bread", translation: "eu como pão", word: "bread" },
+        { text: "bread is good", translation: "pão é bom", word: "bread" },
+        { text: "want bread", translation: "quero pão", word: "bread" },
+        { text: "I have bread", translation: "eu tenho pão", word: "bread" },
+        { text: "bread on the table", translation: "pão na mesa", word: "bread" },
+        { text: "bread with butter", translation: "pão com manteiga", word: "bread" },
+        { text: "milk is good", translation: "leite é bom", word: "milk" },
+        { text: "I want milk", translation: "eu quero leite", word: "milk" },
+        { text: "milk and bread", translation: "leite e pão", word: "milk" },
+        { text: "I have milk", translation: "eu tenho leite", word: "milk" },
+        { text: "milk in the cup", translation: "leite na xícara", word: "milk" },
+        { text: "she drinks milk", translation: "ela bebe leite", word: "milk" },
+        { text: "honey is sweet", translation: "mel é doce", word: "honey" },
+        { text: "I want honey", translation: "eu quero mel", word: "honey" },
+        { text: "honey and milk", translation: "mel e leite", word: "honey" },
+        { text: "I have honey", translation: "eu tenho mel", word: "honey" },
+        { text: "honey on the bread", translation: "mel no pão", word: "honey" },
+        { text: "they sell honey", translation: "eles vendem mel", word: "honey" }
+      ] }) });
+    const { sessionId } = await startNewWordsPractice({ count: 3 });
+    await generateNewWordsDeck(sessionId);
+    // Sem top-up: 1 chamada de propostas + 1 de frases (6 por palavra fecha em 1 rodada).
+    expect(createChatCompletion).toHaveBeenCalledTimes(2);
+    const firstCall = createChatCompletion.mock.calls[0][0] as Array<{ role: string; content: string }>;
+    expect(firstCall[1].content).toContain("6 candidatas");
+    const session = client.records.get(sessionId);
+    expect(session?.fields.status).toBe("active");
+    expect(session?.fields.selected_word_count).toBe(3);
+    expect(session?.fields.unique_card_count).toBe(18);
+    const payload = await getActiveNewWordsPractice();
+    if (!payload || payload.preparing || payload.failed) throw new Error("esperava sessão ativa pronta");
+    expect(payload.words.map((word) => word.lemma)).toEqual(["bread", "milk", "honey"]);
+    expect(payload.sentences).toHaveLength(18);
+  });
 });
 
 describe("julgamento de tentativas (judgeNewWordsAttempt)", () => {

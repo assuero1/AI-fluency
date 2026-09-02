@@ -38,25 +38,59 @@ export async function generateNewWordProposals(
   language: string,
   level: string
 ) {
-  const request = () => createChatCompletion([
-    { role: "system", content: `Você é um professor de ${language}. Escolha ${count} palavras NOVAS, úteis e concretas, adequadas ao nível informado, que o aluno ainda não conhece (a lista abaixo é o vocabulário dele). Cada palavra deve ser um lemma no idioma alvo, com tradução em português brasileiro e classe gramatical. Prefira palavras do dia a dia que combinem com o vocabulário que o aluno já tem. Responda somente JSON válido: {"words":[{"lemma":"...","translation":"...","part_of_speech":"noun|verb|adjective|adverb|phrase"}]}.` },
-    { role: "user", content: `Idioma: ${language}\nNível: ${level}\nVocabulário atual do aluno: ${JSON.stringify(knownWords)}` }
+  // Pede o DOBRO de candidatas: a validação determinística contra o banco
+  // (já conhecidas/stopwords/duplicatas) precisa de margem para atingir o alvo.
+  const requested = count * 2;
+  const buildRequest = (refusedLemmas: string[]) => createChatCompletion([
+    {
+      role: "system",
+      content: [
+        `Você é um professor de ${language}. Escolha ${requested} palavras NOVAS, úteis e concretas, adequadas ao nível informado, que o aluno ainda não conhece (a lista abaixo é o vocabulário dele). Cada palavra deve ser um lemma no idioma alvo, com tradução em português brasileiro e classe gramatical. Prefira palavras do dia a dia que combinem com o vocabulário que o aluno já tem.`,
+        ...(refusedLemmas.length ? ["NÃO repita nenhuma palavra da lista de recusadas."] : []),
+        `Responda somente JSON válido: {"words":[{"lemma":"...","translation":"...","part_of_speech":"noun|verb|adjective|adverb|phrase"}]}.`
+      ].join(" ")
+    },
+    {
+      role: "user",
+      content: `Idioma: ${language}\nNível: ${level}\nQuantidade: ${requested} candidatas\nVocabulário atual do aluno: ${JSON.stringify(knownWords)}` +
+        (refusedLemmas.length ? `\n\nIMPORTANTE: estas palavras foram recusadas por já existirem no vocabulário do aluno ou serem inválidas — escolha OUTRAS completamente diferentes: ${JSON.stringify(refusedLemmas)}` : "")
+    }
   ], { temperature: 0.6, maxTokens: 700, timeoutMs: 15_000, responseFormat: "json", disableThinking: true });
+  // Parsed + aceitas da tentativa anterior: alimenta o feedback de recusadas no retry.
+  let previous: { words: unknown; acceptedLemmas: Set<string> } | undefined;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, 600));
     try {
-      const ai = await request();
+      let refusedLemmas: string[] = [];
+      if (previous) {
+        const accepted = previous.acceptedLemmas;
+        refusedLemmas = proposedLemmasFromParsed(previous.words).filter((lemma) => !accepted.has(normalizeVocabularyToken(lemma)));
+      }
+      const ai = await buildRequest(refusedLemmas);
       const parsed = parseJsonObject(ai.content) as { words?: unknown };
       // A validação contra o banco é determinística: a IA pode propor palavra
       // que o aluno já tem; o filtro descarta e devolve só as inéditas.
-      const words = validateProposedWords(parsed.words, bankWords, count);
+      const words = validateProposedWords(parsed.words, bankWords, requested);
+      console.log(`new words: propostas aceitas ${words.length}/${count} (pedidas ${requested})`);
       if (words.length) return words;
+      previous = { words: parsed.words, acceptedLemmas: new Set(words.map((word) => normalizeVocabularyToken(word.lemma))) };
     } catch (error) {
       // Diagnóstico: loga o erro bruto da IA antes da próxima tentativa/queda final.
       console.error(`new words: AI call failed (tentativa ${attempt + 1})`, error);
     }
   }
   throw new LearningStateError("Não foi possível escolher palavras novas agora. Tente novamente em instantes.", 502);
+}
+
+/** Lemmas que a IA propôs num parsed de candidatas (para o feedback de recusadas). */
+function proposedLemmasFromParsed(words: unknown): string[] {
+  if (!Array.isArray(words)) return [];
+  return words.flatMap((item) => {
+    if (!item || typeof item !== "object") return [];
+    const lemma = (item as Record<string, unknown>).lemma;
+    if (typeof lemma !== "string" || !lemma.trim()) return [];
+    return [lemma.trim()];
+  });
 }
 
 // ---------- Geração das frases ----------
@@ -219,8 +253,9 @@ export async function generateNewWordsDeck(sessionId: string): Promise<void> {
       .map((word) => ({ lemma: word.fields.display_text || word.fields.lemma || "", translation: word.fields.translation || "" }))
       .filter((word) => word.lemma);
 
-    // 1. IA propõe as palavras novas (validadas deterministicamente contra o banco).
-    const proposals = await generateNewWordProposals(knownWordsForPrompt, bankWords, count, language, level);
+    // 1. IA propõe as palavras novas (validadas deterministicamente contra o banco);
+    //    a função pode devolver mais que o pedido — corta no alvo da leva principal.
+    const proposals = (await generateNewWordProposals(knownWordsForPrompt, bankWords, count, language, level)).slice(0, count);
 
     // 2. Persiste as palavras + sentido primário (idempotente por canonical_key/sense_key)
     //    e gera as frases (validadas); encapsulado para a reposição reutilizar o mesmo caminho.
@@ -296,10 +331,11 @@ export async function generateNewWordsDeck(sessionId: string): Promise<void> {
     for (let topUp = 0; topUp < 2 && usable.length < count; topUp += 1) {
       try {
         const deficit = count - usable.length;
-        const extraProposals = await generateNewWordProposals(
+        // No top-up o deficit é o alvo: corta o excedente nele.
+        const extraProposals = (await generateNewWordProposals(
           knownWordsForPrompt.filter((word) => !proposedLemmas.has(normalizeVocabularyToken(word.lemma))),
           bankWords, deficit, language, level
-        );
+        )).slice(0, deficit);
         const fresh = extraProposals.filter((proposal) => !proposedLemmas.has(normalizeVocabularyToken(proposal.lemma)));
         if (!fresh.length) break;
         fresh.forEach((proposal) => proposedLemmas.add(normalizeVocabularyToken(proposal.lemma)));
