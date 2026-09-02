@@ -106,6 +106,24 @@ export async function generateSentencesForWords(newWords: Array<{ id: string; le
 
 // ---------- Criação da sessão ----------
 
+// Preparing mais velho que isso é zumbi: a geração em background morreu sem
+// conseguir marcar "failed" (crash do runtime, deploy no meio do after()). Sem
+// o desbloqueio, a sessão prenderia o usuário com 409 para sempre.
+const PREPARING_STALE_MS = 5 * 60_000;
+
+/** Sessão "preparing" com mais de PREPARING_STALE_MS (created_at ou started_at). */
+function isStalePreparing(session: TeableRecord<PracticeSessionFields>, now: number = Date.now()) {
+  if (session.fields.status !== "preparing") return false;
+  const createdAt = dateValue(session.fields.created_at || session.fields.started_at);
+  return createdAt > 0 && now - createdAt > PREPARING_STALE_MS;
+}
+
+/** Best-effort: marca a sessão como failed e registra o evento de falha. */
+async function failZombiePreparingSession(client: ReturnType<typeof getTeableClient>, userId: string, sessionId: string) {
+  await client.updateRecord<PracticeSessionFields>("practiceSessions", sessionId, { status: "failed", updated_at: new Date().toISOString() }).catch(() => undefined);
+  await client.createEvent(userId, "new_words_session_creation_failed", { session_id: sessionId, reason: "stale_preparing" }).catch(() => undefined);
+}
+
 /**
  * Cria a sessão em "preparing" e devolve na hora: a geração do deck (IA, 15–40s)
  * roda em background via generateNewWordsDeck — é o que elimina o 502 de timeout
@@ -121,8 +139,13 @@ export async function startNewWordsPractice(input: { count?: unknown }): Promise
     { field: "user_id", value: user.id },
     { field: "language_profile_id", value: profile.id }
   ]);
-  const active = sessions.find((session) => session.fields.type === SESSION_TYPE && (session.fields.status === "active" || session.fields.status === "preparing"));
-  if (active) throw new LearningStateError("Você já possui uma sessão de palavras novas em andamento. Continue-a antes de iniciar outra.", 409);
+  const openSessions = sessions.filter((session) => session.fields.type === SESSION_TYPE && (session.fields.status === "active" || session.fields.status === "preparing"));
+  // Sessão active (ou preparing recente) bloqueia; preparing zumbi não prende:
+  // é marcado failed e o start segue para criar a sessão nova.
+  if (openSessions.some((session) => !isStalePreparing(session, Date.now()))) {
+    throw new LearningStateError("Você já possui uma sessão de palavras novas em andamento. Continue-a antes de iniciar outra.", 409);
+  }
+  for (const zombie of openSessions) await failZombiePreparingSession(client, user.id, zombie.id);
   const now = new Date().toISOString();
   const session = await client.createRecord<PracticeSessionFields>("practiceSessions", {
     Name: `Palavras novas · ${now.slice(0, 10)}`,
@@ -390,6 +413,12 @@ export async function getActiveNewWordsPractice(): Promise<ActiveNewWordsPractic
     .sort((a, b) => dateValue(b.fields.started_at || b.fields.created_at) - dateValue(a.fields.started_at || a.fields.created_at))[0];
   if (!session) return null;
   if (session.fields.status === "preparing") {
+    // Preparing zumbi (mais de 5 min): marca failed e devolve como falha — o
+    // polling para com mensagem em vez de girar os 100s à toa.
+    if (isStalePreparing(session, Date.now())) {
+      await failZombiePreparingSession(client, user.id, session.id);
+      return { preparing: false, failed: true, sessionId: session.id };
+    }
     const focus = parseJsonObject(session.fields.focus ?? "{}") as { count?: unknown };
     return { preparing: true, sessionId: session.id, requestedWordCount: normalizeNewWordsSessionSize(focus.count) };
   }

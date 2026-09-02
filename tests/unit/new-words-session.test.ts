@@ -77,6 +77,37 @@ describe("geração de frases para palavras novas", () => {
     await expect(startNewWordsPractice({ count: 3 })).rejects.toMatchObject({ status: 409 });
   });
 
+  it("start recusa (409) com preparing recente de 1 minuto", async () => {
+    const { startNewWordsPractice } = await import("../../lib/learning/new-words");
+    const recent = new Date(Date.now() - 60_000).toISOString();
+    await client.createRecord("practiceSessions", {
+      type: "new_words", status: "preparing", focus: JSON.stringify({ count: 3 }), started_at: recent, created_at: recent
+    });
+    await expect(startNewWordsPractice({ count: 3 })).rejects.toMatchObject({ status: 409 });
+  });
+
+  it("start com preparing zumbi de 6 minutos marca failed e cria sessão nova", async () => {
+    const { startNewWordsPractice } = await import("../../lib/learning/new-words");
+    const stale = new Date(Date.now() - 6 * 60_000).toISOString();
+    const zombie = await client.createRecord("practiceSessions", {
+      type: "new_words", status: "preparing", focus: JSON.stringify({ count: 3 }), started_at: stale, created_at: stale
+    });
+    const result = await startNewWordsPractice({ count: 3 });
+    expect(result.sessionId).not.toBe(zombie.id);
+    expect(client.records.get(zombie.id)?.fields.status).toBe("failed");
+    expect(client.records.get(result.sessionId)?.fields.status).toBe("preparing");
+  });
+
+  it("getActive com preparing zumbi de 6 minutos devolve failed:true e marca failed", async () => {
+    const { getActiveNewWordsPractice } = await import("../../lib/learning/new-words");
+    const stale = new Date(Date.now() - 6 * 60_000).toISOString();
+    const zombie = await client.createRecord("practiceSessions", {
+      type: "new_words", status: "preparing", focus: JSON.stringify({ count: 5 }), started_at: stale, created_at: stale
+    });
+    expect(await getActiveNewWordsPractice()).toEqual({ preparing: false, failed: true, sessionId: zombie.id });
+    expect(client.records.get(zombie.id)?.fields.status).toBe("failed");
+  });
+
   it("recompõe o pedido com a reposição quando a 1ª leva perde palavras", async () => {
     const { startNewWordsPractice, generateNewWordsDeck, getActiveNewWordsPractice } = await import("../../lib/learning/new-words");
     createChatCompletion
