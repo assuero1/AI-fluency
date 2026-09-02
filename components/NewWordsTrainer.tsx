@@ -79,6 +79,10 @@ export function NewWordsTrainer() {
   // barrinha adianta. O ref permite cancelar em novo agendamento, reset,
   // abandono e unmount (sem avanço fantasma).
   const autoAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // O timer dispara 4s depois do agendamento: precisa chamar a versão MAIS
+  // RECENTE de continueToNext — a closure do render em que o timer foi criado
+  // enxerga judgment/busy antigos (e a guarda !judgment abortaria o avanço).
+  const continueToNextRef = useRef<() => void>(() => {});
   // Espera da criação assíncrona: enquanto "preparing", o GET é consultado em
   // ritmo fixo; cancelledRef para o polling no unmount (a tela não tem botão
   // Sair durante a preparação).
@@ -306,7 +310,7 @@ export function NewWordsTrainer() {
       setJudgment({ verdict: "correct", feedback: "", correctedTranslation: current.translation });
       setAnsweredIds((previous) => new Set([...previous, current.id]));
       cancelAutoAdvance();
-      autoAdvanceRef.current = setTimeout(() => { autoAdvanceRef.current = null; void continueToNext(); }, AUTO_ADVANCE_MS);
+      autoAdvanceRef.current = setTimeout(() => { autoAdvanceRef.current = null; void continueToNextRef.current(); }, AUTO_ADVANCE_MS);
       const backgroundJudge = fetch("/api/practice/new-words/judge", { method: "POST", headers: { "Content-Type": "application/json" }, body: judgeBody })
         .then(async (response) => {
           const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string; attempt?: { judgment: JudgedTranslation; senseCreated: boolean } };
@@ -340,7 +344,7 @@ export function NewWordsTrainer() {
       // O julgamento fica visível 4s (a barrinha dá o feedback visual do tempo)
       // e a próxima frase abre sozinha; tocar na barrinha adianta.
       cancelAutoAdvance();
-      autoAdvanceRef.current = setTimeout(() => { autoAdvanceRef.current = null; void continueToNext(); }, AUTO_ADVANCE_MS);
+      autoAdvanceRef.current = setTimeout(() => { autoAdvanceRef.current = null; void continueToNextRef.current(); }, AUTO_ADVANCE_MS);
     } catch (submitError) { setError(submitError instanceof Error ? submitError.message : "Não foi possível avaliar a tradução."); }
     finally { setBusy(false); }
   }
@@ -378,6 +382,10 @@ export function NewWordsTrainer() {
     } catch (finishError) { setError(finishError instanceof Error ? finishError.message : "Não foi possível concluir a sessão."); }
     finally { setBusy(false); }
   }
+
+  // Mantém o ref sempre apontando para a continueToNext da última renderização:
+  // é o que o timer do auto-avanço (criado num render antigo) executa.
+  useEffect(() => { continueToNextRef.current = continueToNext; });
 
   async function abandonSession() {
     // Cancela ANTES do fetch: com "Sair" no meio da contagem de 4s, um timer
