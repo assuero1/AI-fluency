@@ -55,7 +55,7 @@ export async function generateNewWordProposals(
       content: `Idioma: ${language}\nNível: ${level}\nQuantidade: ${requested} candidatas\nVocabulário atual do aluno: ${JSON.stringify(knownWords)}` +
         (refusedLemmas.length ? `\n\nIMPORTANTE: estas palavras foram recusadas por já existirem no vocabulário do aluno ou serem inválidas — escolha OUTRAS completamente diferentes: ${JSON.stringify(refusedLemmas)}` : "")
     }
-  ], { temperature: 0.6, maxTokens: 700, timeoutMs: 15_000, responseFormat: "json", disableThinking: true });
+  ], { temperature: 0.6, maxTokens: 1200, timeoutMs: 15_000, responseFormat: "json", disableThinking: true });
   // Parsed + aceitas da tentativa anterior: alimenta o feedback de recusadas no retry.
   let previous: { words: unknown; acceptedLemmas: Set<string> } | undefined;
   for (let attempt = 0; attempt < 2; attempt += 1) {
