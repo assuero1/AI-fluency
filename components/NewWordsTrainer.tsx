@@ -228,7 +228,7 @@ export function NewWordsTrainer() {
     unlockAudioForPlayback(audio);
     try {
       const response = await fetch("/api/practice/new-words", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ count: size }) });
-      const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string; sessionId?: string; status?: string; requestedWordCount?: number };
+      const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string; sessionId?: string; status?: string };
       if (!response.ok) {
         // 409 = já existe sessão em andamento (ex.: app fechado durante a
         // preparação). Consulta o GET: se estiver "preparing", entra na espera
@@ -310,6 +310,19 @@ export function NewWordsTrainer() {
           return data;
         });
       inflightJudgeRef.current = backgroundJudge;
+      // Falha do judge em background = tentativa NÃO persistida: volta para o
+      // FORMULÁRIO da mesma frase (o texto digitado segue em `input`) para o
+      // reenvio criar um judge novo e persistir. O timer é cancelado — não pode
+      // avançar uma frase sem registro. Ignorado se abandon/unmount já
+      // descartaram esta promise. O ref guarda a promise bruta (que rejeita):
+      // o continueToNext suspenso no await precisa ver a falha para NÃO avançar.
+      backgroundJudge.catch((judgeError) => {
+        if (inflightJudgeRef.current !== backgroundJudge) return;
+        inflightJudgeRef.current = null;
+        cancelAutoAdvance();
+        setJudgment(null);
+        setError(judgeError instanceof Error ? judgeError.message : "Não foi possível avaliar a tradução.");
+      });
       return;
     }
     // Demais traduções: aguarda o julgamento da IA (busy/spinner).
@@ -342,9 +355,12 @@ export function NewWordsTrainer() {
       }
       inflightJudgeRef.current = null;
     }
-    // Guarda de busy: sem o botão Continuar (disabled), a barrinha e o timer
-    // precisam dela para não disparar dois avanços/complete em paralelo.
-    if (!current || busy) return;
+    // Guardas: busy (sem botão Continuar, a barrinha e o timer precisam dela
+    // para não disparar dois avanços/complete em paralelo) e judgment (nunca
+    // avançar sem julgamento visível — cinto e suspensório contra stale
+    // closure; o cancel do timer na falha do judge em background é a proteção
+    // real, pois o `judgment` aqui pode ser o valor da renderização antiga).
+    if (!current || busy || !judgment) return;
     const index = sentences.findIndex((sentence) => sentence.id === current.id);
     const next = sentences[index + 1];
     if (next) { setCurrent(next); resetAttempt(); return; }
