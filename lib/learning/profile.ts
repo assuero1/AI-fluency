@@ -20,6 +20,8 @@ export type UserFields = {
   daily_goal_minutes?: number;
   reminder_hour?: number;
   last_reminder_sent?: string;
+  xp_total?: number;
+  quest_xp_keys?: string;
   created_at?: string;
 };
 

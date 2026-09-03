@@ -3,7 +3,9 @@
     {
       "key": "users",
       "tableName": "users",
-      "jsonbColumns": [],
+      "jsonbColumns": [
+        "quest_xp_keys"
+      ],
       "fkColumns": {
         "active_language_id": "language_profiles"
       },
