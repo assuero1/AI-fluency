@@ -2869,3 +2869,11 @@ textarea:focus-visible,
 .mini-chart-line { stroke: var(--section); }
 .mini-chart-line.info { stroke: #315b94; }
 .mini-chart figcaption { color: var(--muted); font-size: 12px; }
+
+/* === Heatmap do calendário: intensidade de prática por dia === */
+.calendar-day.heat-1 { background: color-mix(in srgb, var(--section) 15%, #fff); }
+.calendar-day.heat-2 { background: color-mix(in srgb, var(--section) 32%, #fff); }
+.calendar-day.heat-3 { background: color-mix(in srgb, var(--section) 55%, #fff); }
+.calendar-day.heat-4 { background: var(--section); color: var(--section-text); }
+.calendar-heat-legend { display: flex; gap: 6px; align-items: center; justify-content: flex-end; margin-top: 10px; color: var(--muted); font-size: 12px; }
+.calendar-heat-legend span { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--line); background: #fff; }

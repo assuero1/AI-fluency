@@ -1,4 +1,4 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, MessageCircle, Target } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Flame, MessageCircle, Target } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { CalendarPracticeButton, CalendarTopicButton } from "@/components/CalendarPracticeButton";
@@ -33,7 +33,10 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
           </Link>
           <div>
             <div className="calendar-month-title">{capitalize(calendar.monthLabel)}</div>
-            <div className="calendar-month-meta">{calendar.feedbackCount} feedback(s) · {calendar.conversationCount} conversa(s)</div>
+            <div className="calendar-month-meta">
+              {calendar.feedbackCount} feedback(s) · {calendar.conversationCount} conversa(s)
+              {calendar.streak > 0 ? <> · <Flame size={13} aria-hidden="true" style={{ verticalAlign: "-2px" }} /> {calendar.streak} {calendar.streak === 1 ? "dia" : "dias"}</> : null}
+            </div>
           </div>
           <Link aria-label="Próximo mês" className="calendar-month-button" href={`/calendario?month=${calendar.nextMonth}`}>
             <ChevronRight />
@@ -53,6 +56,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             const className = [
               "calendar-day",
               day.hasFeedback || day.flashcardWords > 0 ? "has-note" : "",
+              day.intensity > 0 ? `heat-${day.intensity}` : "",
               isToday ? "today" : ""
             ]
               .filter(Boolean)
@@ -70,6 +74,9 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
               </Link>
             );
           })}
+        </div>
+        <div className="calendar-heat-legend" aria-hidden="true">
+          menos <span /><span /><span /><span /> mais
         </div>
       </section>
 

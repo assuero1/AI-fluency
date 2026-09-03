@@ -24,6 +24,7 @@ import { listSensesByWordIds } from "./word-senses";
 import type { PracticeSessionFields } from "./flashcards";
 import { dateKeyInTimeZone, DEFAULT_TIMEZONE, resolveTimeZone } from "./tz";
 import { evaluateAchievements } from "./achievements";
+import { syncStreakForUser } from "./streak";
 import { awardQuestXpIfNew, awardXp, XP_AMOUNTS } from "./xp";
 import { buildDailyQuests, collectQuestInputs } from "./quests";
 import { getDailyNewCardsQuota } from "./profile";
@@ -50,6 +51,7 @@ export type CalendarDay = {
   flashcardMinutes: number;
   flashcardWords: number;
   flashcardCorrect: number;
+  intensity: number;
 };
 
 export type CalendarSuggestion = {
@@ -379,6 +381,12 @@ export async function getCalendarData(monthInput?: string) {
     const date = safeDateKey(feedback.fields.date || feedback.fields.created_at, timeZone);
     if (date && date.startsWith(key) && !feedbackByDate.has(date)) feedbackByDate.set(date, feedback);
   }
+  const conversationSecondsByDate = new Map<string, number>();
+  for (const conversation of conversations.filter((item) => item.fields.status === "completed")) {
+    const date = safeDateKey(conversation.fields.ended_at || conversation.fields.started_at, timeZone);
+    if (!date) continue;
+    conversationSecondsByDate.set(date, (conversationSecondsByDate.get(date) ?? 0) + Math.max(0, Number(conversation.fields.duration_seconds ?? 0)));
+  }
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
   const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
   const days: CalendarDay[] = Array.from({ length: daysInMonth }, (_, index) => {
@@ -386,6 +394,7 @@ export async function getCalendarData(monthInput?: string) {
     const date = `${key}-${String(day).padStart(2, "0")}`;
     const feedback = feedbackByDate.get(date);
     const flashcards = flashcardsByDate.get(date) ?? { minutes: 0, words: 0, correct: 0 };
+    const conversationMinutes = Math.round(Number(conversationSecondsByDate.get(date) ?? 0) / 60);
     return {
       date,
       day,
@@ -394,7 +403,8 @@ export async function getCalendarData(monthInput?: string) {
       fluencyScore: feedback?.fields.fluency_score,
       flashcardMinutes: flashcards.minutes,
       flashcardWords: flashcards.words,
-      flashcardCorrect: flashcards.correct
+      flashcardCorrect: flashcards.correct,
+      intensity: heatIntensity(conversationMinutes + flashcards.minutes)
     };
   });
   const latestFeedback = sorted[0] ?? null;
@@ -409,8 +419,11 @@ export async function getCalendarData(monthInput?: string) {
       new Date(conversation.fields.ended_at || conversation.fields.started_at).getTime() >= sevenDaysAgo)
     .reduce((sum, item) => sum + Number(item.fields.duration_seconds ?? 0), 0);
 
+  const streakState = await syncStreakForUser(user.id, { timeZone });
+
   return {
     month: key,
+    streak: streakState.streak,
     monthLabel: new Intl.DateTimeFormat("pt-BR", { month: "long", year: "numeric", timeZone: "UTC" }).format(
       new Date(Date.UTC(year, month - 1, 1))
     ),
@@ -686,6 +699,15 @@ function normalizeSummary(
           }
         ]
   };
+}
+
+// 0 = sem prática · 1 <10min · 2 <20min · 3 <40min · 4 ≥40min
+export function heatIntensity(minutes: number) {
+  if (minutes <= 0) return 0;
+  if (minutes < 10) return 1;
+  if (minutes < 20) return 2;
+  if (minutes < 40) return 3;
+  return 4;
 }
 
 function clampScore(value: number) {
