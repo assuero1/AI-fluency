@@ -1,13 +1,16 @@
 "use client";
 
-import { ArrowLeft, Check, Loader2, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, Loader2, Mic, PartyPopper, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { languages } from "@/data/mock";
 import { DEFAULT_LANGUAGE_LEVEL, LANGUAGE_LEVELS, LanguageLevel } from "@/lib/learning/levels";
 import { LevelPills } from "./LevelPills";
 import { Pill } from "./Pill";
+import { burstConfetti } from "@/lib/client/confetti";
+import { playSound } from "@/lib/client/ui-sound";
+import { vibrate } from "@/lib/client/haptics";
 
 const correctionOptions = ["Corrigir sempre", "Corrigir no final", "Só quando eu pedir"];
 const goals = [
@@ -90,12 +93,12 @@ export function OnboardingForm({
   const [calendarMemoryEnabled, setCalendarMemoryEnabled] = useState(initialProfile?.calendarMemoryEnabled ?? true);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Wizard: 3 passos + tela de celebração (só no onboarding completo).
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [done, setDone] = useState(false);
+  const [startingChat, setStartingChat] = useState(false);
 
   const selectedLanguage = languages[languageIndex];
-  const progress = useMemo(() => {
-    const completed = [selectedLanguage, level, goal, correctionStyle].filter(Boolean).length;
-    return `${completed} de 4`;
-  }, [correctionStyle, goal, level, selectedLanguage]);
 
   function selectLanguage(index: number) {
     setLanguageIndex(index);
@@ -134,12 +137,40 @@ export function OnboardingForm({
       const data = (await response.json()) as { ok?: boolean; error?: string; redirectTo?: string };
       if (!response.ok || !data.ok) throw new Error(data.error ?? "Não foi possível salvar seu perfil.");
 
-      router.push(data.redirectTo ?? "/");
+      if (languageSelectionOnly) {
+        router.push(data.redirectTo ?? "/");
+        router.refresh();
+        return;
+      }
+      // Onboarding completo: celebra antes de navegar — o CTA final cria a
+      // primeira conversa (time-to-aha rápido) ou leva à Home.
+      setDone(true);
+      playSound("achievement");
+      vibrate("celebrate");
+      burstConfetti({ particles: 130 });
       router.refresh();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : "Erro inesperado ao salvar.");
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function startFirstConversation() {
+    setStartingChat(true);
+    try {
+      const response = await fetch("/api/conversations/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "free_conversation", title: "Conversa livre" })
+      });
+      const data = (await response.json()) as { ok?: boolean; error?: string; redirectTo?: string };
+      if (!response.ok || !data.ok) throw new Error(data.error ?? "Não foi possível iniciar a conversa.");
+      router.push(data.redirectTo ?? "/chat");
+    } catch {
+      router.push("/");
+    } finally {
+      setStartingChat(false);
     }
   }
 
@@ -179,13 +210,34 @@ export function OnboardingForm({
     );
   }
 
+  const firstName = name.trim().split(/\s+/)[0] || "tudo pronto";
+
+  if (done) {
+    return (
+      <section className="section onboarding-celebration">
+        <div className="flashcard-trophy celebrate"><PartyPopper /></div>
+        <h1 className="title">Perfil pronto, {firstName}! 🎉</h1>
+        <p className="subtitle">Em 1 minuto você faz sua primeira conversa — a IA ajusta tudo ao seu nível.</p>
+        <button className="green-button full-button" disabled={startingChat} onClick={() => void startFirstConversation()} type="button">
+          {startingChat ? <Loader2 className="spin" /> : <Mic />} Fazer minha primeira conversa
+        </button>
+        <Link className="outline-button full-button" href="/">Explorar o app</Link>
+      </section>
+    );
+  }
+
+  const canContinue = step === 1 ? Boolean(name.trim()) : true;
+
   return (
     <>
       <div className="top-row">
-        <Pill>{progress}</Pill>
+        <Pill>Passo {step} de 3</Pill>
         <Pill tone="primary">
           <Sparkles size={17} /> IA adaptativa
         </Pill>
+      </div>
+      <div className="progress-line" role="progressbar" aria-valuemin={1} aria-valuemax={3} aria-valuenow={step} aria-label={`Passo ${step} de 3`}>
+        <span style={{ width: `${Math.round((step / 3) * 100)}%` }} />
       </div>
 
       <section className="section">
@@ -193,102 +245,125 @@ export function OnboardingForm({
         <p className="subtitle">A IA adapta conversas, correções e vocabulário ao seu objetivo.</p>
       </section>
 
-      <section className="section">
-        <h2 className="section-title">Como podemos te chamar?</h2>
-        <input
-          autoComplete="name"
-          className="field-input"
-          maxLength={80}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Seu nome"
-          value={name}
-        />
-      </section>
+      {step === 1 ? (
+        <>
+          <section className="section">
+            <h2 className="section-title">Como podemos te chamar?</h2>
+            <input
+              autoComplete="name"
+              className="field-input"
+              maxLength={80}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Seu nome"
+              value={name}
+            />
+          </section>
 
-      <section className="section">
-        <h2 className="section-title">Escolha o idioma</h2>
-        <LanguageChoices languageIndex={languageIndex} onSelect={selectLanguage} />
-      </section>
+          <section className="section">
+            <h2 className="section-title">Escolha o idioma</h2>
+            <LanguageChoices languageIndex={languageIndex} onSelect={selectLanguage} />
+          </section>
 
-      <section className="section">
-        <h2 className="section-title">Qual seu nível?</h2>
-        <LevelPills level={level} onChange={(option: LanguageLevel) => setLevel(option)} />
-      </section>
+          <section className="section">
+            <h2 className="section-title">Qual seu nível?</h2>
+            <LevelPills level={level} onChange={(option: LanguageLevel) => setLevel(option)} />
+          </section>
+        </>
+      ) : null}
 
-      <section className="section">
-        <h2 className="section-title">Qual é o foco agora?</h2>
-        <div aria-label="Objetivo de aprendizagem" className="choice-list compact" role="group">
-          {goals.map((option) => (
-            <button
-              className={option === goal ? "choice-card active" : "choice-card"}
-              aria-pressed={option === goal}
-              key={option}
-              onClick={() => setGoal(option)}
-              type="button"
-            >
-              <span className="row-copy">
-                <span className="row-title">{option}</span>
-                <span className="row-meta">Usado para criar temas, feedbacks e correções.</span>
+      {step === 2 ? (
+        <>
+          <section className="section">
+            <h2 className="section-title">Qual é o foco agora?</h2>
+            <div aria-label="Objetivo de aprendizagem" className="choice-list compact" role="group">
+              {goals.map((option) => (
+                <button
+                  className={option === goal ? "choice-card active" : "choice-card"}
+                  aria-pressed={option === goal}
+                  key={option}
+                  onClick={() => setGoal(option)}
+                  type="button"
+                >
+                  <span className="row-copy">
+                    <span className="row-title">{option}</span>
+                    <span className="row-meta">Usado para criar temas, feedbacks e correções.</span>
+                  </span>
+                  {option === goal ? <Check aria-hidden="true" color="#217a38" /> : null}
+                </button>
+              ))}
+            </div>
+          </section>
+
+          <section className="section">
+            <h2 className="section-title">Como a IA deve corrigir?</h2>
+            <div aria-label="Estilo de correção" className="level-pills" role="group">
+              {correctionOptions.map((option) => (
+                <button aria-pressed={option === correctionStyle} className="plain-button" key={option} onClick={() => setCorrectionStyle(option)} type="button">
+                  <Pill tone={option === correctionStyle ? "primary" : "default"}>{option}</Pill>
+                </button>
+              ))}
+            </div>
+          </section>
+        </>
+      ) : null}
+
+      {step === 3 ? (
+        <section className="section">
+          <h2 className="section-title">Preferências iniciais</h2>
+          <div className="settings-card">
+            <label className="switch-row">
+              <span>
+                <strong>Áudio da IA</strong>
+                <small>Kokoro lê perguntas e explicações.</small>
               </span>
-              {option === goal ? <Check aria-hidden="true" color="#217a38" /> : null}
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="section">
-        <h2 className="section-title">Como a IA deve corrigir?</h2>
-        <div aria-label="Estilo de correção" className="level-pills" role="group">
-          {correctionOptions.map((option) => (
-            <button aria-pressed={option === correctionStyle} className="plain-button" key={option} onClick={() => setCorrectionStyle(option)} type="button">
-              <Pill tone={option === correctionStyle ? "primary" : "default"}>{option}</Pill>
-            </button>
-          ))}
-        </div>
-      </section>
-
-      <section className="section">
-        <h2 className="section-title">Preferências iniciais</h2>
-        <div className="settings-card">
-          <label className="switch-row">
-            <span>
-              <strong>Áudio da IA</strong>
-              <small>Kokoro lê perguntas e explicações.</small>
-            </span>
-            <input checked={audioEnabled} onChange={(event) => setAudioEnabled(event.target.checked)} type="checkbox" />
-          </label>
-          <label className="switch-row">
-            <span>
-              <strong>Mostrar transcrição</strong>
-              <small>Você lê junto enquanto escuta.</small>
-            </span>
-            <input
-              checked={transcriptEnabled}
-              onChange={(event) => setTranscriptEnabled(event.target.checked)}
-              type="checkbox"
-            />
-          </label>
-          <label className="switch-row">
-            <span>
-              <strong>Memória do calendário</strong>
-              <small>A IA usa feedbacks passados para sugerir temas.</small>
-            </span>
-            <input
-              checked={calendarMemoryEnabled}
-              onChange={(event) => setCalendarMemoryEnabled(event.target.checked)}
-              type="checkbox"
-            />
-          </label>
-        </div>
-      </section>
+              <input checked={audioEnabled} onChange={(event) => setAudioEnabled(event.target.checked)} type="checkbox" />
+            </label>
+            <label className="switch-row">
+              <span>
+                <strong>Mostrar transcrição</strong>
+                <small>Você lê junto enquanto escuta.</small>
+              </span>
+              <input
+                checked={transcriptEnabled}
+                onChange={(event) => setTranscriptEnabled(event.target.checked)}
+                type="checkbox"
+              />
+            </label>
+            <label className="switch-row">
+              <span>
+                <strong>Memória do calendário</strong>
+                <small>A IA usa feedbacks passados para sugerir temas.</small>
+              </span>
+              <input
+                checked={calendarMemoryEnabled}
+                onChange={(event) => setCalendarMemoryEnabled(event.target.checked)}
+                type="checkbox"
+              />
+            </label>
+          </div>
+        </section>
+      ) : null}
 
       {error ? <div className="inline-error" role="alert">{error}</div> : null}
 
       <div style={{ marginTop: 32 }}>
-        <button className="dark-button full-button" disabled={isSaving || !name.trim()} onClick={submit} type="button">
-          {isSaving ? <Loader2 className="spin" /> : null}
-          {isSaving ? "Salvando perfil..." : "Salvar e continuar"}
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          {step > 1 ? (
+            <button className="outline-button" disabled={isSaving} onClick={() => setStep((current) => (current - 1) as 1 | 2)} style={{ flex: "0 0 auto" }} type="button">
+              Voltar
+            </button>
+          ) : null}
+          {step < 3 ? (
+            <button className="dark-button full-button" disabled={!canContinue} onClick={() => setStep((current) => (current + 1) as 2 | 3)} type="button">
+              Continuar
+            </button>
+          ) : (
+            <button className="dark-button full-button" disabled={isSaving || !name.trim()} onClick={submit} type="button">
+              {isSaving ? <Loader2 className="spin" /> : null}
+              {isSaving ? "Salvando perfil..." : "Salvar e continuar"}
+            </button>
+          )}
+        </div>
       </div>
     </>
   );

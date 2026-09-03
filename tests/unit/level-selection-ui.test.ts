@@ -8,7 +8,10 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 describe("language level selection UI contracts", () => {
   it("shows level pills on the language switch screen", () => {
     const form = read("components/OnboardingForm.tsx");
-    const branch = form.split("if (languageSelectionOnly)")[1] ?? "";
+    // Último segmento = corpo JSX da branch de troca de idioma (o submit()
+    // também menciona o flag, então [1] intermediário não é a branch).
+    const parts = form.split("if (languageSelectionOnly)");
+    const branch = parts[parts.length - 1] ?? "";
     expect(branch).toContain("Qual seu nível?");
     expect(branch).toContain("LevelPills");
   });
