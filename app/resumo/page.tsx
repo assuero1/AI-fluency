@@ -5,6 +5,8 @@ import { IconBubble } from "@/components/IconBubble";
 import { ListRow } from "@/components/ListRow";
 import { MetricGrid } from "@/components/MetricGrid";
 import { Pill } from "@/components/Pill";
+import { ResumoConfetti } from "@/components/ResumoConfetti";
+import { ResumoPracticeCta } from "@/components/ResumoPracticeCta";
 import { LearningStateError } from "@/lib/learning/access";
 import { getConversationSummary } from "@/lib/learning/feedback";
 import { formatSavedWordMeta } from "@/lib/learning/vocabulary-picker-ui";
@@ -71,6 +73,7 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
 
   return (
     <AppShell activeNav="chat" section="chat">
+      <ResumoConfetti />
       <div className="top-row">
         <div>
           <h1 className="title">Conversa finalizada</h1>
@@ -79,7 +82,7 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
         <Pill>{duration} min</Pill>
       </div>
       <section className="section">
-        <div className="choice-card active">
+        <div className="choice-card active pop-in">
           <IconBubble Icon={Check} />
           <div>
             <div className="row-title">Muito bem, {learnerName}!</div>
@@ -124,6 +127,9 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
             <div className="row-meta">Nenhuma palavra nova foi capturada nessa conversa.</div>
           )}
         </div>
+      </section>
+      <section className="section">
+        <ResumoPracticeCta wordIds={data.words.map((word) => word.id)} />
       </section>
       <div className="choice-list">
         <Link className="dark-button full-button" href="/">
