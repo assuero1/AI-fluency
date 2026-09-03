@@ -6,6 +6,7 @@ import { getPracticeActivity } from "./practice-activity";
 import { summarizeDailyQueue, type DailyQueueSessionFields } from "./daily-queue";
 import { dateKeyInTimeZone, resolveTimeZone } from "./tz";
 import { computeDailyGoalProgress, normalizeDailyGoalMinutes } from "./daily-goal";
+import { buildDailyQuests } from "./quests";
 import { STREAK_MILESTONES, syncStreakForUser } from "./streak";
 
 export type TopicFields = {
@@ -134,6 +135,30 @@ export async function getHomeData() {
   ).length;
   const weekConversationGoal = Math.max(1, Number(profile?.fields.weekly_conversation_goal ?? 7));
 
+  // Missões diárias: avaliadas sobre o MESMO snapshot do dia local.
+  const flashcardSessionsToday = sessionsToday.filter((session) => session.fields.type !== "new_words");
+  const newWordsToday = sessionsToday
+    .filter((session) => session.fields.type === "new_words")
+    .reduce((sum, session) => sum + Math.max(0, Number((session as { fields: { selected_word_count?: number } }).fields.selected_word_count ?? 0)), 0);
+  const bestFlashcardScoreToday = flashcardSessionsToday.reduce((best, session) => {
+    try {
+      const focus = JSON.parse((session as { fields: { focus?: string } }).fields.focus || "{}") as { result?: { score?: number } };
+      return Math.max(best, Math.round(Number(focus.result?.score ?? 0)));
+    } catch {
+      return best;
+    }
+  }, 0);
+  const quests = buildDailyQuests({
+    userId: user.id,
+    dayStamp: todayKey,
+    conversationsToday: completedToday.length,
+    flashcardsToday: flashcardSessionsToday.length,
+    bestFlashcardScoreToday,
+    newWordsToday,
+    minutesToday: todayGoal.minutesToday,
+    queueSessionCardCount: dailyQueue?.sessionCardCount ?? 0
+  });
+
   return {
     user: {
       id: user.id,
@@ -184,6 +209,7 @@ export async function getHomeData() {
       weekConversations,
       weekConversationGoal
     },
+    quests,
     readiness: await getConnectionStatus()
   };
 }

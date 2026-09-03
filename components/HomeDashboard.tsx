@@ -18,6 +18,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { MilestoneModal } from "./MilestoneModal";
 import { HomeTodayCard } from "./HomeTodayCard";
+import { QuestList } from "./QuestList";
 import { IconBubble } from "./IconBubble";
 import { ConversationSetupDialog, ConfirmedConversationStart, ConversationStartDraft } from "./ConversationSetupDialog";
 import { MetricGrid } from "./MetricGrid";
@@ -56,6 +57,7 @@ type HomeData = {
     weekConversations: number;
     weekConversationGoal: number;
   };
+  quests?: Array<{ key: string; title: string; target: number; progress: number; complete: boolean }>;
   words: {
     totalUsed: number;
     weeklyNew: number;
@@ -186,6 +188,8 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           weekConversations={home.today.weekConversations}
         />
       ) : null}
+
+      <QuestList quests={home.quests ?? []} />
 
       <section className="section">
         <h2 className="section-title">Qual tema você quer praticar?</h2>
