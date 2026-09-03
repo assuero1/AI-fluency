@@ -92,20 +92,25 @@ export function FlashcardTrainer() {
   useEffect(() => {
     // Handoff 1-toque (ex.: "Revisar em cards" do treino de palavras novas):
     // sessão pronta no storage entra direto, sem passar pelo resumo/modal.
-    const pending = sessionStorage.getItem("ai-fluency:pending-flashcards");
-    if (pending) {
-      sessionStorage.removeItem("ai-fluency:pending-flashcards");
-      try {
-        const data = JSON.parse(pending) as { sessionId: string; cards: Flashcard[]; languageCode?: string; languageName?: string; adapted?: boolean };
-        if (data.sessionId && data.cards?.length) {
-          const initialQueue = createFlashcardQueue(data.cards);
-          setSessionId(data.sessionId); setCompletionId(crypto.randomUUID()); setCards(data.cards); setQueue(initialQueue); setCurrentItem(selectNextQueueItem(initialQueue, 0));
-          setLanguageCode(data.languageCode ?? "es"); setLanguageName(data.languageName ?? "idioma estudado"); setAdapted(data.adapted === true);
-          resetAttempt(); // mesma preparação do start(): cronômetro da 1ª apresentação
-          return; // entrada direta: não mostra o resumo/modal
-        }
-      } catch { /* payload inválido: segue o fluxo normal */ }
-    }
+    // Com cookies/storage bloqueados, acessar sessionStorage lança
+    // SecurityError — nenhum acesso aqui escapa de try/catch.
+    try {
+      const pending = sessionStorage.getItem("ai-fluency:pending-flashcards");
+      if (pending) {
+        sessionStorage.removeItem("ai-fluency:pending-flashcards");
+        try {
+          const data = JSON.parse(pending) as { sessionId: string; cards: Flashcard[]; languageCode?: string; languageName?: string; adapted?: boolean };
+          if (data.sessionId && data.cards?.length) {
+            const initialQueue = createFlashcardQueue(data.cards);
+            setSessionId(data.sessionId); setCompletionId(crypto.randomUUID()); setCards(data.cards); setQueue(initialQueue); setCurrentItem(selectNextQueueItem(initialQueue, 0));
+            setLanguageCode(data.languageCode ?? "es"); setLanguageName(data.languageName ?? "idioma estudado"); setAdapted(data.adapted === true);
+            resetAttempt(); // mesma preparação do start(): cronômetro da 1ª apresentação
+            void loadOverview(); // fire-and-forget: se o usuário abandonar, a intro já tem a "Fila de hoje"
+            return; // entrada direta: não mostra o resumo/modal
+          }
+        } catch { /* payload inválido: segue o fluxo normal */ }
+      }
+    } catch { /* storage bloqueado: segue o fluxo normal */ }
     void loadOverview();
   }, []);
 
