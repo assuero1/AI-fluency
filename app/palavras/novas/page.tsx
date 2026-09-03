@@ -1,5 +1,4 @@
 import { NewWordsTrainer } from "@/components/NewWordsTrainer";
-import { LearningStateError } from "@/lib/learning/access";
 import { getActiveLanguageProfile, getSessionUser } from "@/lib/learning/profile";
 
 export const dynamic = "force-dynamic";

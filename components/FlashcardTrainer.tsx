@@ -386,10 +386,10 @@ export function FlashcardTrainer() {
       </> : <p className="row-meta">{dailyQueue.introducedToday > 0 ? "Fila de hoje concluída. Amanhã há mais — ou pratique abaixo." : "Nada na fila de hoje. Converse para salvar palavras novas ou monte uma sessão custom."}</p>}
       <div className="top-row row-meta">
         <span>Novas por dia</span>
-        <span>
-          <button aria-label="Diminuir novas por dia" className="outline-button" disabled={dailyQueue.quota <= 0} onClick={() => changeQuota(-1)} type="button">−</button>
-          <strong> {dailyQueue.quota} </strong>
-          <button aria-label="Aumentar novas por dia" className="outline-button" disabled={dailyQueue.quota >= 50} onClick={() => changeQuota(1)} type="button">+</button>
+        <span className="quota-stepper">
+          <button aria-label="Diminuir novas por dia" className="stepper-button" disabled={dailyQueue.quota <= 0} onClick={() => changeQuota(-1)} type="button">−</button>
+          <strong>{dailyQueue.quota}</strong>
+          <button aria-label="Aumentar novas por dia" className="stepper-button" disabled={dailyQueue.quota >= 50} onClick={() => changeQuota(1)} type="button">+</button>
         </span>
       </div>
       <p className="row-meta">Quantas palavras inéditas entram na sua fila de revisão de cada dia.</p>

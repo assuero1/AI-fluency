@@ -36,14 +36,17 @@
   --info-soft: #e7f1ff;
   --danger: #ff4b4b;
   --danger-deep: #d9372b;
+  --danger-text: #b02d21;
   --danger-soft: #ffe5e3;
   --dark-cta: #111111;
 
-  /* Seção ativa (default = marca); sobrescrita por .section-* no .phone-shell */
+  /* Seção ativa (default = marca); sobrescrita por .section-* no .phone-shell.
+     -text é o tom de LEITURA (AA sobre -soft e sobre branco), mais escuro que
+     o -deep usado em sombras/gradientes. */
   --section: var(--brand);
   --section-deep: var(--brand-deep);
   --section-soft: var(--brand-soft);
-  --section-text: var(--brand-deep);
+  --section-text: #417c00;
 
   /* Aliases legados: seletores existentes herdam a cor da seção */
   --primary: var(--section);
@@ -81,11 +84,11 @@
 }
 
 /* Cor de seção por tela — aplicada no .phone-shell via prop `section` do AppShell */
-.section-chat { --section: var(--chat); --section-deep: var(--chat-deep); --section-soft: var(--chat-soft); --section-text: var(--chat-deep); }
-.section-palavras { --section: var(--palavras); --section-deep: var(--palavras-deep); --section-soft: var(--palavras-soft); --section-text: var(--palavras-deep); }
-.section-novas { --section: var(--palavras); --section-deep: var(--palavras-deep); --section-soft: var(--palavras-soft); --section-text: var(--palavras-deep); }
-.section-calendario { --section: var(--calendario); --section-deep: var(--calendario-deep); --section-soft: var(--calendario-soft); --section-text: var(--calendario-deep); }
-.section-progresso { --section: var(--progresso); --section-deep: var(--progresso-deep); --section-soft: var(--progresso-soft); --section-text: var(--progresso-deep); }
+.section-chat { --section: var(--chat); --section-deep: var(--chat-deep); --section-soft: var(--chat-soft); --section-text: #0d649a; }
+.section-palavras { --section: var(--palavras); --section-deep: var(--palavras-deep); --section-soft: var(--palavras-soft); --section-text: #7443c9; }
+.section-novas { --section: var(--palavras); --section-deep: var(--palavras-deep); --section-soft: var(--palavras-soft); --section-text: #7443c9; }
+.section-calendario { --section: var(--calendario); --section-deep: var(--calendario-deep); --section-soft: var(--calendario-soft); --section-text: #a35a00; }
+.section-progresso { --section: var(--progresso); --section-deep: var(--progresso-deep); --section-soft: var(--progresso-soft); --section-text: #8a6a00; }
 .section-neutral { --section: var(--neutral); --section-deep: var(--neutral-deep); --section-soft: var(--neutral-soft); --section-text: var(--neutral-deep); }
 
 * {
@@ -193,6 +196,53 @@ a {
   width: 48px;
   min-height: 48px;
   padding: 0;
+}
+
+/* Botão de texto discreto dentro de card (ex.: "Selecionar todas") */
+.text-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--section-text);
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+/* Stepper numérico compacto (ex.: novas por dia no treino) */
+.quota-stepper {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.stepper-button {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--line-deep);
+  transition: transform .1s ease, box-shadow .1s ease;
+}
+
+.stepper-button:active:not(:disabled) {
+  transform: translateY(3px);
+  box-shadow: 0 0 0 transparent;
+}
+
+.stepper-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+  box-shadow: 0 2px 0 var(--line-deep);
 }
 
 /* Ação discreta de sair/fechar no header: ícone-ghost sem peso destrutivo */
@@ -759,12 +809,17 @@ a {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 50px;
+  min-height: 48px;
   margin-top: 22px;
   padding: 0 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
   color: var(--muted);
+}
+
+/* Chips de filtro têm alvo de toque de 44px */
+.level-pills .pill {
+  min-height: 44px;
 }
 
 .word-search-form input {
@@ -967,7 +1022,7 @@ a {
 
 .practice-error {
   margin: 10px 0 0;
-  color: var(--danger);
+  color: var(--danger-text);
   font-size: 14px;
   line-height: 1.35;
 }
@@ -1225,7 +1280,7 @@ a {
   border: 1px solid var(--danger);
   border-radius: var(--radius-md);
   background: var(--danger-soft);
-  color: var(--danger);
+  color: var(--danger-text);
   font-size: 14px;
   font-weight: 700;
 }
@@ -1509,7 +1564,7 @@ a {
 }
 
 .eyebrow {
-  color: var(--danger);
+  color: var(--section-text);
   font-size: 12px;
   font-weight: 900;
   letter-spacing: 0.08em;
@@ -1687,7 +1742,7 @@ a {
   display: flex;
   align-items: center;
   gap: 12px;
-  color: var(--danger);
+  color: var(--danger-text);
   font-size: 18px;
   font-weight: 800;
 }
@@ -1841,6 +1896,9 @@ a {
   border-color: color-mix(in srgb, var(--primary) 35%, white);
   background: var(--primary-soft);
   color: #174f27;
+  /* Update fica acima da nav, sem cobrir o header da tela */
+  top: auto;
+  bottom: calc(var(--nav-height) + var(--space-3) + env(safe-area-inset-bottom));
 }
 
 .update-banner button {
@@ -2827,7 +2885,7 @@ textarea:focus-visible,
   --section: #a560ff;
   --section-deep: #8549e8;
   --section-soft: #f1e6ff;
-  --section-text: #8549e8;
+  --section-text: #7443c9;
 
   min-height: 100dvh;
   display: flex;
