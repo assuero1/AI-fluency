@@ -606,7 +606,9 @@ test("voice playback surfaces a persistent failure with a retry", async ({ page 
     (window as unknown as { Audio: typeof BrokenAudio }).Audio = BrokenAudio;
   });
   await page.route("**/api/voice/captioned", async (route) => {
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, audioUrl: "/mock-audio.mp3", words: [] }) });
+    const body = route.request().postDataJSON() as { text?: string };
+    const words = (body.text ?? "").split(/\s+/).filter(Boolean).map((word, index) => ({ word, start_time: index * 0.4, end_time: index * 0.4 + 0.3 }));
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, audioUrl: "/mock-audio.mp3", words }) });
   });
 
   await page.goto(`/chat?conversationId=${fixtureConversationId()}`);

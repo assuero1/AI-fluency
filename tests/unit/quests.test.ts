@@ -41,3 +41,14 @@ describe("buildDailyQuests", () => {
     expect(clearQuest?.complete ?? false).toBe(true);
   });
 });
+
+describe("buildDailyQuests — elegibilidade estável", () => {
+  const base = { userId: "u1", dayStamp: "2026-09-03", conversationsToday: 0, flashcardsToday: 0, bestFlashcardScoreToday: 0, newWordsSessionsToday: 0, newWordsToday: 0, minutesToday: 0, queueSessionCardCount: 0 };
+
+  it("o conjunto elegível não depende do estado do dia (sem re-sorteio)", () => {
+    const morning = buildDailyQuests(base).map((quest) => quest.key);
+    const evening = buildDailyQuests({ ...base, flashcardsToday: 1, bestFlashcardScoreToday: 60 }).map((quest) => quest.key);
+    // Praticar durante o dia NÃO pode trocar as missões sorteadas.
+    expect(morning).toEqual(evening);
+  });
+});

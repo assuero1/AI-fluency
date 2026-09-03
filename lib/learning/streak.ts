@@ -3,7 +3,7 @@
 // ser perdoada pelo "congelamento" (1 a cada 7 dias) — perda evitada, nunca
 // prática inventada.
 import { getTeableClient } from "@/lib/supabase/client";
-import { dateKeyInTimeZone, resolveTimeZone } from "./tz";
+import { dateKeyInTimeZone, dayKeyFromDateColumn, resolveTimeZone } from "./tz";
 
 export const STREAK_MILESTONES = [3, 7, 14, 30, 60, 100, 180, 365] as const;
 const FREEZE_COOLDOWN_DAYS = 7;
@@ -28,18 +28,21 @@ export function computeStreakState(
 ): StreakState {
   const days = new Set(activeDays);
   const practicedToday = days.has(options.today);
+  // Normaliza a coluna DATE (pode chegar como "YYYY-MM-DD" ou como
+  // "YYYY-MM-DDT00:00:00+00:00" — o schema convive com as duas formas).
+  const freezeUsedOnKey = options.freezeUsedOn ? dayKeyFromDateColumn(options.freezeUsedOn) : "";
   // O dia já coberto por um freeze anterior é direito adquirido: conta como
   // ativo na caminhada SEMPRE (senão a próxima sincronização quebra a streak
   // exatamente no dia congelado, pois o freeze não pode ser consumido duas
   // vezes dentro do cooldown).
-  const previouslyFrozen = options.freezeUsedOn ? new Set([options.freezeUsedOn]) : null;
+  const previouslyFrozen = freezeUsedOnKey ? new Set([freezeUsedOnKey]) : null;
   // Sem prática hoje, a caminhada parte de ontem: a streak exibida é a que
   // está "em risco" (mesma semântica de practice-activity.ts).
   let cursor = practicedToday ? options.today : shiftDay(options.today, -1);
   let streak = 0;
   let freezeConsumedOn: string | null = null;
-  const freezeAvailable = !options.freezeUsedOn
-    || (Date.parse(`${options.today}T12:00:00Z`) - Date.parse(`${options.freezeUsedOn}T12:00:00Z`)) / 86_400_000 >= FREEZE_COOLDOWN_DAYS;
+  const freezeAvailable = !freezeUsedOnKey
+    || (Date.parse(`${options.today}T12:00:00Z`) - Date.parse(`${freezeUsedOnKey}T12:00:00Z`)) / 86_400_000 >= FREEZE_COOLDOWN_DAYS;
 
   for (let guard = 0; guard < WALK_GUARD; guard += 1) {
     if (days.has(cursor) || previouslyFrozen?.has(cursor)) {

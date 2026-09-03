@@ -35,13 +35,15 @@ type QuestDefinition = {
   progress: (input: DailyQuestInputs) => number;
 };
 
+// Elegibilidade é CONSTANTE por dia: dependências de estado mutável do dia
+// faziam o top-3 sortear de novo no meio do dia (missão em progresso sumia).
 const CATALOG: QuestDefinition[] = [
   { key: "finish_conversation", title: "Finalize 1 conversa", target: 1, xpAward: 10, eligible: () => true, progress: (input) => input.conversationsToday },
-  { key: "finish_training", title: "Conclua 1 treino de cards", target: 1, xpAward: 10, eligible: (input) => input.queueSessionCardCount > 0 || input.flashcardsToday > 0, progress: (input) => input.flashcardsToday },
+  { key: "finish_training", title: "Conclua 1 treino de cards", target: 1, xpAward: 10, eligible: () => true, progress: (input) => input.flashcardsToday },
   { key: "sharp_training", title: "Tire 80%+ num treino", target: 80, xpAward: 15, eligible: () => true, progress: (input) => input.bestFlashcardScoreToday },
   { key: "learn_words", title: "Aprenda 3 palavras novas", target: 3, xpAward: 10, eligible: () => true, progress: (input) => input.newWordsToday },
   { key: "practice_minutes", title: "Pratique 15 minutos", target: 15, xpAward: 15, eligible: () => true, progress: (input) => Math.min(input.minutesToday, 15) },
-  { key: "clear_queue", title: "Zere a fila de revisão de hoje", target: 1, xpAward: 15, eligible: (input) => input.queueSessionCardCount > 0 || input.flashcardsToday > 0, progress: (input) => (input.queueSessionCardCount === 0 && input.flashcardsToday > 0 ? 1 : 0) }
+  { key: "clear_queue", title: "Zere a fila de revisão de hoje", target: 1, xpAward: 15, eligible: () => true, progress: (input) => (input.queueSessionCardCount === 0 && input.flashcardsToday > 0 ? 1 : 0) }
 ];
 
 const QUESTS_PER_DAY = 3;

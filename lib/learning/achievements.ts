@@ -3,7 +3,7 @@
 // são persistidos em engagement_achievements (índice único por user+key) e
 // devolvidos na resposta para o toast do cliente.
 import { getTeableClient, type TeableRecord } from "@/lib/supabase/client";
-import { dateKeyInTimeZone, resolveTimeZone } from "./tz";
+import { dateKeyInTimeZone, dayKeyFromDateColumn, resolveTimeZone } from "./tz";
 import { awardXp, XP_AMOUNTS } from "./xp";
 
 export type AchievementSnapshot = {
@@ -62,7 +62,11 @@ function parseSessionScore(focus: string | undefined) {
 
 // Contadores que os hooks normalmente já têm em mãos podem vir em `partial`
 // para evitar re-consulta; o resto é coletado aqui.
-export async function evaluateAchievements(userId: string, partial: Partial<AchievementSnapshot> = {}): Promise<AchievementUnlock[]> {
+export async function evaluateAchievements(
+  userId: string,
+  partial: Partial<AchievementSnapshot> = {},
+  additive: Partial<AchievementSnapshot> = {}
+): Promise<AchievementUnlock[]> {
   const client = getTeableClient();
   const [userRecords, conversations, sessions, words, events] = await Promise.all([
     client.listRecordsWhereAll<{ current_streak?: number; last_practice_day?: string | null; timezone?: string }>("users", [{ field: "id", value: userId }]),
@@ -76,7 +80,7 @@ export async function evaluateAchievements(userId: string, partial: Partial<Achi
   const timeZone = resolveTimeZone(user?.fields.timezone);
   const completedConversations = conversations.filter((record) => record.fields.status === "completed");
   const completedFlashcards = sessions.filter((record) => record.fields.status === "completed" && record.fields.type === "flashcards");
-  const lastPracticeDay = user?.fields.last_practice_day ?? null;
+  const lastPracticeDay = user?.fields.last_practice_day ? dayKeyFromDateColumn(user.fields.last_practice_day, timeZone) || null : null;
   const today = dateKeyInTimeZone(new Date(), timeZone);
   const daysSinceLastPractice = lastPracticeDay
     ? Math.max(0, Math.round((Date.parse(`${today}T12:00:00Z`) - Date.parse(`${lastPracticeDay}T12:00:00Z`)) / 86_400_000))
@@ -101,8 +105,17 @@ export async function evaluateAchievements(userId: string, partial: Partial<Achi
     startedSimulation: conversations.some((record) => record.fields.interaction_mode === "simulation"),
     usedFocusPractice: events.some((record) => record.fields.event_name === "progress_focus_practice_started" || record.fields.event_name === "calendar_feedback_practice_started"),
     daysSinceLastPractice,
-    ...partial
-  };
+    // `partial` substitui (campos que o hook conhece melhor que a query);
+    // `additive` SOMA (totais vitalícios que a sessão corrente ainda não
+    // persistiu — ex.: palavras da sessão em curso).
+    ...partial,
+    ...Object.fromEntries(
+      Object.entries(additive).map(([key, value]) => [
+        key,
+        typeof value === "number" ? Number((snapshot as Record<string, unknown>)[key] ?? 0) + value : value
+      ])
+    )
+  } as AchievementSnapshot;
 
   const owned = new Set(
     (await client.listRecordsWhereAll<{ achievement_key?: string }>("engagementAchievements", [{ field: "user_id", value: userId }]))

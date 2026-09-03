@@ -591,11 +591,11 @@ async function completeNewWordsPracticeUnlocked(sessionId: string, clientComplet
   // Conquistas + XP: best-effort, avaliados ANTES de persistir o focus (o
   // retry idempotente reconstrói o resultado do que foi persistido e não
   // re-executa este trecho).
-  result.achievementsUnlocked = await evaluateAchievements(user.id, { newWordsLearned: words.length }).catch(() => []);
+  result.achievementsUnlocked = await evaluateAchievements(user.id, {}, { newWordsLearned: words.length }).catch(() => []);
   try {
     const questInputs = await collectQuestInputs(user.id, profile.id, resolveTimeZone(user.fields.timezone), getDailyNewCardsQuota(user));
     await awardQuestXpIfNew(user.id, questInputs.dayStamp, buildDailyQuests(questInputs));
-    await awardXp(user.id, XP_AMOUNTS.new_words, "new_words");
+    await awardXp(user.id, XP_AMOUNTS.new_words, "new_words", `new_words:${sessionId}`);
   } catch { /* XP é best-effort */ }
 
   const endedAt = new Date().toISOString();
@@ -736,7 +736,7 @@ export async function judgeNewWordsAttempt(input: JudgeInput): Promise<NewWordsA
 
   if (targetSense) {
     try {
-      await applySenseReview(client, word, targetSense, [{ rating, responseTimeMs, cardType: "target_to_native" }], new Date(now), user.fields.timezone ?? "UTC");
+      await applySenseReview(client, word, targetSense, [{ rating, responseTimeMs, cardType: "target_to_native" }], new Date(now), resolveTimeZone(user.fields.timezone));
       await client.updateRecord<FlashcardAttemptFields>("flashcardAttempts", record.id, { review_applied: true, resulting_review_state: "" });
     } catch (error) {
       await client.createEvent(user.id, "new_words_review_failed", { session_id: sessionId, sentence_id: next.id, message: error instanceof Error ? error.message : "unknown" }).catch(() => undefined);

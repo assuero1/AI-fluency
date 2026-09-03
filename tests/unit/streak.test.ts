@@ -81,3 +81,30 @@ describe("computeStreakState — dia congelado adquirido", () => {
     expect(state.streak).toBe(2);
   });
 });
+
+describe("computeStreakState — normalização da coluna DATE", () => {
+  const today = "2026-09-03";
+  const day = (offset: number) => {
+    const date = new Date(`${today}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() - offset);
+    return date.toISOString().slice(0, 10);
+  };
+
+  it("freeze serializado como timestamptz ainda conta o dia adquirido", () => {
+    const state = computeStreakState([day(0), day(2)], { today, previousStreak: 3, longestStreak: 3, freezeUsedOn: `${day(1)}T00:00:00+00:00` });
+    expect(state.streak).toBe(3);
+    expect(state.freezeConsumedOn).toBeNull();
+  });
+
+  it("cooldown de 7 dias funciona com a forma serializada", () => {
+    // Praticou 03 e 01; falta 02.
+    const activeDays = [day(0), day(2)];
+    // Freeze usado há 3 dias: dentro do cooldown → a falta de 02 quebra.
+    const inCooldown = computeStreakState(activeDays, { today, previousStreak: 1, longestStreak: 1, freezeUsedOn: `${day(3)}T00:00:00+00:00` });
+    expect(inCooldown.streak).toBe(1);
+    // Freeze usado há 8 dias: cooldown expirou → 02 é perdoada, streak = 3.
+    const expired = computeStreakState(activeDays, { today, previousStreak: 1, longestStreak: 1, freezeUsedOn: `${day(8)}T00:00:00+00:00` });
+    expect(expired.streak).toBe(3);
+    expect(expired.freezeConsumedOn).toBe(day(1));
+  });
+});

@@ -1,4 +1,6 @@
 import webpush from "web-push";
+import { timingSafeEqual } from "node:crypto";
+import { createHash } from "node:crypto";
 import { handleApiError, jsonOk } from "@/lib/api/responses";
 import { createServiceRoleClient } from "@/lib/supabase/admin";
 import { createSupabaseTeableClient } from "@/lib/supabase/client";
@@ -33,9 +35,18 @@ function copyFor(streak: number) {
     : { title: "Que tal alguns minutos de prática?", body: "Suas palavras continuam te esperando por lá." };
 }
 
+// Comparação em tempo constante (digests de mesmo tamanho) para o segredo que
+// porta um endpoint de service-role.
+function cronSecretMatches(presented: string | null) {
+  const expected = process.env.NOTIFICATIONS_CRON_SECRET ?? "";
+  if (!expected || !presented) return false;
+  const digest = (value: string) => createHash("sha256").update(value).digest();
+  return timingSafeEqual(digest(presented), digest(expected));
+}
+
 export async function POST(request: Request) {
   try {
-    if (!process.env.NOTIFICATIONS_CRON_SECRET || request.headers.get("x-cron-secret") !== process.env.NOTIFICATIONS_CRON_SECRET) {
+    if (!cronSecretMatches(request.headers.get("x-cron-secret"))) {
       return jsonOk({ ok: false, error: "unauthorized" }, { status: 401 });
     }
     const vapidPublic = process.env.VAPID_PUBLIC_KEY;

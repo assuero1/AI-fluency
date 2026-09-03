@@ -312,10 +312,13 @@ function monthKey(date: Date, timeZone: string) {
   return dateKeyInTimeZone(date, timeZone).slice(0, 7);
 }
 
-function shiftMonth(value: string, offset: number, timeZone: string) {
+function shiftMonth(value: string, offset: number, _timeZone: string) {
+  // Aritmética pura de mês em UTC: reconverter "primeiro dia do mês" pelo fuso
+  // do usuário deslocava o mês anterior (2026-08-01T00:00Z = 31/07 em SP).
+  void _timeZone;
   const [year, month] = value.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1 + offset, 1));
-  return monthKey(date, timeZone);
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
 }
 
 function errorLabel(type: string) {

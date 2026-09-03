@@ -9,6 +9,7 @@ import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser } from 
 import { evaluateAchievements } from "./achievements";
 import { awardQuestXpIfNew, awardXp, XP_AMOUNTS } from "./xp";
 import { buildDailyQuests, collectQuestInputs } from "./quests";
+import { resolveTimeZone } from "./tz";
 import type { FlashcardPracticeResult } from "./flashcard-contracts";
 import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, summarizeDailyQueue } from "./daily-queue";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
@@ -242,7 +243,7 @@ export async function createFlashcardPractice(input: { criterion?: unknown; coun
   if (typeof input.parentSessionId === "string" && input.parentSessionId && !sessions.some((item) => item.id === input.parentSessionId && item.fields.type === "flashcards" && item.fields.status === "completed")) throw new LearningStateError("Sessão de origem do retreino não encontrada.", 404);
   const queueKind: FlashcardQueueKind = normalizeFlashcardQueueKind(input.queueKind)
     ?? (requestedWordIds?.size || input.criterion !== undefined || input.count !== undefined ? "custom" : "daily");
-  const timeZone = user.fields.timezone ?? "UTC";
+  const timeZone = resolveTimeZone(user.fields.timezone);
   let selected: typeof scoped;
   let newCardsIntroduced = 0;
   let dailyQuota: number | undefined;
@@ -434,7 +435,7 @@ export async function getDailyQueueSummary() {
   const scoped = allWords;
   return summarizeDailyQueue(scoped, sessions, { userId: user.id, profileId: profile.id }, {
     quota: getDailyNewCardsQuota(user),
-    timeZone: user.fields.timezone ?? "UTC"
+    timeZone: resolveTimeZone(user.fields.timezone)
   });
 }
 
@@ -597,10 +598,10 @@ async function persistFlashcardAttemptUnlocked(sessionId: string, clientAttemptI
             review_version: sense.fields.review_version ?? null,
             leech_flagged_at: sense.fields.leech_flagged_at ?? null
           };
-          const review = await applyReviewToSense(client, word, sense, [{ rating, responseTimeMs, cardType: card.type }], new Date(now), user.fields.timezone ?? "UTC");
+          const review = await applyReviewToSense(client, word, sense, [{ rating, responseTimeMs, cardType: card.type }], new Date(now), resolveTimeZone(user.fields.timezone));
           resultingState = review.reviewState;
         } else {
-          const review = calculateAdaptiveReview(word.fields, [{ rating, responseTimeMs, cardType: card.type }], new Date(now), user.fields.timezone ?? "UTC", word.id);
+          const review = calculateAdaptiveReview(word.fields, [{ rating, responseTimeMs, cardType: card.type }], new Date(now), resolveTimeZone(user.fields.timezone), word.id);
           await client.updateRecord<WordFields>("words", word.id, reviewToWordFields(review));
           if (word.id === card.targetWordId) resultingState = review.reviewState;
         }
@@ -686,7 +687,7 @@ export async function previewFlashcardAttemptIntervals(input: { sessionId?: unkn
     if (sense) schedule = sense;
   }
   const now = new Date();
-  const timeZone = user.fields.timezone ?? "UTC";
+  const timeZone = resolveTimeZone(user.fields.timezone);
   const easyRating = resolveDifficultyRating({ difficulty: "easy", match, forgot, responseTimeMs, cardType: card.type });
   return {
     match,
@@ -825,9 +826,9 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
     const senseId = senseIdByWordId.get(wordId);
     const sense = senseId ? (sensesByWord.get(wordId) ?? []).find((item) => item.id === senseId) : undefined;
     if (sense) {
-      await applyReviewToSense(client, word, sense, wordAttempts, now, user.fields.timezone ?? "UTC");
+      await applyReviewToSense(client, word, sense, wordAttempts, now, resolveTimeZone(user.fields.timezone));
     } else {
-      const review = calculateAdaptiveReview(word.fields, wordAttempts, now, user.fields.timezone ?? "UTC", word.id);
+      const review = calculateAdaptiveReview(word.fields, wordAttempts, now, resolveTimeZone(user.fields.timezone), word.id);
       await client.updateRecord<WordFields>("words", word.id, reviewToWordFields(review));
     }
   }
@@ -855,9 +856,9 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
   // re-executa este trecho).
   result.achievementsUnlocked = await evaluateAchievements(user.id, { bestFlashcardScore: Math.round(score) }).catch(() => []);
   try {
-    const questInputs = await collectQuestInputs(user.id, profile.id, user.fields.timezone ?? "UTC", getDailyNewCardsQuota(user));
+    const questInputs = await collectQuestInputs(user.id, profile.id, resolveTimeZone(user.fields.timezone), getDailyNewCardsQuota(user));
     await awardQuestXpIfNew(user.id, questInputs.dayStamp, buildDailyQuests(questInputs));
-    await awardXp(user.id, XP_AMOUNTS.flashcards, "flashcards");
+    await awardXp(user.id, XP_AMOUNTS.flashcards, "flashcards", `flashcards:${sessionId}`);
   } catch { /* XP é best-effort */ }
   await client.createEvent(user.id, "flashcard_practice_completed", {
     session_id: session.id, correct_cards: correctCards, total_cards: uniqueCardCount, presentation_count: presentationCount, score,

@@ -23,17 +23,34 @@ export function questsToAward(dayStamp: string, quests: QuestLike[], alreadyPaid
   return award;
 }
 
-export async function awardXp(userId: string, amount: number, reason: string) {
+export async function awardXp(userId: string, amount: number, reason: string, idempotencyKey?: string) {
   if (amount <= 0) return 0;
   const client = getTeableClient();
+  if (idempotencyKey) {
+    // XP sem livro-caixa: a chave (ex. "flashcards:<sessionId>") torna o prêmio
+    // idempotente contra retries do hook — a tentativa original já pagou.
+    const prior = await client.listRecordsWhereAll<{ event_name?: string; payload?: unknown }>("appEvents", [
+      { field: "user_id", value: userId },
+      { field: "event_name", value: "xp_awarded" }
+    ]);
+    const alreadyPaid = prior.some((record) => {
+      const payload = typeof record.fields.payload === "string" ? safeJsonParse(record.fields.payload) : record.fields.payload;
+      return (payload as { key?: string } | null)?.key === idempotencyKey;
+    });
+    if (alreadyPaid) return 0;
+  }
   const users = await client.listRecordsWhereAll<{ xp_total?: number }>("users", [{ field: "id", value: userId }]);
   const user = users[0];
   const total = Number(user?.fields.xp_total ?? 0) + amount;
   if (user) {
     await client.updateRecord<{ xp_total: number }>("users", user.id, { xp_total: total });
   }
-  await client.createEvent(userId, "xp_awarded", { amount, reason });
+  await client.createEvent(userId, "xp_awarded", { amount, reason, ...(idempotencyKey ? { key: idempotencyKey } : {}) });
   return total;
+}
+
+function safeJsonParse(value: string): unknown {
+  try { return JSON.parse(value); } catch { return null; }
 }
 
 function parseQuestKeys(value: unknown): string[] {
