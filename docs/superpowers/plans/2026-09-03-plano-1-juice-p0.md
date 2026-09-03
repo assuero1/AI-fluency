@@ -45,7 +45,7 @@
 - Modify: `components/ProfilePreferences.tsx` — toggles de som/vibração
 - Modify: `app/globals.css` — keyframes/classes novos
 - Modify: `public/sw.js` — bump de cache (última task)
-- Test: `tests/unit/ui-sound-catalog.test.ts`, `tests/unit/celebration-contracts.test.ts`
+- Test: `tests/unit/ui-sound-catalog.test.ts`
 
 ---
 
@@ -422,6 +422,7 @@ Em `app/globals.css`, no bloco "Micro-interações chunky" (após a linha de `.c
 .correction-award { display: inline-flex; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: #e8f7eb; color: #237a3b; font-size: 12px; font-weight: 800; animation: pop-in .45s cubic-bezier(.34, 1.4, .64, 1) .15s both; }
 .correction-block { animation: pop-in .38s cubic-bezier(.34, 1.4, .64, 1) .1s both; }
 .message-goal.reached-fireworks { border-color: var(--section); animation: bounce-in .5s cubic-bezier(.34, 1.56, .64, 1) both; }
+.pop-in { animation: pop-in .38s cubic-bezier(.34, 1.4, .64, 1) both; }
 ```
 
 - [ ] **Step 3: Verificar**
