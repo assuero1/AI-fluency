@@ -22,6 +22,8 @@ import { joinSpeechSegments, releaseMicForPlayback, speechLanguageName, speechLo
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 import { computeActiveElapsedSeconds } from "@/lib/learning/chat-elapsed";
 import type { TeableRecord } from "@/lib/supabase/client";
+import { playSound } from "@/lib/client/ui-sound";
+import { vibrate } from "@/lib/client/haptics";
 import { getMessageGoalProgress, InteractionMode, MAX_USER_MESSAGE_LENGTH, normalizeStoredInteractionMode } from "@/lib/learning/chat-contracts";
 
 type ChatConversationProps = {
@@ -130,6 +132,20 @@ export function ChatConversation({
     }
     return grouped;
   }, [corrections]);
+
+  // null = primeira medição (correções já carregadas do banco não tocam som).
+  const previousCorrectionsCount = useRef<number | null>(null);
+  useEffect(() => {
+    if (previousCorrectionsCount.current === null) {
+      previousCorrectionsCount.current = corrections.length;
+      return;
+    }
+    if (corrections.length > previousCorrectionsCount.current) {
+      playSound("neutral");
+      vibrate("tap");
+    }
+    previousCorrectionsCount.current = corrections.length;
+  }, [corrections.length]);
 
   const messageGoal = useMemo(
     () => getMessageGoalProgress(messages, conversation.fields.target_user_message_count),
@@ -779,6 +795,7 @@ export function ChatConversation({
                   <div className="correction-title">
                     <span style={{ width: 10, height: 10, borderRadius: 999, background: "currentColor" }} />
                     Correção
+                    <span className="correction-award" aria-hidden="true">+{messageCorrections.length}</span>
                   </div>
                   <div>
                     <span className="marked-error">{correction.fields.original_text}</span> →{" "}
