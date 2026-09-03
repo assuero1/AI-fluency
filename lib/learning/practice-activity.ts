@@ -1,3 +1,5 @@
+import { dateKeyInTimeZone as tzDateKeyInTimeZone } from "./tz";
+
 export type PracticeActivity = {
   streak: number;
   practicedToday: boolean;
@@ -46,17 +48,8 @@ export function formatPracticeStreak(streak: number) {
 }
 
 function dateKeyInTimeZone(value: Date, timeZone: string) {
-  if (Number.isNaN(value.getTime())) return "";
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone,
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit"
-  }).formatToParts(value);
-  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
-  return `${values.year}-${values.month}-${values.day}`;
+  return tzDateKeyInTimeZone(value, safeTimeZone(timeZone));
 }
-
 function safeTimeZone(value: string) {
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: value }).format();

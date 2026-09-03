@@ -6,6 +6,7 @@ import { getActiveLanguageProfile, getSessionUser } from "./profile";
 import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import { getPracticeActivity } from "./practice-activity";
 import type { PracticeSessionFields } from "./flashcards";
+import { dateKeyInTimeZone, resolveTimeZone } from "./tz";
 
 type ProgressError = {
   type: string;
@@ -25,6 +26,7 @@ type ProgressStrength = {
 export async function getProgressData() {
   const client = getTeableClient();
   const user = await getSessionUser();
+  const timeZone = resolveTimeZone(user.fields.timezone);
   const profile = await getActiveLanguageProfile(user);
   const scopeFilters = profile
     ? [
@@ -50,16 +52,16 @@ export async function getProgressData() {
   const conversationIds = new Set(scopedConversations.map((conversation) => conversation.id));
   const scopedCorrections = corrections.filter((correction) => conversationIds.has(correction.fields.conversation_id));
   const now = new Date();
-  const currentMonth = monthKey(now);
-  const previousMonth = shiftMonth(currentMonth, -1);
-  const currentMonthFeedbacks = scopedFeedbacks.filter((feedback) => dateKey(feedback.fields.date || feedback.fields.created_at).startsWith(currentMonth));
-  const previousMonthFeedbacks = scopedFeedbacks.filter((feedback) => dateKey(feedback.fields.date || feedback.fields.created_at).startsWith(previousMonth));
+  const currentMonth = monthKey(now, timeZone);
+  const previousMonth = shiftMonth(currentMonth, -1, timeZone);
+  const currentMonthFeedbacks = scopedFeedbacks.filter((feedback) => dateKey(feedback.fields.date || feedback.fields.created_at, timeZone).startsWith(currentMonth));
+  const previousMonthFeedbacks = scopedFeedbacks.filter((feedback) => dateKey(feedback.fields.date || feedback.fields.created_at, timeZone).startsWith(previousMonth));
   const currentFluency = average(currentMonthFeedbacks.map((feedback) => Number(feedback.fields.fluency_score ?? 0)));
   const previousFluency = average(previousMonthFeedbacks.map((feedback) => Number(feedback.fields.fluency_score ?? 0)));
   const fluencyChange = currentFluency > 0 && previousFluency > 0 ? Math.round(((currentFluency - previousFluency) / previousFluency) * 100) : null;
-  const newWordsMonth = scopedWords.filter((word) => dateKey(word.fields.first_used_at).startsWith(currentMonth)).length;
+  const newWordsMonth = scopedWords.filter((word) => dateKey(word.fields.first_used_at, timeZone).startsWith(currentMonth)).length;
   const monthlyConversations = completedConversations.filter((conversation) =>
-    dateKey(conversation.fields.ended_at || conversation.fields.started_at).startsWith(currentMonth)
+    dateKey(conversation.fields.ended_at || conversation.fields.started_at, timeZone).startsWith(currentMonth)
   );
   const completedFlashcards = practiceSessions.filter((session) => session.fields.type === "flashcards" && session.fields.status === "completed");
   const flashcardSeconds = completedFlashcards.reduce((sum, session) => sum + Number(session.fields.duration_seconds ?? 0), 0);
@@ -72,7 +74,7 @@ export async function getProgressData() {
   const latestFeedback = scopedFeedbacks[0] ?? null;
   const practice = getPracticeActivity(
     [...completedConversations.map((conversation) => conversation.fields.ended_at || conversation.fields.started_at), ...completedFlashcards.map((session) => session.fields.ended_at || session.fields.started_at)],
-    { now, timeZone: user.fields.timezone ?? "UTC" }
+    { now, timeZone }
   );
   const strengths = buildStrengths({
     completedCount: completedConversations.length,
@@ -246,10 +248,11 @@ function average(values: number[]) {
   return Math.round((valid.reduce((sum, value) => sum + value, 0) / valid.length) * 10) / 10;
 }
 
-function dateKey(value: string | undefined) {
+function dateKey(value: string | undefined, timeZone: string) {
   if (!value) return "";
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+  // Chaves de dia passam direto (idempotência); timestamps viram dia local.
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return value;
+  return dateKeyInTimeZone(new Date(value), timeZone);
 }
 
 function dateNumber(value: string | undefined) {
@@ -262,14 +265,14 @@ function sortByFeedbackDate(a: TeableRecord<DailyFeedbackFields>, b: TeableRecor
   return dateNumber(b.fields.date || b.fields.created_at) - dateNumber(a.fields.date || a.fields.created_at);
 }
 
-function monthKey(date: Date) {
-  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+function monthKey(date: Date, timeZone: string) {
+  return dateKeyInTimeZone(date, timeZone).slice(0, 7);
 }
 
-function shiftMonth(value: string, offset: number) {
+function shiftMonth(value: string, offset: number, timeZone: string) {
   const [year, month] = value.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1 + offset, 1));
-  return monthKey(date);
+  return monthKey(date, timeZone);
 }
 
 function levelProgress(level: string | undefined) {

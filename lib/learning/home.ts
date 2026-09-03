@@ -4,6 +4,7 @@ import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser } from 
 import type { ConversationFields } from "./conversations";
 import { getPracticeActivity } from "./practice-activity";
 import { summarizeDailyQueue, type DailyQueueSessionFields } from "./daily-queue";
+import { resolveTimeZone } from "./tz";
 
 export type TopicFields = {
   Name?: string;
@@ -64,6 +65,7 @@ export type HomeSuggestion = {
 export async function getHomeData() {
   const client = getTeableClient();
   const user = await getSessionUser();
+  const timeZone = resolveTimeZone(user.fields.timezone);
   const profile = await getActiveLanguageProfile(user);
 
   const scopeFilters = profile
@@ -92,11 +94,11 @@ export async function getHomeData() {
     conversations
       .filter((conversation) => conversation.fields.status === "completed")
       .map((conversation) => conversation.fields.ended_at || conversation.fields.started_at),
-    { timeZone: user.fields.timezone ?? "UTC" }
+    { timeZone }
   );
 
   const dailyQueue = profile
-    ? summarizeDailyQueue(profileWords, sessions, { userId: user.id, profileId: profile.id }, { quota: getDailyNewCardsQuota(user), timeZone: user.fields.timezone ?? "UTC" })
+    ? summarizeDailyQueue(profileWords, sessions, { userId: user.id, profileId: profile.id }, { quota: getDailyNewCardsQuota(user), timeZone })
     : null;
 
   return {

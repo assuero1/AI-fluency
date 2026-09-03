@@ -6,6 +6,7 @@ import { getTeableClient, TeableRecord, TeableRequestError } from "@/lib/supabas
 import { LearningStateError } from "./access";
 import { WordFields, WordSenseFields } from "./conversations";
 import { addLearnedWordsToDailyFeedback, toDateKey } from "./feedback";
+import { resolveTimeZone } from "./tz";
 import { getActiveLanguageProfile, getSessionUser } from "./profile";
 import { canonicalVocabularyKey, normalizeVocabularyToken } from "./vocabulary-selection";
 import { canonicalSenseKey, createWordSense, listSensesByWordIds, matchesCanonicalSenseKey, nextSenseOrderFromList, updateWordSense } from "./word-senses";
@@ -600,7 +601,8 @@ async function completeNewWordsPracticeUnlocked(sessionId: string, clientComplet
   });
   // Palavras novas contam no feedback do dia (mesma métrica das conversas).
   try {
-    await addLearnedWordsToDailyFeedback(user.id, profile.id, toDateKey(new Date().toISOString()), words.length);
+    const timeZone = resolveTimeZone(user.fields.timezone);
+    await addLearnedWordsToDailyFeedback(user.id, profile.id, toDateKey(new Date().toISOString(), timeZone), words.length, timeZone);
   } catch (error) {
     console.warn("new words: daily feedback update failed", error);
   }

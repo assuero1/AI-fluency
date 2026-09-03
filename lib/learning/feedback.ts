@@ -22,6 +22,7 @@ import { createTopic } from "./topics";
 import { normalizeStoredInteractionMode } from "./chat-contracts";
 import { listSensesByWordIds } from "./word-senses";
 import type { PracticeSessionFields } from "./flashcards";
+import { dateKeyInTimeZone, DEFAULT_TIMEZONE, resolveTimeZone } from "./tz";
 
 type ConversationSummary = {
   correction_score?: number;
@@ -79,6 +80,10 @@ async function finalizeConversation(conversationId: string, options: { pausedMs?
     if (context.conversation.fields.status === "completed") return getPersistedCompletion(context);
     throw new LearningStateError("Esta conversa não pode ser encerrada neste estado.");
   }
+  // O dia do feedback é o dia LOCAL do usuário (22h de São Paulo é o mesmo dia),
+  // então todo o cálculo/persistência usa o fuso do perfil.
+  const sessionUser = await getSessionUser();
+  const timeZone = resolveTimeZone(sessionUser?.fields?.timezone);
 
   const client = getTeableClient();
   const endedAt = new Date().toISOString();
@@ -118,7 +123,7 @@ async function finalizeConversation(conversationId: string, options: { pausedMs?
       conversationWords,
       summary,
       endedAt,
-      { feedbacks, conversations }
+      { feedbacks, conversations, timeZone }
     ),
     client.updateRecord<ConversationFields>("conversations", context.conversation.id, {
       status: "completed",
@@ -152,7 +157,10 @@ async function finalizeConversation(conversationId: string, options: { pausedMs?
   };
 }
 
-async function getPersistedCompletion(context: NonNullable<Awaited<ReturnType<typeof getConversation>>>) {
+async function getPersistedCompletion(
+  context: NonNullable<Awaited<ReturnType<typeof getConversation>>>,
+  timeZone: string = DEFAULT_TIMEZONE
+) {
   const client = getTeableClient();
   const [dailyFeedbacks, usageSummaries, words] = await Promise.all([
     client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180),
@@ -162,12 +170,12 @@ async function getPersistedCompletion(context: NonNullable<Awaited<ReturnType<ty
       { field: "language_profile_id", value: context.conversation.fields.language_profile_id }
     ])
   ]);
-  const date = toDateKey(context.conversation.fields.ended_at || context.conversation.fields.started_at);
+  const date = toDateKey(context.conversation.fields.ended_at || context.conversation.fields.started_at, timeZone);
   const dailyFeedback = dailyFeedbacks.find(
     (feedback) =>
       feedback.fields.user_id === context.conversation.fields.user_id &&
       feedback.fields.language_profile_id === context.conversation.fields.language_profile_id &&
-      toDateKey(feedback.fields.date) === date
+      toDateKey(feedback.fields.date, timeZone) === date
   );
   if (!dailyFeedback) throw new LearningStateError("O feedback desta conversa ainda não está disponível.", 409);
   const wordIds = new Set(
@@ -208,13 +216,14 @@ export async function getConversationSummary(conversationId: string) {
     client.listRecordsWhereAll<WordFields>("words", summaryScopeFilters)
   ]);
 
-  const feedbackDate = toDateKey(context.conversation.fields.ended_at || context.conversation.fields.started_at);
+  const timeZone = resolveTimeZone((await getSessionUser())?.fields?.timezone);
+  const feedbackDate = toDateKey(context.conversation.fields.ended_at || context.conversation.fields.started_at, timeZone);
   const dailyFeedback =
     dailyFeedbacks.find(
       (feedback) =>
         feedback.fields.user_id === context.conversation.fields.user_id &&
         feedback.fields.language_profile_id === context.conversation.fields.language_profile_id &&
-        toDateKey(feedback.fields.date) === feedbackDate
+        toDateKey(feedback.fields.date, timeZone) === feedbackDate
     ) ?? null;
 
   const hasCompleteFeedback = Boolean(
@@ -284,23 +293,25 @@ function buildCompletionSummary(
 }
 
 export async function addSavedWordsToDailyFeedback(conversation: TeableRecord<ConversationFields>, count: number) {
+  const timeZone = resolveTimeZone((await getSessionUser())?.fields?.timezone);
   return addLearnedWordsToDailyFeedback(
     conversation.fields.user_id,
     conversation.fields.language_profile_id,
-    toDateKey(conversation.fields.ended_at || conversation.fields.started_at),
-    count
+    toDateKey(conversation.fields.ended_at || conversation.fields.started_at, timeZone),
+    count,
+    timeZone
   );
 }
 
 /** Incrementa new_words_count do feedback do dia (usado por conversas e pela sessão de palavras novas). */
-export async function addLearnedWordsToDailyFeedback(userId: string, profileId: string, dateKey: string, count: number) {
+export async function addLearnedWordsToDailyFeedback(userId: string, profileId: string, dateKey: string, count: number, timeZone: string = DEFAULT_TIMEZONE) {
   if (count <= 0) return;
   const client = getTeableClient();
   const feedbacks = await client.listRecords<DailyFeedbackFields>("dailyFeedbacks", 180);
   const feedback = feedbacks.find((item) =>
     item.fields.user_id === userId &&
     item.fields.language_profile_id === profileId &&
-    toDateKey(item.fields.date) === dateKey
+    toDateKey(item.fields.date, timeZone) === dateKey
   );
   if (feedback) {
     await client.updateRecord<DailyFeedbackFields>("dailyFeedbacks", feedback.id, {
@@ -312,6 +323,7 @@ export async function addLearnedWordsToDailyFeedback(userId: string, profileId: 
 export async function getCalendarData(monthInput?: string) {
   const client = getTeableClient();
   const user = await getSessionUser();
+  const timeZone = resolveTimeZone(user.fields.timezone);
   const profile = await getActiveLanguageProfile(user);
   const scopeFilters = profile
     ? [
@@ -328,12 +340,12 @@ export async function getCalendarData(monthInput?: string) {
     : [[], [], []];
   const { year, month, key } = normalizeCalendarMonth(monthInput);
   const scoped = dailyFeedbacks;
-  const validFeedbacks = scoped.filter((feedback) => safeDateKey(feedback.fields.date || feedback.fields.created_at));
+  const validFeedbacks = scoped.filter((feedback) => safeDateKey(feedback.fields.date || feedback.fields.created_at, timeZone));
   const sorted = sortFeedbacks(validFeedbacks);
   const feedbackByDate = new Map<string, TeableRecord<DailyFeedbackFields>>();
   const flashcardsByDate = new Map<string, { minutes: number; words: number; correct: number }>();
   for (const session of practiceSessions.filter((item) => item.fields.type === "flashcards" && item.fields.status === "completed")) {
-    const date = safeDateKey(session.fields.ended_at || session.fields.started_at);
+    const date = safeDateKey(session.fields.ended_at || session.fields.started_at, timeZone);
     if (!date || !date.startsWith(key)) continue;
     const current = flashcardsByDate.get(date) ?? { minutes: 0, words: 0, correct: 0 };
     current.minutes += Math.max(0, Math.round(Number(session.fields.duration_seconds ?? 0) / 60));
@@ -342,7 +354,7 @@ export async function getCalendarData(monthInput?: string) {
     flashcardsByDate.set(date, current);
   }
   for (const feedback of sorted) {
-    const date = safeDateKey(feedback.fields.date || feedback.fields.created_at);
+    const date = safeDateKey(feedback.fields.date || feedback.fields.created_at, timeZone);
     if (date && date.startsWith(key) && !feedbackByDate.has(date)) feedbackByDate.set(date, feedback);
   }
   const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -366,7 +378,7 @@ export async function getCalendarData(monthInput?: string) {
   const latestFeedback = sorted[0] ?? null;
   const monthConversations = conversations.filter((conversation) =>
     conversation.fields.status === "completed" &&
-    safeDateKey(conversation.fields.ended_at || conversation.fields.started_at)?.startsWith(key)
+    safeDateKey(conversation.fields.ended_at || conversation.fields.started_at, timeZone)?.startsWith(key)
   );
   const totalPracticeSeconds = monthConversations.reduce((sum, item) => sum + Number(item.fields.duration_seconds ?? 0), 0) + [...flashcardsByDate.values()].reduce((sum, item) => sum + item.minutes * 60, 0);
   const sevenDaysAgo = Date.now() - 7 * 86400000;
@@ -398,6 +410,7 @@ export async function getDailyFeedback(date: string) {
 
   const client = getTeableClient();
   const user = await getSessionUser();
+  const timeZone = resolveTimeZone(user.fields.timezone);
   const profile = await getActiveLanguageProfile(user);
   const scopeFilters = profile
     ? [
@@ -413,12 +426,12 @@ export async function getDailyFeedback(date: string) {
     : [[], []];
   const feedback = sortFeedbacks(
     dailyFeedbacks.filter(
-      (item) => safeDateKey(item.fields.date || item.fields.created_at) === date
+      (item) => safeDateKey(item.fields.date || item.fields.created_at, timeZone) === date
     )
   )[0] ?? null;
   const completedConversations = conversations
     .filter((conversation) => {
-      const day = safeDateKey(conversation.fields.ended_at || conversation.fields.started_at);
+      const day = safeDateKey(conversation.fields.ended_at || conversation.fields.started_at, timeZone);
       return conversation.fields.status === "completed" && day === date;
     })
     .sort((a, b) => new Date(b.fields.ended_at || b.fields.started_at).getTime() - new Date(a.fields.ended_at || a.fields.started_at).getTime())
@@ -533,10 +546,12 @@ async function saveDailyFeedback(
   preloaded?: {
     feedbacks: TeableRecord<DailyFeedbackFields>[];
     conversations: TeableRecord<ConversationFields>[];
+    timeZone?: string;
   }
 ) {
   const client = getTeableClient();
-  const date = toDateKey(endedAt);
+  const timeZone = resolveTimeZone(preloaded?.timeZone);
+  const date = toDateKey(endedAt, timeZone);
   const [feedbacks, conversations] = preloaded
     ? [preloaded.feedbacks, preloaded.conversations]
     : await Promise.all([
@@ -547,7 +562,7 @@ async function saveDailyFeedback(
     (feedback) =>
       feedback.fields.user_id === conversation.fields.user_id &&
       feedback.fields.language_profile_id === conversation.fields.language_profile_id &&
-      toDateKey(feedback.fields.date) === date
+      toDateKey(feedback.fields.date, timeZone) === date
   );
 
   const previousCompletedCount = conversations.filter(
@@ -556,7 +571,7 @@ async function saveDailyFeedback(
       item.fields.status === "completed" &&
       item.fields.user_id === conversation.fields.user_id &&
       item.fields.language_profile_id === conversation.fields.language_profile_id &&
-      toDateKey(item.fields.ended_at || item.fields.started_at) === date
+      toDateKey(item.fields.ended_at || item.fields.started_at, timeZone) === date
   ).length;
   const fields = aggregateDailyFeedback(existing?.fields, summary, words.length, Math.max(1, previousCompletedCount), {
     Name: date,
@@ -655,14 +670,20 @@ function clampScore(value: number) {
   return Math.max(0, Math.min(10, Math.round(value)));
 }
 
-export function toDateKey(value: string) {
-  return new Date(value).toISOString().slice(0, 10);
+const DAY_KEY_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+export function toDateKey(value: string, timeZone: string = DEFAULT_TIMEZONE) {
+  // Valores que já são chaves de dia (YYYY-MM-DD) passam direto: reconvertê-los
+  // como UTC-meia-noite deslocaria a chave um dia no fuso local.
+  if (DAY_KEY_PATTERN.test(value)) return value;
+  return dateKeyInTimeZone(new Date(value), resolveTimeZone(timeZone));
 }
 
-function safeDateKey(value: string | undefined) {
+function safeDateKey(value: string | undefined, timeZone: string = DEFAULT_TIMEZONE) {
   if (!value) return null;
-  const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
+  if (DAY_KEY_PATTERN.test(value)) return value;
+  const key = dateKeyInTimeZone(new Date(value), resolveTimeZone(timeZone));
+  return key || null;
 }
 
 export function parseSuggestedTopics(value: string | undefined): CalendarSuggestion[] {
