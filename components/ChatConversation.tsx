@@ -136,6 +136,8 @@ export function ChatConversation({
     [messages, conversation.fields.target_user_message_count]
   );
 
+  const requestFinalize = () => setIsFinalizeDialogOpen(true);
+
   // Auto-scroll da conversa: a página é o scroller, então um sentinel no fim
   // do chat-stack diz se o usuário está acompanhando o fim. Sem isso, retomar
   // caía na mensagem mais antiga e a resposta da IA aparecia fora da tela.
@@ -826,12 +828,12 @@ export function ChatConversation({
           </div> : null}
         </div> : null}
 
-        {!readOnly ? <button className="green-button full-button" disabled={isSending} onClick={() => setIsFinalizeDialogOpen(true)} type="button">
+        {!readOnly ? <button className="green-button full-button" disabled={isSending} onClick={requestFinalize} type="button">
           {isSending ? <Loader2 className="spin" /> : null}
           Finalizar conversa
         </button> : <div className="empty-state">Esta conversa foi finalizada e está disponível apenas para consulta.</div>}
 
-        <ConversationGoalProgress progress={messageGoal} readOnly={readOnly} />
+        <ConversationGoalProgress progress={messageGoal} readOnly={readOnly} onFinish={readOnly ? undefined : requestFinalize} />
 
         {!readOnly ? <form
           className="composer"
