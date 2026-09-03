@@ -367,10 +367,10 @@ git commit -m "feat(juice): confetti em canvas e contagem animada de números"
 
 **Files:**
 - Create: `components/SessionCelebration.tsx`
-- Modify: `app/globals.css` (dentro do bloco "Animações chunky", após `flame-pulse` em ~globals.css:2621)
+- Modify: `app/globals.css` (no bloco "Micro-interações chunky", após a linha de `.chat-row`)
 
 **Interfaces:**
-- Produces: `SessionCelebration` — props `{ score: number; eyebrow: string; title?: string }`. É um componente **client** que, ao montar: toca `playSound("complete")`, vibra `celebrate`, dispara `burstConfetti()`, anima o troféu com `bounce-in` e mostra o score com `CountUp`. Children (detalhes do resultado) ficam entre o cabeçalho celebrado e os CTAs — ver uso nas Tasks 5/6.
+- Produces: `SessionCelebration` — props `{ score: number; eyebrow: string; children?: ReactNode }`. É um componente **client** que, ao montar: toca `playSound("complete")`, vibra `celebrate`, dispara `burstConfetti()`, anima o troféu com `bounce-in` e mostra o score com `CountUp`. Children (detalhes do resultado) ficam entre o cabeçalho celebrado e os CTAs — ver uso nas Tasks 5/6.
 
 - [ ] **Step 1: Implementar o componente**
 
