@@ -9,7 +9,6 @@ import { ModalDialog } from "./ModalDialog";
 import { isHapticsEnabled, setHapticsEnabled } from "@/lib/client/haptics";
 import { isSoundEnabled, setSoundEnabled } from "@/lib/client/ui-sound";
 import { DEFAULT_LANGUAGE_LEVEL } from "@/lib/learning/levels";
-import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 import { DAILY_GOAL_OPTIONS } from "@/lib/learning/daily-goal";
 
 type ProfilePreferencesProps = {
@@ -25,7 +24,6 @@ type ProfilePreferencesProps = {
     } | null;
     languageProfiles: Array<{ id: string; languageName: string; level: string }>;
   };
-  streak: number;
 };
 
 const correctionOptions = [
@@ -36,7 +34,7 @@ const correctionOptions = [
 
 const NAME_SAVE_DELAY_MS = 800;
 
-export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps) {
+export function ProfilePreferences({ initial }: ProfilePreferencesProps) {
   const router = useRouter();
   const [name, setName] = useState(initial.user.name);
   const [activeLanguageId, setActiveLanguageId] = useState(initial.user.activeLanguageId);
@@ -219,7 +217,7 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
               value={name}
             />
             <div className="row-meta">
-              {activeLanguage?.languageName ?? "Idioma"} · {activeLanguage?.level ?? "Nível"} · 🔥 {formatPracticeStreak(streak)}
+              {activeLanguage?.languageName ?? "Idioma"} · {activeLanguage?.level ?? "Nível"}
             </div>
           </div>
         </div>
@@ -244,7 +242,7 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
 
       <section className="section">
         <h2 className="section-title">Meta diária de prática</h2>
-        <div className="settings-list">
+        <div className="settings-list options-row">
           {dailyGoalOptions.map((option) => (
             <button
               className={preferences.dailyGoalMinutes === option ? "settings-option active" : "settings-option"}
@@ -290,7 +288,7 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
               onClick={() => savePreference({ correctionStyle: option.value })}
               type="button"
             >
-              {preferences.correctionStyle === option.value ? <Check aria-hidden="true" color="#217a38" /> : <span aria-hidden="true" className="choice-placeholder" />}
+              {preferences.correctionStyle === option.value ? <Check aria-hidden="true" className="text-accent" /> : <span aria-hidden="true" className="choice-placeholder" />}
               <span className="row-copy">
                 <span className="row-title">{option.value}</span>
                 <span className="row-meta">{option.meta}</span>
@@ -320,12 +318,12 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
         <h2 className="section-title">Seus dados</h2>
         <div className="settings-list">
           <a className="settings-row" href="/api/export">
-            <span className="selector-item"><Download color="#2f7edb" /> Exportar dados</span>
+            <span className="selector-item"><Download aria-hidden="true" size={20} /> Exportar dados</span>
             <span className="link-action">JSON</span>
           </a>
           <button className="settings-row destructive-row" disabled={pending === "delete-challenge"} onClick={openDeleteConfirmation} type="button">
-            <span className="selector-item"><Trash2 /> Limpar histórico deste idioma</span>
-            {pending === "delete-challenge" ? <Loader2 className="spin" /> : <ShieldAlert />}
+            <span className="selector-item"><Trash2 aria-hidden="true" size={20} /> Limpar histórico deste idioma</span>
+            {pending === "delete-challenge" ? <Loader2 className="spin" size={20} /> : <ShieldAlert aria-hidden="true" size={20} />}
           </button>
         </div>
       </section>
@@ -340,7 +338,7 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
           onClose={() => setDeleteChallenge(null)}
           titleId="delete-title"
         >
-            <ShieldAlert color="#ef6b57" size={30} />
+            <ShieldAlert aria-hidden="true" color="var(--danger)" size={28} />
             <h2 id="delete-title" className="section-title">Limpar histórico de {activeLanguage?.languageName ?? "este idioma"}?</h2>
             <p className="row-meta" id="delete-description">Conversas, correções, palavras, feedbacks e práticas deste idioma serão removidos. Seu perfil, preferências e os outros idiomas serão preservados.</p>
             <label className="field-label" htmlFor="delete-phrase">Digite {deleteChallenge.phrase} para confirmar</label>

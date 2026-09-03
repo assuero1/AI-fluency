@@ -80,7 +80,7 @@ export function AiModelSelect({
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+    <div className="stack-2">
       <label className="muted" htmlFor="ai-model-select">
         Trocar modelo{modelSource === "teable" ? " (personalizado)" : ""}
       </label>
@@ -119,9 +119,8 @@ export function AiModelSelect({
       {message ? (
         <div
           aria-live="polite"
-          className={saveState === "error" ? "row-meta" : "metric-foot"}
+          className={`${saveState === "error" ? "row-meta" : "metric-foot"} mt-2`}
           role={saveState === "error" ? "alert" : "status"}
-          style={{ marginTop: 8 }}
         >
           {message}
         </div>

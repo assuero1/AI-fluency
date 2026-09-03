@@ -1,11 +1,12 @@
-import { ChevronLeft, KeyRound, Mic, Server } from "lucide-react";
-import Link from "next/link";
+import { KeyRound, Mic, Server } from "lucide-react";
 import { ReactNode } from "react";
 import { AiModelSelect } from "@/components/AiModelSelect";
 import { AppShell } from "@/components/AppShell";
+import { BackButton } from "@/components/BackButton";
 import { ConnectionTestButton } from "@/components/ConnectionTestButton";
 import { IconBubble } from "@/components/IconBubble";
 import { Pill } from "@/components/Pill";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { getConnectionStatus } from "@/lib/settings/status";
 
 // Connection status depends on server-only environment variables. It must be
@@ -33,7 +34,7 @@ function ConnectionCard({
   children?: ReactNode;
 }) {
   return (
-    <div className="soft-card" style={{ background: "#fff", border: "1px solid var(--line)" }}>
+    <div className="card">
       <div className="top-row">
         <div className="selector-item">
           <IconBubble Icon={Icon} tone={tone} />
@@ -63,15 +64,9 @@ export default async function ConnectionsPage() {
 
   return (
     <AppShell activeNav="perfil" section="neutral">
-      <div className="top-row">
-        <Link className="outline-button" href="/perfil" aria-label="Voltar">
-          <ChevronLeft />
-        </Link>
-        <Pill>Conexões</Pill>
-      </div>
+      <BackButton href="/perfil" label="Voltar ao perfil" />
       <section className="section">
-        <h1 className="title">IA, Supabase e Kokoro</h1>
-        <p className="subtitle">As chaves ficam no servidor. O app mostra apenas status e máscaras.</p>
+        <ScreenHeader title="Conexões" subtitle="As chaves ficam no servidor. O app mostra apenas status e máscaras." />
       </section>
       <section className="section choice-list">
         <ConnectionCard
@@ -119,9 +114,6 @@ export default async function ConnectionsPage() {
           testEndpoint="/api/settings/test-kokoro"
         />
       </section>
-      <Link className="dark-button full-button" href="/perfil">
-        Voltar ao perfil
-      </Link>
     </AppShell>
   );
 }

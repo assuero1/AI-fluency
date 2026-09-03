@@ -1,6 +1,4 @@
-import { Flame } from "lucide-react";
-import { Pill } from "./Pill";
-import { formatPracticeStreak } from "@/lib/learning/practice-activity";
+import { StreakPill } from "./StreakPill";
 
 export function ScreenHeader({
   title,
@@ -28,11 +26,7 @@ export function ScreenHeader({
         <h1 className="title">{title}</h1>
         {subtitle ? <p className="subtitle">{subtitle}</p> : null}
       </div>
-      {typeof streak === "number" ? (
-        <Pill aria-label={`Sequência atual: ${formatPracticeStreak(streak)}`}>
-          <Flame aria-hidden="true" size={20} color="#f59d1f" fill="#f59d1f" /> {formatPracticeStreak(streak)}
-        </Pill>
-      ) : null}
+      {typeof streak === "number" ? <StreakPill streak={streak} /> : null}
     </header>
   );
 }

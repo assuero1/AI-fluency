@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Brain, Check, Clock3, Layers3, Loader2, Mic, MicOff, RotateCcw, Sparkles } from "lucide-react";
+import { Brain, Check, Clock3, Layers3, Loader2, MessageCircle, Mic, MicOff, RotateCcw, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { compareAnswerForCard } from "@/lib/learning/flashcard-answer";
@@ -9,6 +9,8 @@ import type { AnswerMatch, DailyQueueSummary, Flashcard, FlashcardAnswer, Flashc
 import { releaseMicForPlayback } from "@/lib/learning/speech";
 import { playSound } from "@/lib/client/ui-sound";
 import { vibrate } from "@/lib/client/haptics";
+import { BackButton } from "./BackButton";
+import { ModalDialog } from "./ModalDialog";
 import { Pill } from "./Pill";
 import { SessionCelebration } from "./SessionCelebration";
 import { VoiceButton } from "./VoiceButton";
@@ -281,21 +283,26 @@ export function FlashcardTrainer() {
   }
 
   if (result) return <div className="flashcard-screen">
-    <Link className="back-link" href="/palavras"><ArrowLeft /> Palavras</Link>
+    <BackButton href="/palavras" label="Voltar às palavras" />
     <section className="flashcard-result">
       <SessionCelebration eyebrow="Treino concluído" score={result.score} />
       <p className="subtitle">Cada tentativa ajustou o domínio e a próxima revisão das palavras.</p>
       <div className="flashcard-result-grid"><div><strong>{result.uniqueCardCount}</strong><span>cards únicos</span></div><div><strong>{result.presentationCount}</strong><span>apresentações</span></div><div><strong>{result.recoveredCards}</strong><span>recuperados</span></div></div>
       <section className="flashcard-result-details" aria-label="Detalhes do resultado">
-        <div><span>Primeira tentativa</span><strong>{formatAccuracy(result.firstAttemptAccuracy)}</strong></div><div><span>Recuperação final</span><strong>{formatAccuracy(result.eventualRecallAccuracy)}</strong></div><div><span>Compreensão</span><strong>{formatAccuracy(result.comprehensionAccuracy)}</strong></div><div><span>Produção</span><strong>{formatAccuracy(result.productionAccuracy)}</strong></div><div><span>Escuta</span><strong>{formatAccuracy(result.listeningAccuracy)}</strong></div><div><span>Tempo médio</span><strong>{formatResponseTime(result.averageResponseTimeMs)}</strong></div><div><span>Duração</span><strong>{formatDuration(result.durationSeconds)}</strong></div><div><span>Palavras difíceis</span><strong>{typeof result.difficultWords === "number" ? result.difficultWords : "—"}</strong></div>
+        <div><span>Primeira tentativa</span><strong>{formatAccuracy(result.firstAttemptAccuracy)}</strong></div><div><span>Recuperação final</span><strong>{formatAccuracy(result.eventualRecallAccuracy)}</strong></div><div><span>Tempo médio</span><strong>{formatResponseTime(result.averageResponseTimeMs)}</strong></div><div><span>Duração</span><strong>{formatDuration(result.durationSeconds)}</strong></div>
       </section>
-      <div className="progress-line"><span style={{ width: `${result.score}%` }} /></div>
       <section className="flashcard-retrain" aria-label="Retreinos">
         <strong>Praticar novamente</strong>
         <div><button className="outline-button" disabled={busy} onClick={() => void startRetraining("wrong")} type="button">Somente erradas</button><button className="outline-button" disabled={busy} onClick={() => void startRetraining("difficult")} type="button">Somente difíceis</button></div>
-        <Link className="outline-button" href={`/chat?flashcardSession=${encodeURIComponent(sessionId)}`} onClick={() => { void fetch("/api/events", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event_name: "cta_clicked", payload: { cta: "chat_from_flashcards" } }) }).catch(() => undefined); }}>Usar palavras em conversa</Link>
       </section>
       <button className="green-button full-button" onClick={() => { setCards([]); setResult(null); void loadOverview(); }} type="button"><RotateCcw /> Novo treino</button>
+      <Link
+        className="link-action plain-button"
+        href={`/chat?flashcardSession=${encodeURIComponent(sessionId)}`}
+        onClick={() => { void fetch("/api/events", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event_name: "cta_clicked", payload: { cta: "chat_from_flashcards" } }) }).catch(() => undefined); }}
+      >
+        <MessageCircle aria-hidden="true" size={16} /> Usar palavras em conversa
+      </Link>
       <Link className="outline-button full-button" href="/palavras">Voltar às palavras</Link>
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
     </section>
@@ -306,7 +313,7 @@ export function FlashcardTrainer() {
     if (!card) return null;
     const uniqueCompleted = new Set(answers.filter((answer) => answer.presentationNumber === 1).map((answer) => answer.cardId)).size;
     return <div className="flashcard-screen">
-      <div className="top-row"><button className="back-link button-reset" onClick={() => setExitConfirmationOpen(true)} type="button"><ArrowLeft /> Sair</button><Pill>{uniqueCompleted}/{cards.length} cards · apresentação {answers.length + 1}</Pill></div>
+      <div className="top-row"><BackButton label="Sair" onClick={() => setExitConfirmationOpen(true)} /><Pill>{uniqueCompleted}/{cards.length} cards · apresentação {answers.length + 1}</Pill></div>
       <div className="progress-line"><span style={{ width: `${((uniqueCompleted + (currentItem.presentationNumber === 1 && revealed ? 1 : 0)) / cards.length) * 100}%` }} /></div>
       {adapted ? <p className="flashcard-adapted">Ajustamos algumas atividades do treino de hoje para manter o ritmo.</p> : null}
       <div className="flashcard-kind">
@@ -343,14 +350,34 @@ export function FlashcardTrainer() {
       </section>}
       {undoState ? <p className="speech-status">Avaliação registrada. <button className="outline-button" disabled={busy} onClick={() => void undoLast()} type="button">Desfazer</button></p> : null}
       {busy ? <p className="speech-status"><Loader2 className="spin" /> Salvando resultado...</p> : null}{error ? <p className="inline-error" role="alert">{error}</p> : null}
-      {exitConfirmationOpen ? <div className="modal-backdrop" role="presentation"><section aria-labelledby="leave-training-title" aria-modal="true" className="confirmation-modal" role="dialog"><h2 className="section-title" id="leave-training-title">Sair do treino?</h2><p className="row-meta">Você poderá continuar depois. Se abandonar, as tentativas já salvas ficam auditáveis, mas nenhuma palavra pendente terá o domínio alterado.</p><div className="modal-actions"><button className="outline-button" disabled={busy} onClick={() => setExitConfirmationOpen(false)} type="button">Continuar treinando</button><button className="danger-button" disabled={busy} onClick={() => void abandonSession(sessionId)} type="button">Abandonar treino</button></div></section></div> : null}
+      {exitConfirmationOpen ? (
+        <ModalDialog busy={busy} onClose={() => setExitConfirmationOpen(false)} titleId="leave-training-title">
+          <h2 className="section-title" id="leave-training-title">Sair do treino?</h2>
+          <p className="row-meta">As respostas já enviadas ficam salvas; as pendentes não contam para hoje. Você pode continuar depois.</p>
+          <div className="modal-actions">
+            <button className="outline-button" data-autofocus disabled={busy} onClick={() => setExitConfirmationOpen(false)} type="button">Continuar treinando</button>
+            <button className="danger-button" disabled={busy} onClick={() => void abandonSession(sessionId)} type="button">Abandonar treino</button>
+          </div>
+        </ModalDialog>
+      ) : null}
     </div>;
   }
 
   return <div className="flashcard-screen">
-    <Link className="back-link" href="/palavras"><ArrowLeft /> Palavras</Link>
-    <section className="flashcard-intro"><div className="flashcard-brand"><Brain /></div><div><div className="eyebrow">Revisão inteligente</div><h1 className="title">Treino de cards</h1><p className="subtitle">Recupere a palavra da memória antes de conferir a resposta.</p></div></section>
-    {resumable?.currentItem ? <div className="modal-backdrop" role="presentation"><section aria-labelledby="resume-training-title" aria-modal="true" className="confirmation-modal" role="dialog"><RotateCcw /><h2 className="section-title" id="resume-training-title">Treino em andamento</h2><p className="row-meta">Você já concluiu {resumable.attempts.length} apresentações. Escolha como seguir.</p><div className="flashcard-resume-actions"><button className="green-button" disabled={busy} onClick={continueSession} type="button">Continuar treino</button><button className="outline-button" disabled={busy} onClick={() => void restartSession()} type="button">Reiniciar treino</button><button className="danger-button" disabled={busy} onClick={() => void abandonSession(resumable.sessionId)} type="button">Abandonar</button></div></section></div> : null}
+    <BackButton href="/palavras" label="Voltar às palavras" />
+    <section className="flashcard-intro"><div className="flashcard-brand"><Brain aria-hidden="true" /></div><div><div className="eyebrow">Revisão inteligente</div><h1 className="title">Treino de cards</h1><p className="subtitle">Recupere a palavra da memória antes de conferir a resposta.</p></div></section>
+    {resumable?.currentItem ? (
+      <ModalDialog busy={busy} onClose={continueSession} titleId="resume-training-title">
+        <RotateCcw aria-hidden="true" size={28} />
+        <h2 className="section-title" id="resume-training-title">Treino em andamento</h2>
+        <p className="row-meta">Você já concluiu {resumable.attempts.length} apresentações. Escolha como seguir.</p>
+        <div className="flashcard-resume-actions">
+          <button className="green-button" data-autofocus disabled={busy} onClick={continueSession} type="button">Continuar treino</button>
+          <button className="outline-button" disabled={busy} onClick={() => void restartSession()} type="button">Reiniciar treino</button>
+          <button className="danger-button" disabled={busy} onClick={() => void abandonSession(resumable.sessionId)} type="button">Abandonar</button>
+        </div>
+      </ModalDialog>
+    ) : null}
     {dailyQueue ? <section className="section flashcard-daily" aria-label="Fila de hoje">
       <h2 className="section-title">Fila de hoje</h2>
       {dailyQueue.sessionCardCount > 0 ? <>
@@ -372,7 +399,7 @@ export function FlashcardTrainer() {
     {customOpen ? <>
       <section className="section"><h2 className="section-title">Quais palavras priorizar?</h2><p className="row-meta">Palavras com revisão vencida sempre entram primeiro; o critério ordena o restante.</p><div className="flashcard-choice-grid"><button className={criterion === "least_used" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("least_used")} type="button"><Layers3 /><div><strong>Menos usadas</strong><span>Reforça palavras com pouca prática</span></div></button><button className={criterion === "oldest" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("oldest")} type="button"><Clock3 /><div><strong>Há mais tempo sem usar</strong><span>Recupera vocabulário esquecido</span></div></button></div></section>
       <section className="section"><div className="top-row"><h2 className="section-title">Quantidade de palavras</h2><strong>{count}</strong></div><input aria-label="Quantidade de palavras" className="flashcard-range" min="2" max="30" onChange={(event) => setCount(Number(event.target.value))} step="1" type="range" value={count} /><div className="top-row row-meta"><span>2</span><span>30</span></div></section>
-      <div className="soft-card"><Sparkles /><div><strong>Como funciona</strong><p className="row-meta">Digite ou fale sua tentativa. A resposta só aparece depois; então você diz se foi difícil ou fácil, e o treino agenda a próxima revisão pelo seu acerto, ritmo e dificuldade.</p></div></div>
+      <div className="soft-card"><Sparkles aria-hidden="true" size={24} /><div><strong>Como funciona</strong><p className="row-meta">Tente lembrar antes de ver a resposta — o treino agenda a próxima revisão pelo seu acerto.</p></div></div>
       <button className="green-button full-button" disabled={busy} onClick={() => void start("custom")} type="button">{busy ? <Loader2 className="spin" /> : <Brain />} Montar treino com {count} palavras</button>
     </> : null}
     {error ? <p className="inline-error" role="alert">{error}</p> : null}

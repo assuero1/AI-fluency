@@ -162,7 +162,7 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
     >
       <div className="teacher-chat-header">
         <div className="teacher-chat-heading">
-          <GraduationCap aria-hidden="true" size={26} />
+          <GraduationCap aria-hidden="true" size={24} />
           <div>
             <h2 id="teacher-chat-title" className="section-title">Professor de IA</h2>
             <p className="row-meta" id="teacher-chat-description">Dúvidas sobre esta prática: {topicTitle}</p>

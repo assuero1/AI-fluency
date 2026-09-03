@@ -1,11 +1,12 @@
 "use client";
 
-import { ArrowLeft, Check, Loader2, Mic, PartyPopper, Sparkles } from "lucide-react";
+import { Check, Loader2, Mic, PartyPopper, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { languages } from "@/data/mock";
 import { DEFAULT_LANGUAGE_LEVEL, LANGUAGE_LEVELS, LanguageLevel } from "@/lib/learning/levels";
+import { BackButton } from "./BackButton";
 import { LevelPills } from "./LevelPills";
 import { Pill } from "./Pill";
 import { burstConfetti } from "@/lib/client/confetti";
@@ -66,7 +67,7 @@ function LanguageChoices({ languageIndex, onSelect }: { languageIndex: number; o
             <span className="row-title">{language.title}</span>
             <span className="row-meta">{language.meta}</span>
           </span>
-          {index === languageIndex ? <Check aria-hidden="true" color="#217a38" /> : null}
+          {index === languageIndex ? <Check aria-hidden="true" className="text-accent" /> : null}
         </button>
       ))}
     </div>
@@ -177,12 +178,7 @@ export function OnboardingForm({
   if (languageSelectionOnly) {
     return (
       <>
-        <div className="top-row">
-          <Link aria-label="Voltar para início" className="outline-button icon-button" href="/" title="Voltar para início">
-            <ArrowLeft />
-          </Link>
-          <Pill tone="primary">Idioma de estudo</Pill>
-        </div>
+        <BackButton href="/" label="Voltar ao início" />
 
         <section className="section">
           <h1 className="title">Escolha o idioma</h1>
@@ -200,8 +196,8 @@ export function OnboardingForm({
 
         {error ? <div className="inline-error" role="alert">{error}</div> : null}
 
-        <div style={{ marginTop: 32 }}>
-          <button className="dark-button full-button" disabled={isSaving} onClick={submit} type="button">
+        <div className="section">
+          <button className="green-button full-button" disabled={isSaving} onClick={submit} type="button">
             {isSaving ? <Loader2 className="spin" /> : null}
             {isSaving ? "Trocando idioma..." : `Usar ${selectedLanguage.title}`}
           </button>
@@ -215,8 +211,8 @@ export function OnboardingForm({
   if (done) {
     return (
       <section className="section onboarding-celebration">
-        <div className="flashcard-trophy celebrate"><PartyPopper /></div>
-        <h1 className="title">Perfil pronto, {firstName}! 🎉</h1>
+        <div className="flashcard-trophy celebrate"><PartyPopper aria-hidden="true" size={24} /></div>
+        <h1 className="title">Perfil pronto, {firstName}!</h1>
         <p className="subtitle">Em 1 minuto você faz sua primeira conversa — a IA ajusta tudo ao seu nível.</p>
         <button className="green-button full-button" disabled={startingChat} onClick={() => void startFirstConversation()} type="button">
           {startingChat ? <Loader2 className="spin" /> : <Mic />} Fazer minha primeira conversa
@@ -233,7 +229,7 @@ export function OnboardingForm({
       <div className="top-row">
         <Pill>Passo {step} de 3</Pill>
         <Pill tone="primary">
-          <Sparkles size={17} /> IA adaptativa
+          <Sparkles size={16} /> IA adaptativa
         </Pill>
       </div>
       <div className="progress-line" role="progressbar" aria-valuemin={1} aria-valuemax={3} aria-valuenow={step} aria-label={`Passo ${step} de 3`}>
@@ -286,9 +282,8 @@ export function OnboardingForm({
                 >
                   <span className="row-copy">
                     <span className="row-title">{option}</span>
-                    <span className="row-meta">Usado para criar temas, feedbacks e correções.</span>
                   </span>
-                  {option === goal ? <Check aria-hidden="true" color="#217a38" /> : null}
+                  {option === goal ? <Check aria-hidden="true" className="text-accent" /> : null}
                 </button>
               ))}
             </div>
@@ -296,10 +291,19 @@ export function OnboardingForm({
 
           <section className="section">
             <h2 className="section-title">Como a IA deve corrigir?</h2>
-            <div aria-label="Estilo de correção" className="level-pills" role="group">
+            <div aria-label="Estilo de correção" className="choice-list compact" role="group">
               {correctionOptions.map((option) => (
-                <button aria-pressed={option === correctionStyle} className="plain-button" key={option} onClick={() => setCorrectionStyle(option)} type="button">
-                  <Pill tone={option === correctionStyle ? "primary" : "default"}>{option}</Pill>
+                <button
+                  aria-pressed={option === correctionStyle}
+                  className={option === correctionStyle ? "choice-card active" : "choice-card"}
+                  key={option}
+                  onClick={() => setCorrectionStyle(option)}
+                  type="button"
+                >
+                  <span className="row-copy">
+                    <span className="row-title">{option}</span>
+                  </span>
+                  {option === correctionStyle ? <Check aria-hidden="true" className="text-accent" /> : null}
                 </button>
               ))}
             </div>
@@ -346,19 +350,19 @@ export function OnboardingForm({
 
       {error ? <div className="inline-error" role="alert">{error}</div> : null}
 
-      <div style={{ marginTop: 32 }}>
-        <div style={{ display: "flex", gap: 10 }}>
+      <div className="section">
+        <div className="choice-actions">
           {step > 1 ? (
-            <button className="outline-button" disabled={isSaving} onClick={() => setStep((current) => (current - 1) as 1 | 2)} style={{ flex: "0 0 auto" }} type="button">
+            <button className="outline-button" disabled={isSaving} onClick={() => setStep((current) => (current - 1) as 1 | 2)} type="button">
               Voltar
             </button>
           ) : null}
           {step < 3 ? (
-            <button className="dark-button full-button" disabled={!canContinue} onClick={() => setStep((current) => (current + 1) as 2 | 3)} type="button">
+            <button className="green-button full-button" disabled={!canContinue} onClick={() => setStep((current) => (current + 1) as 2 | 3)} type="button">
               Continuar
             </button>
           ) : (
-            <button className="dark-button full-button" disabled={isSaving || !name.trim()} onClick={submit} type="button">
+            <button className="green-button full-button" disabled={isSaving || !name.trim()} onClick={submit} type="button">
               {isSaving ? <Loader2 className="spin" /> : null}
               {isSaving ? "Salvando perfil..." : "Salvar e continuar"}
             </button>

@@ -1,9 +1,11 @@
-import { ArrowLeft, CalendarDays, Check, Clock3, MessageCircle, Target } from "lucide-react";
-import Link from "next/link";
+import { CalendarDays, Clock3, MessageCircle, Target } from "lucide-react";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { BackButton } from "@/components/BackButton";
 import { CalendarPracticeButton, CalendarTopicButton } from "@/components/CalendarPracticeButton";
+import { EmptyState } from "@/components/EmptyState";
 import { IconBubble } from "@/components/IconBubble";
+import { MetricGrid } from "@/components/MetricGrid";
 import { Pill } from "@/components/Pill";
 import { getDailyFeedback } from "@/lib/learning/feedback";
 
@@ -20,13 +22,10 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
 
   const { feedback, completedConversations, recurringErrors, suggestedTopics } = detail;
   const month = date.slice(0, 7);
-  const dailySeconds = completedConversations.reduce((sum, conversation) => sum + conversation.durationSeconds, 0);
 
   return (
     <AppShell activeNav="calendario" section="calendario">
-      <Link className="back-link" href={`/calendario?month=${month}`}>
-        <ArrowLeft /> Calendário
-      </Link>
+      <BackButton href={`/calendario?month=${month}`} label="Voltar ao calendário" />
       <section className="calendar-detail-heading">
         <IconBubble Icon={CalendarDays} tone="primary" />
         <div>
@@ -37,31 +36,24 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
 
       {feedback ? (
         <>
-          <section className="section calendar-score-grid">
-            <div>
-              <Check />
-              <strong>{feedback.fields.correction_score}/10</strong>
-              <span>correções</span>
-            </div>
-            <div>
-              <Target />
-              <strong>{feedback.fields.fluency_score}/10</strong>
-              <span>fluência</span>
-            </div>
-            <div>
-              <MessageCircle />
-              <strong>+{feedback.fields.new_words_count}</strong>
-              <span>palavras</span>
-            </div>
+          <section className="section">
+            <MetricGrid
+              bordered
+              metrics={[
+                { value: `${feedback.fields.correction_score}/10`, label: "correções" },
+                { value: `${feedback.fields.fluency_score}/10`, label: "fluência" },
+                { value: `+${feedback.fields.new_words_count}`, label: "palavras" }
+              ]}
+            />
           </section>
 
           <section className="section">
             <h2 className="section-title">O que a IA observou</h2>
-            <div className="calendar-observation-card">
-              <div className="row-title">{feedback.fields.strengths}</div>
+            <div className="card card-soft">
+              <p className="card-copy">{feedback.fields.strengths}</p>
               <p className="row-meta">{feedback.fields.weaknesses}</p>
               <div className="calendar-focus-line">
-                <Target size={20} />
+                <Target aria-hidden="true" size={20} />
                 <span>{feedback.fields.recommended_focus}</span>
               </div>
               <div className="level-pills">
@@ -78,15 +70,17 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
           <CalendarPracticeButton date={date} />
         </>
       ) : (
-        <section className="section empty-state">
-          <CalendarDays size={32} />
-          <div className="row-title">Nenhum feedback salvo neste dia</div>
-          <div className="row-meta">As conversas finalizadas geram uma memória pedagógica no calendário.</div>
+        <section className="section">
+          <EmptyState
+            Icon={CalendarDays}
+            title="Nenhum feedback salvo neste dia"
+            description="As conversas finalizadas geram uma memória pedagógica no calendário."
+          />
         </section>
       )}
 
       <section className="section">
-        <div className="top-row"><h2 className="section-title">Conversas deste dia</h2><Pill><Clock3 size={15} /> {formatDuration(dailySeconds)}</Pill></div>
+        <h2 className="section-title">Conversas deste dia</h2>
         <div className="row-list">
           {completedConversations.length > 0 ? (
             completedConversations.map((conversation) => (
@@ -97,7 +91,7 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
                   <div className="row-meta">{conversation.summary}</div>
                 </div>
                 <Pill>
-                  <Clock3 size={15} /> {Math.max(1, Math.round(conversation.durationSeconds / 60))} min
+                  <Clock3 aria-hidden="true" size={16} /> {Math.max(1, Math.round(conversation.durationSeconds / 60))} min
                 </Pill>
               </div>
             ))
@@ -126,12 +120,6 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
       ) : null}
     </AppShell>
   );
-}
-
-function formatDuration(seconds: number) {
-  const minutes = Math.round(seconds / 60);
-  if (minutes < 60) return `${minutes} min`;
-  return `${Math.floor(minutes / 60)}h ${minutes % 60}min`;
 }
 
 function formatLongDate(value: string) {

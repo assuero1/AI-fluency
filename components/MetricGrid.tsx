@@ -9,7 +9,22 @@ type Metric = {
   tone?: "primary" | "warning" | "info" | "danger";
 };
 
-export function MetricGrid({ metrics }: { metrics: Metric[] }) {
+/** Grid de métricas do app. `bordered` = tira de células com divisórias
+ *  (absorve as antigas word-detail-metrics / calendar-score-grid). */
+export function MetricGrid({ metrics, bordered = false }: { metrics: Metric[]; bordered?: boolean }) {
+  if (bordered) {
+    return (
+      <div className="metric-strip">
+        {metrics.map((metric) => (
+          <div key={metric.label}>
+            <strong>{metric.value}</strong>
+            <span>{metric.label}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   return (
     <div className="metric-grid">
       {metrics.map((metric) => (

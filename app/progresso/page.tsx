@@ -1,4 +1,4 @@
-import { BarChart3, Check, CircleAlert, Flame, MessageCircle, Target, TrendingUp } from "lucide-react";
+import { BarChart3, Check, CircleAlert, MessageCircle, Target, TrendingUp } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { FocusPracticeButton } from "@/components/FocusPracticeButton";
 import { IconBubble } from "@/components/IconBubble";
@@ -8,7 +8,6 @@ import { Pill } from "@/components/Pill";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { getProgressData } from "@/lib/learning/progress";
 import { MiniChart } from "@/components/MiniChart";
-import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 
 export const dynamic = "force-dynamic";
 
@@ -51,10 +50,10 @@ export default async function ProgressPage() {
         <div className="progress-level-card">
           <div className="top-row">
             <div>
-              <div className="word-big" style={{ color: "var(--section-text)" }}>
+              <div className="word-big text-accent">
                 {shortLevel(progress.profile.level)}
               </div>
-              <div className="row-title">{progress.profile.level}</div>
+              <div className="row-title">{longLevel(progress.profile.level)}</div>
             </div>
             <Pill tone="primary">{progress.profile.xpTotal} XP</Pill>
           </div>
@@ -68,7 +67,7 @@ export default async function ProgressPage() {
               <div className="row-meta">Próximo nível: {progress.profile.levelDetail.label} ({progress.profile.levelDetail.code})</div>
             </>
           ) : (
-            <div className="row-meta" style={{ color: "var(--section-text)" }}>Nível conquistado! 🎉</div>
+            <div className="row-meta text-accent">Nível conquistado!</div>
           )}
         </div>
       </section>
@@ -119,10 +118,10 @@ export default async function ProgressPage() {
         <h2 className="section-title">Foco da semana</h2>
         <div className="progress-focus-card">
           <div className="top-row">
-            <Target />
+            <Target aria-hidden="true" size={24} />
             <Pill tone="primary">recomendado</Pill>
           </div>
-          <div className="row-title" style={{ marginTop: 16 }}>
+          <div className="row-title mt-4">
             {progress.focus.title}
           </div>
           <p className="row-meta">{progress.focus.detail}</p>
@@ -153,14 +152,7 @@ export default async function ProgressPage() {
       </section>
 
       <section className="section">
-        <div className="top-row">
-          <h2 className="section-title" style={{ margin: 0 }}>
-            Sequência
-          </h2>
-          <Pill tone="primary">
-            <Flame size={16} /> {formatPracticeStreak(progress.streak)}
-          </Pill>
-        </div>
+        <h2 className="section-title">Sequência</h2>
         <div className="level-pills" aria-label="Atividade dos últimos sete dias" role="list">
           {progress.activityDays.map((day) => (
             <Pill
@@ -180,6 +172,10 @@ export default async function ProgressPage() {
 
 function shortLevel(level: string) {
   return level.match(/[ABC][12]/)?.[0] ?? level.slice(0, 2).toUpperCase();
+}
+
+function longLevel(level: string) {
+  return level.replace(/\s*\([ABC][12]\)/, "");
 }
 
 function formatActivityDate(value: string) {

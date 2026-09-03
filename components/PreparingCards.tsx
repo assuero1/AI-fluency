@@ -24,7 +24,7 @@ export function PreparingCards({ languageName }: { languageName: string }) {
   return <section className="section preparing-cards" aria-live="polite" aria-label="Preparando suas frases">
     <div className="skeleton skeleton-card" />
     <div className="skeleton skeleton-line" />
-    <div className="skeleton skeleton-line" style={{ width: "70%" }} />
+    <div className="skeleton skeleton-line skeleton-w70" />
     <p className="row-meta"><Sparkles size={14} aria-hidden="true" /> {TIPS[tip]}</p>
     <p className="row-meta">A IA está escolhendo palavras do seu nível e montando frases em {languageName}. Isso costuma levar até 1 minuto.</p>
   </section>;

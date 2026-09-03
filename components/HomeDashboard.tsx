@@ -1,15 +1,12 @@
 "use client";
 
 import {
-  ArrowRight,
   BriefcaseBusiness,
   ChevronDown,
   Edit3,
-  Keyboard,
   Laptop,
   Loader2,
   MessageCircle,
-  Mic,
   Sparkles,
   TrendingUp
 } from "lucide-react";
@@ -22,9 +19,11 @@ import { PushOptInCard } from "./PushOptInCard";
 import { QuestList } from "./QuestList";
 import { IconBubble } from "./IconBubble";
 import { ConversationSetupDialog, ConfirmedConversationStart, ConversationStartDraft } from "./ConversationSetupDialog";
+import { EmptyState } from "./EmptyState";
 import { MetricGrid } from "./MetricGrid";
 import { Pill } from "./Pill";
 import { ScreenHeader } from "./ScreenHeader";
+import { SectionHeader } from "./SectionHeader";
 import type { HomeSuggestion } from "@/lib/learning/home";
 
 type HomeData = {
@@ -85,8 +84,6 @@ export function HomeDashboard({ home }: { home: HomeData }) {
   const profile = home.profile;
   const languageCode = (profile?.languageCode ?? "en").slice(0, 2).toUpperCase();
   const totalWords = home.words.totalUsed || 0;
-  const weeklyGoal = home.words.mostRecent?.goal || 500;
-  const weeklyProgress = Math.max(0, Math.min(100, Math.round((home.words.weeklyNew / weeklyGoal) * 100)));
 
   const feedbackMetrics = [
     {
@@ -165,12 +162,12 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           <span className="selector-item">
             <span className="flag">{languageCode}</span>
             <span className="language-selector-label">{profile?.languageName ?? "Inglês"}</span>
-            <ChevronDown size={21} aria-hidden="true" />
+            <ChevronDown size={20} aria-hidden="true" />
           </span>
         </Link>
-        <div style={{ height: 34, width: 1, background: "var(--line)" }} />
+        <div aria-hidden="true" className="selector-divider" />
         <div className="selector-item level-summary">
-          <TrendingUp />
+          <TrendingUp aria-hidden="true" size={20} />
           <span>Nível {profile?.level ?? "Intermediário (B1)"}</span>
         </div>
       </div>
@@ -213,10 +210,9 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           </button>
         </div>
         <button
-          className="green-button full-button"
+          className="green-button full-button mt-4"
           disabled={!topic.trim() || Boolean(pendingAction)}
           onClick={() => setStartDraft({ title: topic, mode: "custom_topic", source: "user_custom" })}
-          style={{ marginTop: 14 }}
           type="button"
         >
           {pendingAction === topic ? <Loader2 className="spin" /> : null}
@@ -226,15 +222,8 @@ export function HomeDashboard({ home }: { home: HomeData }) {
       </section>
 
       <section className="section">
-        <div className="top-row">
-          <h2 className="section-title" style={{ margin: 0 }}>
-            Sugestões para sua prática
-          </h2>
-          <Link className="link-action" href="/calendario">
-            Ver calendário <ArrowRight size={19} />
-          </Link>
-        </div>
-        <div className="row-list" style={{ marginTop: 16 }}>
+        <SectionHeader actionHref="/calendario" actionLabel="Ver calendário" title="Sugestões para sua prática" />
+        <div className="row-list">
           {suggestions.length ? suggestions.map((item, index) => {
             const Icon = suggestionIcons[index] ?? MessageCircle;
             const actionKey = item.id ?? item.title;
@@ -266,81 +255,41 @@ export function HomeDashboard({ home }: { home: HomeData }) {
                 </button>
               </div>
             );
-          }) : <div className="empty-state">Conclua uma conversa ou peça uma sugestão da IA para criar seus próximos temas.</div>}
+          }) : (
+            <EmptyState
+              Icon={MessageCircle}
+              title="Sem sugestões ainda"
+              description="Conclua uma conversa ou peça uma sugestão da IA para criar seus próximos temas."
+            />
+          )}
         </div>
-        <button className="link-action plain-button" onClick={suggestTopic} style={{ marginTop: 18 }} type="button">
-          Ver mais temas sugeridos <ArrowRight size={19} />
+        <button className="link-action plain-button mt-4" onClick={suggestTopic} type="button">
+          Ver mais temas <Sparkles aria-hidden="true" size={16} />
         </button>
       </section>
 
       <section className="section">
-        <div className="top-row">
-          <h2 className="section-title" style={{ margin: 0 }}>
-            Seu feedback recente
-          </h2>
-          <Link className="link-action" href="/progresso">
-            Ver tudo <ArrowRight size={19} />
-          </Link>
-        </div>
-        <div style={{ marginTop: 18 }}>
-          <MetricGrid metrics={feedbackMetrics} />
-        </div>
+        <SectionHeader actionHref="/progresso" actionLabel="Ver tudo" title="Seu feedback recente" />
+        <MetricGrid metrics={feedbackMetrics} />
       </section>
 
       <div className="divider" />
 
       <section className="section">
-        <div className="top-row">
-          <h2 className="section-title" style={{ margin: 0 }}>
-            Suas palavras
-          </h2>
-          <Link className="link-action" href="/palavras">
-            Ver todas <ArrowRight size={19} />
-          </Link>
-        </div>
-        <div className="word-summary" style={{ marginTop: 20 }}>
+        <SectionHeader actionHref="/palavras" actionLabel="Ver tudo" title="Suas palavras" />
+        <div className="word-summary mt-4">
           <div>
             <div className="word-big">{totalWords}</div>
             <div className="row-meta">palavras usadas</div>
-            <div className="row-meta" style={{ color: "var(--primary)" }}>
-              ↑+{home.words.weeklyNew} esta semana
-            </div>
+            <div className="metric-foot">↑+{home.words.weeklyNew} esta semana</div>
           </div>
           <div>
             <div className="row-meta">Mais usada recentemente</div>
-            <div className="row-title" style={{ color: "var(--primary)" }}>
-              {home.words.mostRecent?.displayText || "Sem palavras registradas"}
-            </div>
+            <div className="row-title text-accent">{home.words.mostRecent?.displayText || "Sem palavras registradas"}</div>
             <div className="row-meta">
-              {home.words.mostRecent ? `usada ${home.words.mostRecent.totalUses} vez(es) nas últimas conversas` : "As palavras usadas no chat aparecerão aqui."}
-            </div>
-            <div className="progress-line">
-              <span style={{ width: `${weeklyProgress}%` }} />
-            </div>
-            <div className="row-meta">
-              Meta semanal: {home.words.weeklyNew}/{weeklyGoal} palavras
+              {home.words.mostRecent ? `usada ${home.words.mostRecent.totalUses} vezes nas últimas conversas` : "As palavras usadas no chat aparecerão aqui."}
             </div>
           </div>
-        </div>
-        <div className="cta-row">
-          <button
-            className="dark-button"
-            disabled={Boolean(pendingAction)}
-            onClick={() => setStartDraft({ mode: "free_conversation", title: "Conversa livre" })}
-            type="button"
-          >
-            {pendingAction === "free_conversation" ? <Loader2 className="spin" /> : <Mic />}
-            Iniciar conversa livre
-          </button>
-          <button
-            className="outline-button"
-            disabled={Boolean(pendingAction)}
-            onClick={() => setStartDraft({ mode: "free_conversation", title: "Conversa por texto" })}
-            type="button"
-            aria-label="Digitar conversa"
-          >
-            <Keyboard />
-          </button>
         </div>
       </section>
 

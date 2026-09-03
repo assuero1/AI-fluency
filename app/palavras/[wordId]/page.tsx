@@ -1,9 +1,10 @@
-import { ArrowLeft, BookOpen, Target } from "lucide-react";
-import Link from "next/link";
+import { BookOpen, Target } from "lucide-react";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { BackButton } from "@/components/BackButton";
 import { CopyButton } from "@/components/CopyButton";
 import { IconBubble } from "@/components/IconBubble";
+import { MetricGrid } from "@/components/MetricGrid";
 import { Pill } from "@/components/Pill";
 import { VoiceButton } from "@/components/VoiceButton";
 import { WordPracticeButton } from "@/components/WordPracticeButton";
@@ -25,9 +26,7 @@ export default async function WordDetailPage({ params }: WordDetailPageProps) {
 
   return (
     <AppShell activeNav="palavras" section="palavras">
-      <Link className="back-link" href="/palavras">
-        <ArrowLeft /> Todas as palavras
-      </Link>
+      <BackButton href="/palavras" label="Voltar às palavras" />
 
       <section className="word-detail-hero">
         <IconBubble Icon={BookOpen} tone={word.needsReview ? "warning" : "primary"} />
@@ -37,24 +36,20 @@ export default async function WordDetailPage({ params }: WordDetailPageProps) {
           <div className="level-pills">
             {word.partOfSpeech ? <Pill>{word.partOfSpeech}</Pill> : null}
             <Pill tone={word.needsReview ? "warning" : "primary"}>{word.needsReview ? "Revisar agora" : "Em prática"}</Pill>
-            <Pill>{wordStrengthLabels[word.strengthLevel]} · {word.strengthScore}/100</Pill>
           </div>
+          <p className="row-meta">{wordStrengthLabels[word.strengthLevel]} · domínio {word.strengthScore}/100</p>
         </div>
       </section>
 
-      <section className="section word-detail-metrics">
-        <div>
-          <strong>{word.totalUses}</strong>
-          <span>usos</span>
-        </div>
-        <div>
-          <strong>{word.conversationCount}</strong>
-          <span>conversas</span>
-        </div>
-        <div>
-          <strong>{word.correctionCount}</strong>
-          <span>correções</span>
-        </div>
+      <section className="section">
+        <MetricGrid
+          bordered
+          metrics={[
+            { value: String(word.totalUses), label: "usos" },
+            { value: String(word.conversationCount), label: "conversas" },
+            { value: String(word.correctionCount), label: "correções" }
+          ]}
+        />
       </section>
 
       <div className="word-detail-actions">
@@ -66,7 +61,7 @@ export default async function WordDetailPage({ params }: WordDetailPageProps) {
 
       <section className="section">
         <div className="practice-tip">
-          <Target />
+          <Target aria-hidden="true" size={24} />
           <div>
             <div className="row-title">Use “{word.displayText}” numa conversa</div>
             <div className="row-meta">A IA cria situações para você aplicar a palavra naturalmente.</div>

@@ -27,7 +27,7 @@ export function ListRow({
         </div>
         {meta ? <div className="row-meta">{meta}</div> : null}
       </div>
-      {button ? <button className="outline-button">{button}</button> : <ChevronRight color="#2f9d4a" />}
+      {button ? <button className="outline-button">{button}</button> : <ChevronRight />}
     </div>
   );
 }

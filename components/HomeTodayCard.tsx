@@ -1,7 +1,6 @@
 "use client";
 
-import { Check, Flame, Mic } from "lucide-react";
-import { formatPracticeStreak } from "@/lib/learning/practice-activity";
+import { Check, Mic } from "lucide-react";
 
 type HomeTodayCardProps = {
   streak: number;
@@ -16,12 +15,13 @@ type HomeTodayCardProps = {
 };
 
 // Card "Hoje": substitui o antigo banner de lembrete — persiste depois de
-// cumprido (check verde) e mostra a meta semanal de conversas.
+// cumprido (check verde) e mostra a meta semanal de conversas. O streak em
+// pill mora no ScreenHeader; aqui ele só aparece no texto motivacional.
 export function HomeTodayCard(props: HomeTodayCardProps) {
   return <section className="section home-today" aria-label="Sua prática de hoje">
     <div className="top-row">
       <div className="row-title">Hoje</div>
-      <span className="pill primary"><Flame size={16} aria-hidden="true" /> {formatPracticeStreak(props.streak)}</span>
+      <div className="row-meta">meta de {props.goalMinutes} min</div>
     </div>
     <div className="word-big">{props.complete ? "Concluído! 🎉" : `${props.minutesToday} de ${props.goalMinutes} min`}</div>
     <div className="progress-line" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={props.percent} aria-label={`${props.percent}% da meta de hoje`}>
@@ -38,6 +38,6 @@ export function HomeTodayCard(props: HomeTodayCardProps) {
       <button className="green-button full-button" onClick={props.onStartPractice} type="button"><Mic /> Fazer minha prática</button>
     ) : null}
     <p className="row-meta">Conversas esta semana: {props.weekConversations}/{props.weekConversationGoal}</p>
-    {props.complete && !props.practicedToday ? <p className="row-meta" style={{ color: "var(--primary)" }}><Check size={14} /> Sequência garantida pelo treino de hoje.</p> : null}
+    {props.complete && !props.practicedToday ? <p className="row-meta text-accent"><Check aria-hidden="true" size={14} /> Sequência garantida pelo treino de hoje.</p> : null}
   </section>;
 }

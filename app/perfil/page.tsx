@@ -14,14 +14,12 @@ export default async function ProfilePage() {
 
   return (
     <AppShell activeNav="perfil" section="neutral">
-      <ScreenHeader title="Perfil" subtitle="Preferências da sua IA" />
-      <ProfilePreferences initial={profile} streak={progress.streak} />
-      <div className="px-4 pb-6">
-        <Link className="outline-button full-button" href="/calendario"><CalendarDays /> Calendário</Link>
-      </div>
-      <div className="px-4 pb-6">
+      <ScreenHeader streak={progress.streak} title="Perfil" subtitle="Preferências da sua IA" />
+      <ProfilePreferences initial={profile} />
+      <div className="section settings-list">
+        <Link className="outline-button full-button" href="/calendario"><CalendarDays aria-hidden="true" size={20} /> Calendário</Link>
         <Link className="outline-button full-button" href="/perfil/conquistas">
-          <Trophy aria-hidden="true" /> Conquistas
+          <Trophy aria-hidden="true" size={20} /> Conquistas
         </Link>
         <LogoutButton />
       </div>

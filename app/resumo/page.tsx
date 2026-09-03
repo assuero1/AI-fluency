@@ -1,12 +1,12 @@
-import { ArrowRight, BookOpen, Check, Clock, MessageCircle, MessageSquareOff } from "lucide-react";
+import { BookOpen, Check, Clock, MessageCircle, MessageSquareOff } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { IconBubble } from "@/components/IconBubble";
 import { ListRow } from "@/components/ListRow";
 import { MetricGrid } from "@/components/MetricGrid";
-import { Pill } from "@/components/Pill";
 import { ResumoConfetti } from "@/components/ResumoConfetti";
 import { ResumoPracticeCta } from "@/components/ResumoPracticeCta";
+import { ScreenHeader } from "@/components/ScreenHeader";
 import { LearningStateError } from "@/lib/learning/access";
 import { getConversationSummary } from "@/lib/learning/feedback";
 import { formatSavedWordMeta } from "@/lib/learning/vocabulary-picker-ui";
@@ -74,13 +74,7 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
   return (
     <AppShell activeNav="chat" section="chat">
       <ResumoConfetti />
-      <div className="top-row">
-        <div>
-          <h1 className="title">Conversa finalizada</h1>
-          <p className="subtitle">Feedback salvo no calendário</p>
-        </div>
-        <Pill>{duration} min</Pill>
-      </div>
+      <ScreenHeader title="Conversa finalizada" subtitle={`${duration} min · Feedback salvo no calendário`} />
       <section className="section">
         <div className="choice-card active pop-in">
           <IconBubble Icon={Check} />
@@ -96,17 +90,8 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
       <section className="section">
         <h2 className="section-title">Feedback de hoje</h2>
         <div className="soft-card">
-          <p className="row-meta" style={{ margin: 0, fontSize: 18 }}>
-            {feedback.fields.strengths}
-          </p>
-          <p className="row-meta" style={{ fontSize: 18 }}>
-            {feedback.fields.recommended_focus}
-          </p>
-          <div className="level-pills">
-            {words.slice(0, 3).map((word) => (
-              <Pill key={word.id}>{word.fields.display_text || word.fields.lemma}</Pill>
-            ))}
-          </div>
+          <p className="card-copy">{feedback.fields.strengths}</p>
+          <p className="card-copy mt-3">{feedback.fields.recommended_focus}</p>
         </div>
       </section>
       <VocabularyPicker conversationId={conversationId} />
@@ -128,13 +113,12 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
           )}
         </div>
       </section>
-      <section className="section">
-        <ResumoPracticeCta wordIds={data.words.map((word) => word.id)} />
-      </section>
+      {words.length > 0 ? (
+        <section className="section">
+          <ResumoPracticeCta wordIds={data.words.map((word) => word.id)} />
+        </section>
+      ) : null}
       <div className="choice-list">
-        <Link className="dark-button full-button" href="/">
-          Praticar próximo tema <ArrowRight />
-        </Link>
         <Link className="outline-button full-button" href="/calendario">
           Ver no calendário
         </Link>
@@ -151,8 +135,8 @@ function SummaryUnavailable({ message }: { message: string }) {
         <h1 className="title">Resumo indisponível</h1>
         <p className="row-meta">{message}</p>
         <div className="choice-list summary-unavailable-actions">
-          <Link className="dark-button full-button" href="/">
-            Escolher um tema <ArrowRight />
+          <Link className="green-button full-button" href="/">
+            Escolher um tema
           </Link>
           <Link className="outline-button full-button" href="/chat">
             Voltar ao chat

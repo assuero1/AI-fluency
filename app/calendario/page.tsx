@@ -1,7 +1,8 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, Flame, MessageCircle, Target } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Clock3, MessageCircle, Target } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { CalendarPracticeButton, CalendarTopicButton } from "@/components/CalendarPracticeButton";
+import { EmptyState } from "@/components/EmptyState";
 import { IconBubble } from "@/components/IconBubble";
 import { Pill } from "@/components/Pill";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -35,14 +36,14 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             <div className="calendar-month-title">{capitalize(calendar.monthLabel)}</div>
             <div className="calendar-month-meta">
               {calendar.feedbackCount} feedback(s) · {calendar.conversationCount} conversa(s)
-              {calendar.streak > 0 ? <> · <Flame size={13} aria-hidden="true" style={{ verticalAlign: "-2px" }} /> {calendar.streak} {calendar.streak === 1 ? "dia" : "dias"}</> : null}
+              {calendar.streak > 0 ? ` · sequência de ${calendar.streak} ${calendar.streak === 1 ? "dia" : "dias"}` : null}
             </div>
           </div>
           <Link aria-label="Próximo mês" className="calendar-month-button" href={`/calendario?month=${calendar.nextMonth}`}>
             <ChevronRight />
           </Link>
         </div>
-        <div className="calendar-grid calendar-grid-interactive" style={{ marginTop: 22 }}>
+        <div className="calendar-grid calendar-grid-interactive mt-5">
           {weekdayLabels.map((day, index) => (
             <div className="calendar-weekday" key={`${day}-${index}`}>
               {day}
@@ -82,19 +83,14 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 
       <section className="section">
         <div className="calendar-feedback-card">
-          <div className="top-row"><div><div className="eyebrow">Tempo de treino no mês</div><div className="title">{formatDuration(calendar.totalPracticeSeconds)}</div></div><Clock3 color="#2f9d4a" size={30} /></div>
+          <div className="top-row"><div><div className="eyebrow">Tempo de treino no mês</div><div className="title">{formatDuration(calendar.totalPracticeSeconds)}</div></div><Clock3 aria-hidden="true" size={28} /></div>
           <div className="level-pills"><Pill tone="info">Últimos 7 dias: {formatDuration(calendar.weekPracticeSeconds)}</Pill></div>
           <p className="row-meta">Soma de conversas finalizadas e revisões de flashcards em {calendar.monthLabel}.</p>
         </div>
       </section>
 
       <section className="section">
-        <div className="top-row">
-          <h2 className="section-title" style={{ margin: 0 }}>
-            Último feedback
-          </h2>
-          <CalendarDays color="#2f9d4a" />
-        </div>
+        <h2 className="section-title">Último feedback</h2>
         {latest ? (
           <div className="calendar-feedback-card">
             <Link href={`/calendario/${latestDate}`}>
@@ -109,11 +105,11 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             <CalendarPracticeButton date={latestDate} />
           </div>
         ) : (
-          <div className="empty-state">
-            <CalendarDays size={30} />
-            <div className="row-title">Seu calendário começa com uma conversa</div>
-            <div className="row-meta">Ao finalizar uma prática, a IA salva um feedback deste dia aqui.</div>
-          </div>
+          <EmptyState
+            Icon={CalendarDays}
+            title="Seu calendário começa com uma conversa"
+            description="Ao finalizar uma prática, a IA salva um feedback deste dia aqui."
+          />
         )}
       </section>
 

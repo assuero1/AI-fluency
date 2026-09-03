@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Loader2, Mic, MicOff, Sparkles } from "lucide-react";
+import { Loader2, Mic, MicOff, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -20,6 +20,8 @@ import { playSound } from "@/lib/client/ui-sound";
 import { PreparingCards } from "./PreparingCards";
 import { vibrate } from "@/lib/client/haptics";
 import { AppShell } from "./AppShell";
+import { BackButton } from "./BackButton";
+import { ModalDialog } from "./ModalDialog";
 import { Pill } from "./Pill";
 import { SessionCelebration } from "./SessionCelebration";
 import { StartFlashcardsWithWords } from "./StartFlashcardsWithWords";
@@ -447,7 +449,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
 
   if (result) return shell(<div className="flashcard-screen">
     <audio ref={audioRef} className="sr-only" preload="auto" />
-    <Link className="back-link" href="/palavras"><ArrowLeft /> Palavras</Link>
+    <BackButton href="/palavras" label="Voltar às palavras" />
     <section className="flashcard-result">
       <SessionCelebration eyebrow="Sessão concluída" score={result.score} />
       <p className="subtitle">Você aprendeu {result.wordCount} palavra{result.wordCount === 1 ? "" : "s"} nova{result.wordCount === 1 ? "" : "s"} com {result.sentenceCount} frases.</p>
@@ -471,7 +473,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
     return shell(<div className="flashcard-screen">
       <audio ref={audioRef} className="sr-only" preload="auto" />
       <div className="top-row">
-        <button className="back-link button-reset" onClick={() => setExitOpen(true)} disabled={busy} type="button"><ArrowLeft /> Sair</button>
+        <BackButton label="Sair" onClick={() => setExitOpen(true)} />
         <Pill>{answeredIds.size}/{sentences.length} frases{wordIndex >= 0 ? ` · palavra ${wordIndex + 1}/${words.length}` : ""}</Pill>
       </div>
       <div className="progress-line"><span style={{ width: `${(answeredIds.size / Math.max(1, sentences.length)) * 100}%` }} /></div>
@@ -511,14 +513,16 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
       </section>}
       {busy ? <p className="speech-status"><Loader2 className="spin" /> Salvando...</p> : null}
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
-      {exitOpen ? <div className="modal-backdrop" role="presentation"><section aria-labelledby="leave-new-words-title" aria-modal="true" className="confirmation-modal" role="dialog">
-        <h2 className="section-title" id="leave-new-words-title">Sair da sessão?</h2>
-        <p className="row-meta">As frases já traduzidas continuam valendo. Se sair agora, as frases pendentes não entram na revisão de hoje.</p>
-        <div className="modal-actions">
-          <button className="outline-button" disabled={busy} onClick={() => setExitOpen(false)} type="button">Continuar traduzindo</button>
-          <button className="danger-button" disabled={busy} onClick={() => { setExitOpen(false); void abandonSession(); }} type="button">Sair e abandonar</button>
-        </div>
-      </section></div> : null}
+      {exitOpen ? (
+        <ModalDialog busy={busy} onClose={() => setExitOpen(false)} titleId="leave-new-words-title">
+          <h2 className="section-title" id="leave-new-words-title">Sair da sessão?</h2>
+          <p className="row-meta">As frases já traduzidas continuam valendo. Se sair agora, as frases pendentes não entram na revisão de hoje.</p>
+          <div className="modal-actions">
+            <button className="outline-button" data-autofocus disabled={busy} onClick={() => setExitOpen(false)} type="button">Continuar traduzindo</button>
+            <button className="danger-button" disabled={busy} onClick={() => { setExitOpen(false); void abandonSession(); }} type="button">Sair e abandonar</button>
+          </div>
+        </ModalDialog>
+      ) : null}
     </div>, true);
   }
 
@@ -526,20 +530,22 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
     {/* O MESMO elemento <audio> precisa existir em todas as telas: é ele que é
         destravado no gesto de "Começar" e reusado pelo autoplay de cada frase. */}
     <audio ref={audioRef} className="sr-only" preload="auto" />
-    <Link className="back-link" href="/palavras"><ArrowLeft /> Palavras</Link>
+    <BackButton href="/palavras" label="Voltar às palavras" />
     <section className="flashcard-intro">
-      <div className="flashcard-brand"><Sparkles /></div>
-      <div><div className="eyebrow">Vocabulário novo</div><h1 className="title">Palavras novas</h1><p className="subtitle">A IA escolhe palavras do seu nível, monta frases com o que você já sabe e corrige suas traduções como um professor.</p></div>
+      <div className="flashcard-brand"><Sparkles aria-hidden="true" /></div>
+      <div><div className="eyebrow">Vocabulário novo</div><h1 className="title">Palavras novas</h1><p className="subtitle">A IA monta frases com o seu nível e corrige suas traduções na hora.</p></div>
     </section>
-    {resumable ? <div className="modal-backdrop" role="presentation"><section aria-labelledby="resume-new-words" aria-modal="true" className="confirmation-modal" role="dialog">
-      <h2 className="section-title" id="resume-new-words">Sessão em andamento</h2>
-      <p className="row-meta">{resumable.answeredCount >= resumable.sentenceCount ? "Todas as frases já foram traduzidas. Toque em continuar para ver o resultado." : `Você já traduziu ${resumable.answeredCount} ${resumable.answeredCount === 1 ? "frase" : "frases"} desta sessão.`}</p>
-      <div className="flashcard-resume-actions">
-        <button className="green-button" disabled={busy} onClick={() => void resume()} type="button">Continuar sessão</button>
-        <button className="danger-button" disabled={busy} onClick={() => { setResumable(null); void abandonResumable(resumable.sessionId); }} type="button">Abandonar</button>
-      </div>
-      {error ? <p className="inline-error" role="alert">{error}</p> : null}
-    </section></div> : null}
+    {resumable ? (
+      <ModalDialog busy={busy} onClose={() => void resume()} titleId="resume-new-words">
+        <h2 className="section-title" id="resume-new-words">Sessão em andamento</h2>
+        <p className="row-meta">{resumable.answeredCount >= resumable.sentenceCount ? "Todas as frases já foram traduzidas. Toque em continuar para ver o resultado." : `Você já traduziu ${resumable.answeredCount} ${resumable.answeredCount === 1 ? "frase" : "frases"} desta sessão.`}</p>
+        <div className="flashcard-resume-actions">
+          <button className="green-button" data-autofocus disabled={busy} onClick={() => void resume()} type="button">Continuar sessão</button>
+          <button className="danger-button" disabled={busy} onClick={() => { setResumable(null); void abandonResumable(resumable.sessionId); }} type="button">Abandonar</button>
+        </div>
+        {error ? <p className="inline-error" role="alert">{error}</p> : null}
+      </ModalDialog>
+    ) : null}
     <section className="section">
       <h2 className="section-title">Quantas palavras quer aprender?</h2>
       <div className="flashcard-choice-grid">

@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, CalendarDays, Check, ChevronRight, Clock3, Flame, GraduationCap, Languages, Loader2, LogOut, MessageCircle, Mic, MicOff, Send, Shuffle, Users, Volume2 } from "lucide-react";
+import { Bot, CalendarDays, Check, ChevronRight, Clock3, GraduationCap, Languages, Loader2, LogOut, MessageCircle, Mic, MicOff, Send, Shuffle, Users, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -19,7 +19,6 @@ import type { ConversationFields, CorrectionFields, MessageFields, WordFields } 
 import type { SelectionExplanation } from "@/lib/learning/selection-explanation";
 import { resolveSelectionState } from "@/lib/learning/selection-ui";
 import { joinSpeechSegments, releaseMicForPlayback, speechLanguageName, speechLocale, speechRecognitionErrorMessage } from "@/lib/learning/speech";
-import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 import { computeActiveElapsedSeconds } from "@/lib/learning/chat-elapsed";
 import type { TeableRecord } from "@/lib/supabase/client";
 import { playSound } from "@/lib/client/ui-sound";
@@ -35,7 +34,6 @@ type ChatConversationProps = {
   audioEnabled: boolean;
   transcriptEnabled: boolean;
   readOnly: boolean;
-  streak: number;
 };
 
 type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
@@ -75,8 +73,7 @@ export function ChatConversation({
   speechLanguage,
   audioEnabled,
   transcriptEnabled,
-  readOnly,
-  streak
+  readOnly
 }: ChatConversationProps) {
   const router = useRouter();
   const [messages, setMessages] = useState(initialMessages);
@@ -607,17 +604,14 @@ export function ChatConversation({
   return (
     <>
       <div className="top-row chat-header">
-        <Pill aria-label={`Sequência atual: ${formatPracticeStreak(streak)}`}>
-          <Flame aria-hidden="true" size={18} color="#f59d1f" fill="#f59d1f" /> {formatPracticeStreak(streak)}
-        </Pill>
         <ScreenHeader title="Conversa" subtitle="com a IA" centered />
         {!readOnly ? (
-          <button className="outline-button" disabled={isSending} onClick={() => setIsExitDialogOpen(true)} type="button">
-            <LogOut /> Sair
+          <button aria-label="Sair da conversa" className="ghost-icon-button" disabled={isSending} onClick={() => setIsExitDialogOpen(true)} type="button">
+            <LogOut aria-hidden="true" size={24} />
           </button>
         ) : (
-          <Link className="outline-button" href="/calendario" aria-label="Abrir calendário">
-            <CalendarDays />
+          <Link aria-label="Abrir calendário" className="ghost-icon-button" href="/calendario">
+            <CalendarDays aria-hidden="true" size={24} />
           </Link>
         )}
         <ElapsedTimePill readOnly={readOnly} startedAt={conversation.fields.started_at} getPausedMs={currentPausedMs} />
@@ -625,12 +619,12 @@ export function ChatConversation({
 
       <div className="chat-topic">
         <div className="topic-pill">
-          <IconBubble Icon={Volume2} tone="danger" />
+          <IconBubble Icon={Volume2} tone="info" />
           <div className="row-copy">
             <div className="eyebrow">Tópico</div>
             <div className="row-title">{activeTopicTitle}</div>
           </div>
-          <ChevronRight />
+          <ChevronRight aria-hidden="true" />
         </div>
         <div className="chat-topic-actions">
           <button
@@ -656,7 +650,7 @@ export function ChatConversation({
         title="Chamar professor"
         type="button"
       >
-        <GraduationCap size={26} aria-hidden="true" />
+        <GraduationCap size={24} aria-hidden="true" />
       </button>
 
       {isTeacherOpen ? (
@@ -674,7 +668,7 @@ export function ChatConversation({
           onClose={() => setIsTopicDialogOpen(false)}
           titleId="change-topic-title"
         >
-            <Shuffle size={30} />
+            <Shuffle aria-hidden="true" size={28} />
             <h2 id="change-topic-title" className="section-title">Mudar o tema da conversa?</h2>
             <p className="row-meta" id="change-topic-description">O histórico será preservado. A IA passa a conduzir a conversa pelo novo tema a partir da próxima mensagem.</p>
             <label className="field-label" htmlFor="next-topic">Novo tema</label>
@@ -720,7 +714,7 @@ export function ChatConversation({
           onClose={() => setIsExitDialogOpen(false)}
           titleId="exit-training-title"
         >
-          <LogOut color="var(--danger)" size={30} />
+          <LogOut color="var(--danger)" size={28} />
           <h2 id="exit-training-title" className="section-title">Abandonar este treino?</h2>
           <p className="row-meta" id="exit-training-description">
             O treino será encerrado por completo e não poderá ser retomado. Os dados já salvos, como palavras e correções, serão preservados.
@@ -743,7 +737,7 @@ export function ChatConversation({
           onClose={() => setIsFinalizeDialogOpen(false)}
           titleId="finalize-conversation-title"
         >
-          <GraduationCap color="var(--primary)" size={30} />
+          <GraduationCap color="var(--primary)" size={28} />
           <h2 id="finalize-conversation-title" className="section-title">Finalizar e ver o resumo?</h2>
           <p className="row-meta" id="finalize-conversation-description">
             A conversa será encerrada e o resumo do treino será gerado. As palavras e correções já ficam valendo para a revisão.
@@ -793,7 +787,7 @@ export function ChatConversation({
               {messageCorrections.map((correction) => (
                 <div className="correction-block" key={correction.id}>
                   <div className="correction-title">
-                    <span style={{ width: 10, height: 10, borderRadius: 999, background: "currentColor" }} />
+                    <span aria-hidden="true" className="correction-dot" />
                     Correção
                     <span className="correction-award" aria-hidden="true">+{messageCorrections.length}</span>
                   </div>
@@ -801,11 +795,11 @@ export function ChatConversation({
                     <span className="marked-error">{correction.fields.original_text}</span> →{" "}
                     <Pill tone="primary">{correction.fields.corrected_text}</Pill>
                   </div>
-                  <div className="correction-title" style={{ color: "var(--warning)" }}>
-                    <span style={{ width: 10, height: 10, borderRadius: 999, background: "currentColor" }} />
+                  <div className="correction-title warning">
+                    <span aria-hidden="true" className="correction-dot" />
                     Por que isso importa?
                   </div>
-                  <p style={{ margin: 0 }}>{correction.fields.explanation}</p>
+                  <p className="row-meta">{correction.fields.explanation}</p>
                   <CopyButton label="Copiar correção" text={correction.fields.corrected_text} />
                   {audioEnabled ? <VoiceButton languageCode="pt-BR" text={correction.fields.explanation} label="Ouvir explicação" /> : null}
                 </div>
@@ -850,7 +844,7 @@ export function ChatConversation({
           Finalizar conversa
         </button> : <div className="empty-state">Esta conversa foi finalizada e está disponível apenas para consulta.</div>}
 
-        <ConversationGoalProgress progress={messageGoal} readOnly={readOnly} onFinish={readOnly ? undefined : requestFinalize} />
+        <ConversationGoalProgress progress={messageGoal} readOnly={readOnly} />
 
         {!readOnly ? <form
           className="composer"

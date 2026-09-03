@@ -81,7 +81,7 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
   });
   await page.route("**/api/practice/flashcards/complete", async (route) => {
     completionBodies.push(route.request().postDataJSON() as { clientCompletionId?: string; answers?: unknown[] });
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, score: 100, correctCards: 2, wrongCards: 0, totalCards: 2, reviewedWords: 2, uniqueCardCount: 2, presentationCount: 3, firstAttemptCorrect: 1, recoveredCards: 1, productionAccuracy: 50, listeningAccuracy: null }) });
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, score: 100, correctCards: 2, wrongCards: 0, totalCards: 2, reviewedWords: 2, uniqueCardCount: 2, presentationCount: 3, firstAttemptCorrect: 1, recoveredCards: 1, firstAttemptAccuracy: 50, listeningAccuracy: null }) });
   });
 
   await page.goto("/palavras/treino");
@@ -110,7 +110,7 @@ test("mobile flashcard training completes a frozen deck once", async ({ page }) 
   await page.getByRole("button", { name: /^Fácil/ }).click();
 
   await expect(page.getByRole("heading", { name: "100% de acerto" })).toBeVisible();
-  await expect(page.getByText("Produção")).toBeVisible();
+  await expect(page.getByText("Tempo médio")).toBeVisible();
   await expect(page.getByText("50%")).toBeVisible();
   expect(completionBodies).toHaveLength(1);
   expect(completionBodies[0].clientCompletionId).toMatch(/^[0-9a-f-]{36}$/);
@@ -352,7 +352,7 @@ test("home language selector opens a focused language switcher and returns safel
   await page.getByRole("button", { name: "ES Espanhol Situações reais do dia a dia" }).click();
   await expect(page.getByRole("button", { name: "ES Espanhol Situações reais do dia a dia" })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("button", { name: "Usar Espanhol" })).toBeVisible();
-  await page.getByRole("link", { name: "Voltar para início" }).click();
+  await page.getByRole("link", { name: "Voltar ao início" }).click();
   await expect(page).toHaveURL(/\/$/);
 });
 
@@ -734,7 +734,7 @@ test("configuração de prática conversa livre usa modo conversa sem simulaçã
   });
 
   await page.goto("/");
-  await page.getByRole("button", { name: "Iniciar conversa livre" }).click();
+  await page.getByRole("button", { name: "Fazer minha prática" }).click();
   const dialog = page.getByRole("dialog", { name: "Configurar prática" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByText("Conversa livre usa o modo conversa.")).toBeVisible();
@@ -911,7 +911,7 @@ test("release visual matrix has no horizontal overflow or clipped navigation", a
     { name: "calendar-detail", path: `/calendario/${fixtureFeedbackDate()}`, heading: fixtureFeedbackHeading() },
     { name: "progress", path: "/progresso", heading: "Progresso" },
     { name: "profile", path: "/perfil", heading: "Perfil" },
-    { name: "connections", path: "/settings/connections", heading: "IA, Supabase e Kokoro" },
+    { name: "connections", path: "/settings/connections", heading: "Conexões" },
     { name: "offline", path: "/offline", heading: "Você está sem conexão" }
   ];
   const viewports = [

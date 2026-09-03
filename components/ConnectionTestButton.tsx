@@ -38,7 +38,7 @@ export function ConnectionTestButton({ endpoint, label }: { endpoint: string; la
         {state === "testing" ? "Testando..." : "Testar conexão"}
       </button>
       {message ? (
-        <div aria-live="polite" className={state === "error" ? "row-meta" : "metric-foot"} role={state === "error" ? "alert" : "status"} style={{ marginTop: 8 }}>
+        <div aria-live="polite" className={`${state === "error" ? "row-meta" : "metric-foot"} mt-2`} role={state === "error" ? "alert" : "status"}>
           {message}
         </div>
       ) : null}

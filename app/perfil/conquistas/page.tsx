@@ -1,6 +1,6 @@
-import { ArrowRight, Lock, Trophy } from "lucide-react";
-import Link from "next/link";
+import { Lock, Trophy } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { BackButton } from "@/components/BackButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { getSessionUser } from "@/lib/learning/profile";
 import { getAchievementsSummary } from "@/lib/learning/achievements";
@@ -23,7 +23,7 @@ export default async function AchievementsPage() {
           {rows.map((row) => (
             <div className={`list-row${row.unlockedAt ? "" : " achievement-locked"}`} key={row.key}>
               <span className={`icon-circle ${row.unlockedAt ? "green" : ""}`}>
-                {row.unlockedAt ? <Trophy aria-hidden="true" /> : <Lock aria-hidden="true" />}
+                {row.unlockedAt ? <Trophy aria-hidden="true" size={24} /> : <Lock aria-hidden="true" size={24} />}
               </span>
               <div className="row-copy">
                 <div className="row-title">{row.title}</div>
@@ -38,9 +38,7 @@ export default async function AchievementsPage() {
         </div>
       </section>
       <div className="choice-list">
-        <Link className="outline-button full-button" href="/perfil">
-          Voltar ao perfil <ArrowRight />
-        </Link>
+        <BackButton href="/perfil" label="Voltar ao perfil" />
       </div>
     </AppShell>
   );

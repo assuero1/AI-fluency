@@ -64,7 +64,7 @@ export function ConversationSetupDialog({ busy, draft, onCancel, onConfirm }: Co
       onClose={onCancel}
       titleId="conversation-setup-title"
     >
-      <MessageCircle size={30} />
+      <MessageCircle size={28} aria-hidden="true" />
       <h2 id="conversation-setup-title" className="section-title">Configurar prática</h2>
       <p className="row-meta" id="conversation-setup-description">
         Tema: <strong>{draft.title?.trim() || "Conversa livre"}</strong>

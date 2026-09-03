@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { PartyPopper } from "lucide-react";
 import type { MessageGoalProgress } from "@/lib/learning/chat-contracts";
 import { burstConfetti } from "@/lib/client/confetti";
 import { playSound } from "@/lib/client/ui-sound";
@@ -10,10 +9,9 @@ import { vibrate } from "@/lib/client/haptics";
 type ConversationGoalProgressProps = {
   progress: MessageGoalProgress;
   readOnly?: boolean;
-  onFinish?: () => void;
 };
 
-export function ConversationGoalProgress({ progress, readOnly = false, onFinish }: ConversationGoalProgressProps) {
+export function ConversationGoalProgress({ progress, readOnly = false }: ConversationGoalProgressProps) {
   // Inicializa com o estado atual: recarregar uma conversa cuja meta JÁ estava
   // batida não pode disparar festa de novo — só a transição em tempo real.
   const wasReached = useRef(progress.reached);
@@ -35,7 +33,7 @@ export function ConversationGoalProgress({ progress, readOnly = false, onFinish 
       className={`message-goal${progress.reached ? " reached reached-fireworks" : ""}`}
     >
       <div className="message-goal-copy">
-        <strong>{progress.reached ? "Meta concluída! 🎉" : `${progress.sent} de ${progress.target} mensagens`}</strong>
+        <strong>{progress.reached ? "Meta concluída!" : `${progress.sent} de ${progress.target} mensagens`}</strong>
         <span>
           {progress.reached
             ? readOnly
@@ -54,11 +52,6 @@ export function ConversationGoalProgress({ progress, readOnly = false, onFinish 
       >
         <span style={{ width: `${progress.percent}%` }} />
       </div>
-      {progress.reached && !readOnly && onFinish ? (
-        <button className="outline-button" onClick={onFinish} type="button">
-          <PartyPopper aria-hidden="true" /> Finalizar com chave de ouro
-        </button>
-      ) : null}
     </section>
   );
 }

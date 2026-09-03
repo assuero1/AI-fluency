@@ -1,10 +1,10 @@
-import { BookOpen, Brain, ChevronRight, Search, SlidersHorizontal, Sparkles } from "lucide-react";
+import { BookOpen, Brain, ChevronRight, Search, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { EmptyState } from "@/components/EmptyState";
 import { IconBubble } from "@/components/IconBubble";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { VoiceButton } from "@/components/VoiceButton";
-import { WordPracticeButton } from "@/components/WordPracticeButton";
 import { getWordsData, normalizeWordFilter, wordFilters, wordStrengthLabels } from "@/lib/learning/words";
 
 export const dynamic = "force-dynamic";
@@ -34,7 +34,7 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
     <AppShell activeNav="palavras" section="palavras">
       <ScreenHeader title="Suas palavras" subtitle={`${data.summary.totalWords} palavras salvas`} />
       <Link className="flashcard-entry" href="/palavras/treino">
-        <div className="flashcard-entry-icon"><Brain /></div><div className="row-copy"><div className="eyebrow"><Sparkles size={14} /> Revisão inteligente</div><div className="row-title">Treinar com cards</div><div className="row-meta">{data.dailyQueue && data.dailyQueue.dueCount + data.dailyQueue.newCount > 0 ? `Hoje: ${data.dailyQueue.dueCount} revisões + ${data.dailyQueue.newCount} novas` : "Palavras e frases do seu vocabulário"}</div></div><ChevronRight />
+        <div className="flashcard-entry-icon"><Brain aria-hidden="true" /></div><div className="row-copy"><div className="eyebrow"><Sparkles aria-hidden="true" size={16} /> Revisão inteligente</div><div className="row-title">Treinar com cards</div><div className="row-meta">{data.dailyQueue && data.dailyQueue.dueCount + data.dailyQueue.newCount > 0 ? `Hoje: ${data.dailyQueue.dueCount} revisões + ${data.dailyQueue.newCount} novas` : "Palavras e frases do seu vocabulário"}</div></div><ChevronRight aria-hidden="true" />
       </Link>
       <section className="section">
         <div className="word-summary">
@@ -43,11 +43,11 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
             <div className="row-meta">usos em conversas</div>
           </div>
           <div>
-            <div className="row-title" style={{ color: "var(--section-text)" }}>
+            <div className="row-title text-accent">
               +{data.summary.weeklyNew}
             </div>
             <div className="row-meta">novas esta semana</div>
-            <div className="row-title" style={{ marginTop: 12 }}>
+            <div className="row-title mt-3">
               {data.summary.toReview}
             </div>
             <div className="row-meta">para revisar</div>
@@ -57,9 +57,15 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
           <span style={{ width: `${progress}%` }} />
         </div>
         <div className="row-meta">Meta semanal: {data.summary.weeklyNew}/{data.summary.weeklyGoal} novas palavras</div>
-      </section>
-      <section className="section word-review-states" aria-label="Estados de revisão">
-        <div><strong>{data.summary.toReview}</strong><span>para hoje</span></div><div><strong>{data.summary.newWords}</strong><span>novas</span></div><div><strong>{data.summary.learningWords}</strong><span>aprendendo</span></div><div><strong>{data.summary.reviewWords}</strong><span>consolidadas</span></div><div><strong>{data.summary.strongWords}</strong><span>fortes</span></div><div><strong>{data.summary.unusedWords}</strong><span>não usadas</span></div>
+        <div aria-label={distributionLabel(data.summary)} className="word-distribution" role="img">
+          {data.summary.learningWords > 0 ? <span className="wd-learning" style={{ flexGrow: data.summary.learningWords }} /> : null}
+          {data.summary.reviewWords > 0 ? <span className="wd-consolidating" style={{ flexGrow: data.summary.reviewWords }} /> : null}
+          {data.summary.strongWords > 0 ? <span className="wd-strong" style={{ flexGrow: data.summary.strongWords }} /> : null}
+          {data.summary.unusedWords > 0 ? <span className="wd-unused" style={{ flexGrow: data.summary.unusedWords }} /> : null}
+        </div>
+        <div className="word-distribution-caption">
+          {data.summary.strongWords} fortes · {data.summary.learningWords} aprendendo · {data.summary.reviewWords} consolidando · {data.summary.unusedWords} sem uso
+        </div>
       </section>
 
       <form className="word-search-form" action="/palavras" role="search">
@@ -80,7 +86,6 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
             {filterLabels[item]}
           </Link>
         ))}
-        <SlidersHorizontal className="filter-icon" aria-hidden="true" />
       </nav>
 
       <section className="section row-list">
@@ -102,11 +107,11 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
             </div>
           ))
         ) : (
-          <div className="empty-state">
-            <BookOpen size={30} />
-            <div className="row-title">Nenhuma palavra encontrada</div>
-            <div className="row-meta">Use uma conversa para salvar vocabulário novo ou ajuste os filtros.</div>
-          </div>
+          <EmptyState
+            Icon={BookOpen}
+            title="Nenhuma palavra encontrada"
+            description="Use uma conversa para salvar vocabulário novo ou ajuste os filtros."
+          />
         )}
       </section>
       {data.totalPages > 1 ? (
@@ -120,9 +125,12 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
           ) : <span />}
         </nav>
       ) : null}
-      <WordPracticeButton />
     </AppShell>
   );
+}
+
+function distributionLabel(summary: { learningWords: number; reviewWords: number; strongWords: number; unusedWords: number }) {
+  return `Distribuição do vocabulário: ${summary.strongWords} fortes, ${summary.learningWords} aprendendo, ${summary.reviewWords} consolidando, ${summary.unusedWords} sem uso`;
 }
 
 function buildWordsHref(filter: string, query: string, page?: number) {

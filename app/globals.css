@@ -195,6 +195,25 @@ a {
   padding: 0;
 }
 
+/* Ação discreta de sair/fechar no header: ícone-ghost sem peso destrutivo */
+.ghost-icon-button {
+  display: grid;
+  place-items: center;
+  flex: 0 0 44px;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.ghost-icon-button:hover {
+  color: var(--text);
+}
+
 @media (max-width: 380px) {
   .chat-header {
     display: grid;
@@ -273,6 +292,56 @@ a {
   height: 1px;
   margin: var(--space-6) calc(var(--screen-pad) * -1) 0;
   background: var(--line);
+}
+
+/* Utilitários tokenizados de espaçamento/acento (ver docs/PADRAO_UI.md) */
+.mt-2 { margin-top: var(--space-2); }
+.mt-3 { margin-top: var(--space-3); }
+.mt-4 { margin-top: var(--space-4); }
+.mt-5 { margin-top: var(--space-5); }
+.text-accent { color: var(--section-text); }
+
+.selector-divider {
+  width: 1px;
+  height: 34px;
+  background: var(--line);
+}
+
+.stack-2 { display: flex; flex-direction: column; gap: var(--space-2); }
+
+.skeleton-w70 { width: 70%; }
+
+.correction-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+}
+
+.card-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+/* Corpo de texto dentro de card (feedback, observações) */
+.card-copy {
+  margin: 0;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+/* Linha de ações de wizard (Voltar + Continuar) */
+.choice-actions {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.choice-actions .outline-button {
+  flex: 0 0 auto;
 }
 
 .practice-reminder {
@@ -817,6 +886,31 @@ a {
   align-items: center;
 }
 
+/* Distribuição do vocabulário por estado (substitui os 6 tiles antigos) */
+.word-distribution {
+  display: flex;
+  gap: 2px;
+  height: 12px;
+  margin-top: var(--space-4);
+}
+
+.word-distribution > span {
+  min-width: 4px;
+  border-radius: var(--radius-xs);
+}
+
+.word-distribution .wd-learning { background: var(--calendario); }
+.word-distribution .wd-consolidating { background: var(--chat); }
+.word-distribution .wd-strong { background: var(--brand); }
+.word-distribution .wd-unused { background: var(--line-deep); }
+
+.word-distribution-caption {
+  margin-top: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 600;
+}
+
 .word-row-link {
   display: block;
 }
@@ -906,7 +1000,8 @@ a {
   margin-top: var(--space-section);
 }
 
-.word-detail-metrics {
+/* Tira de métricas com divisórias (variant bordered do MetricGrid) */
+.metric-strip {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   overflow: hidden;
@@ -914,7 +1009,7 @@ a {
   border-radius: var(--radius-md);
 }
 
-.word-detail-metrics div {
+.metric-strip div {
   display: grid;
   gap: 5px;
   padding: 17px 10px;
@@ -922,15 +1017,15 @@ a {
   text-align: center;
 }
 
-.word-detail-metrics div:last-child {
+.metric-strip div:last-child {
   border-right: 0;
 }
 
-.word-detail-metrics strong {
+.metric-strip strong {
   font-size: 24px;
 }
 
-.word-detail-metrics span {
+.metric-strip span {
   color: var(--muted);
   font-size: 12px;
 }
@@ -1597,6 +1692,14 @@ a {
   font-weight: 800;
 }
 
+.correction-title.warning {
+  color: var(--warning);
+}
+
+.correction-block .row-meta {
+  margin: 0;
+}
+
 .saved-words {
   display: flex;
   align-items: center;
@@ -1957,45 +2060,14 @@ a {
   font-size: 24px;
 }
 
-.calendar-score-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-}
-
-.calendar-score-grid div {
-  display: grid;
-  justify-items: center;
-  gap: 5px;
-  min-width: 0;
-  padding: 17px 6px;
-  border-right: 1px solid var(--line);
+.calendar-focus-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
   color: var(--primary);
-}
-
-.calendar-score-grid div:last-child {
-  border-right: 0;
-}
-
-.calendar-score-grid strong {
-  color: var(--text);
-  font-size: 20px;
-}
-
-.calendar-score-grid span {
-  color: var(--muted);
-  font-size: 12px;
-  text-align: center;
-}
-
-.calendar-observation-card {
-  display: grid;
-  gap: 14px;
-  padding: 20px;
-  border-radius: var(--radius-lg);
-  background: var(--primary-soft);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .calendar-focus-line {
@@ -2046,6 +2118,33 @@ a {
   display: grid;
   min-width: 0;
   gap: 14px;
+}
+
+.settings-list.options-row {
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+}
+
+.settings-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius-md);
+  background: #fff;
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 3px 0 rgba(31, 25, 16, 0.05);
+}
+
+.settings-option.active {
+  border-color: var(--section);
+  background: var(--section-soft);
+  color: var(--section-text);
+  box-shadow: inset 0 0 0 1px var(--section);
 }
 
 .settings-row {
@@ -2464,11 +2563,9 @@ textarea:focus-visible,
 .flashcard-result-details { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; text-align: left; }
 .flashcard-result-details div { display: grid; gap: 3px; padding: 10px; border-radius: var(--radius-sm); background: rgba(255,255,255,.72); }
 .flashcard-result-details span { color: var(--muted); font-size: 12px; }.flashcard-result-details strong { font-size: 16px; }
-.word-review-states { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 7px; padding: 0; border: 0; background: transparent; }.word-review-states div { display: grid; min-width: 0; gap: 3px; padding: 10px 4px; border-radius: var(--radius-sm); background: #f6faf6; text-align: center; }.word-review-states strong { font-size: 16px; }.word-review-states span { min-width: 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
 
 @media (max-width: 340px) {
   :root { --screen-pad: 16px; }
-  .word-review-states { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .word-row { gap: 10px; }
   .word-row .row-title { font-size: 18px; overflow-wrap: anywhere; }
   .word-strength { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
@@ -2518,7 +2615,6 @@ textarea:focus-visible,
 .recall-rating-grid button.suggested { border-color: var(--section); background: var(--section-soft); color: var(--section-text); box-shadow: inset 0 0 0 1px var(--section); }
 .selection-explanation { background: var(--section-soft); }
 .progress-level-card, .progress-focus-card { background: var(--section-soft); }
-.word-review-states div { background: var(--section-soft); }
 
 /* === Animações chunky (neutralizadas por prefers-reduced-motion) === */
 @keyframes dot-bounce {
@@ -2708,11 +2804,6 @@ textarea:focus-visible,
 /* Select do perfil: tom da seção e reticências em vez de texto cortado */
 .profile-select-row select { max-width: 64%; color: var(--section-text); text-overflow: ellipsis; }
 
-/* Pills de revisão: 3 colunas até 429px para não quebrar rótulos no meio da palavra */
-@media (max-width: 429px) {
-  .word-review-states { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-}
-
 /* Ícones de destaque do calendário seguem o tom da seção (lucide fixa stroke="#2f9d4a") */
 .calendar-feedback-card .top-row > svg { stroke: var(--section-text); }
 .section-calendario .top-row > .section-title + svg { stroke: var(--section-text); }
@@ -2776,7 +2867,7 @@ textarea:focus-visible,
 }
 
 .auth-wordmark {
-  margin-top: 4px;
+  margin-top: 12px;
   font-size: 31px;
   font-weight: 900;
   letter-spacing: -0.5px;
@@ -2788,7 +2879,7 @@ textarea:focus-visible,
 }
 
 .auth-tagline {
-  margin-top: 2px;
+  margin-top: 4px;
   color: var(--muted);
   font-size: 16px;
   font-weight: 700;

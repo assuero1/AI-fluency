@@ -12,7 +12,7 @@ const toneClass: Record<Tone, string> = {
 export function IconBubble({ Icon, tone = "primary" }: { Icon: LucideIcon; tone?: Tone }) {
   return (
     <span className={`icon-circle ${toneClass[tone]}`}>
-      <Icon aria-hidden="true" size={31} strokeWidth={2.1} />
+      <Icon aria-hidden="true" size={28} strokeWidth={2.1} />
     </span>
   );
 }

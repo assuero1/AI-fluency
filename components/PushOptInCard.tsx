@@ -5,7 +5,7 @@ import { useState } from "react";
 import { IconBubble } from "./IconBubble";
 
 function urlBase64ToUint8Array(base64String: string) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const padding = "=".repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
   const raw = window.atob(base64);
   return Uint8Array.from([...raw].map((char) => char.charCodeAt(0)));
@@ -51,15 +51,15 @@ export function PushOptInCard({ show, onDone }: PushOptInCardProps) {
   }
 
   return <section className="section home-today" aria-label="Lembretes de prática">
-    <div className="top-row" style={{ display: "flex", gap: 12, alignItems: "center" }}>
+    <div className="card-heading">
       <IconBubble Icon={BellRing} tone="warning" />
       <div className="row-copy">
         <h2 className="row-title">Aviso para manter a sequência?</h2>
-        <p className="row-meta">1x por dia, só quando você ainda não praticou — e nunca mais que isso.</p>
+        <p className="row-meta">1x por dia, só quando você ainda não praticou.</p>
       </div>
     </div>
     {state === "granted" ? (
-      <p className="row-meta" style={{ color: "var(--primary)" }}>Pronto! Avisaremos amanhã, se precisar. 🔔</p>
+      <p className="row-meta text-accent">Pronto! Avisaremos amanhã, se precisar.</p>
     ) : state === "denied" ? (
       <p className="row-meta">Sem problema — você pode ativar depois no Perfil.</p>
     ) : (
