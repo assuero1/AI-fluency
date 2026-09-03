@@ -11,7 +11,7 @@ const nunito = Nunito({
 });
 
 export const metadata: Metadata = {
-  title: "AI Fluency",
+  title: "Talkkito",
   description: "PWA mobile-first para aprendizado de linguas com IA.",
   icons: {
     icon: [
@@ -23,7 +23,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "AI Fluency"
+    title: "Talkkito"
   }
 };
 

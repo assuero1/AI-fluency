@@ -25,7 +25,7 @@ export function LoginForm() {
       <header className="auth-hero">
         <AuthMascot bubble={hero.bubble} />
         <h1 className="auth-wordmark">
-          AI <span>Fluency</span>
+          Talk<span>kito</span>
         </h1>
         <p className="auth-tagline">{hero.tagline}</p>
       </header>

@@ -2877,16 +2877,8 @@ textarea:focus-visible,
 .interval-hint { display: block; font-size: 12px; opacity: 0.7; font-weight: 400; }
 
 /* === Telas de autenticação (login, signup, reset) === */
-/* Recolore a identidade para o roxo da seção palavras, sem afetar o app. */
+/* Identidade usa o verde da marca (camaleão Talkkito) definido em :root. */
 .auth-screen {
-  --brand: #a560ff;
-  --brand-deep: #8549e8;
-  --brand-soft: #f1e6ff;
-  --section: #a560ff;
-  --section-deep: #8549e8;
-  --section-soft: #f1e6ff;
-  --section-text: #7443c9;
-
   min-height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -2915,13 +2907,43 @@ textarea:focus-visible,
 }
 
 .auth-mascot {
-  width: 168px;
-  height: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   animation: mark-float 3.2s ease-in-out infinite;
 }
 
+.auth-mascot-img {
+  width: 138px;
+  height: auto;
+}
+
 .auth-mascot-bubble {
+  position: relative;
+  z-index: 1;
+  max-width: 260px;
+  margin-bottom: -4px;
+  padding: 9px 16px;
+  border: 2px solid var(--line);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
   animation: pop-in 0.5s 0.15s ease both;
+}
+
+.auth-mascot-bubble::after {
+  content: "";
+  position: absolute;
+  bottom: -7.5px;
+  left: 58%;
+  width: 11px;
+  height: 11px;
+  border-right: 2px solid var(--line);
+  border-bottom: 2px solid var(--line);
+  background: var(--surface);
+  transform: translateX(-50%) rotate(45deg);
 }
 
 .auth-wordmark {
@@ -3063,7 +3085,7 @@ textarea:focus-visible,
 }
 
 @media (min-height: 760px) {
-  .auth-mascot { width: 184px; }
+  .auth-mascot-img { width: 152px; }
 }
 
 /* === Conquistas: toast global e itens bloqueados === */

@@ -14,7 +14,7 @@ export function ResetPasswordForm() {
       <header className="auth-hero">
         <AuthMascot bubble="Quase lá!" />
         <h1 className="auth-wordmark">
-          AI <span>Fluency</span>
+          Talk<span>kito</span>
         </h1>
         <p className="auth-tagline">Escolha uma nova senha para continuar.</p>
       </header>
