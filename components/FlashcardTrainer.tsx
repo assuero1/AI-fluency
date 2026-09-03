@@ -1,13 +1,16 @@
 "use client";
 
-import { ArrowLeft, Brain, Check, Clock3, Layers3, Loader2, Mic, MicOff, RotateCcw, Sparkles, Trophy } from "lucide-react";
+import { ArrowLeft, Brain, Check, Clock3, Layers3, Loader2, Mic, MicOff, RotateCcw, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { compareAnswerForCard } from "@/lib/learning/flashcard-answer";
 import { advanceFlashcardQueue, createFlashcardQueue, selectNextQueueItem, rebuildFlashcardQueue } from "@/lib/learning/flashcard-queue";
 import type { AnswerMatch, DailyQueueSummary, Flashcard, FlashcardAnswer, FlashcardCriterion, FlashcardPracticeResult, FlashcardQueueKind, QueueItem } from "@/lib/learning/flashcard-contracts";
 import { releaseMicForPlayback } from "@/lib/learning/speech";
+import { playSound } from "@/lib/client/ui-sound";
+import { vibrate } from "@/lib/client/haptics";
 import { Pill } from "./Pill";
+import { SessionCelebration } from "./SessionCelebration";
 import { VoiceButton } from "./VoiceButton";
 
 type Recognition = {
@@ -87,6 +90,22 @@ export function FlashcardTrainer() {
   }
 
   useEffect(() => {
+    // Handoff 1-toque (ex.: "Revisar em cards" do treino de palavras novas):
+    // sessão pronta no storage entra direto, sem passar pelo resumo/modal.
+    const pending = sessionStorage.getItem("ai-fluency:pending-flashcards");
+    if (pending) {
+      sessionStorage.removeItem("ai-fluency:pending-flashcards");
+      try {
+        const data = JSON.parse(pending) as { sessionId: string; cards: Flashcard[]; languageCode?: string; languageName?: string; adapted?: boolean };
+        if (data.sessionId && data.cards?.length) {
+          const initialQueue = createFlashcardQueue(data.cards);
+          setSessionId(data.sessionId); setCompletionId(crypto.randomUUID()); setCards(data.cards); setQueue(initialQueue); setCurrentItem(selectNextQueueItem(initialQueue, 0));
+          setLanguageCode(data.languageCode ?? "es"); setLanguageName(data.languageName ?? "idioma estudado"); setAdapted(data.adapted === true);
+          resetAttempt(); // mesma preparação do start(): cronômetro da 1ª apresentação
+          return; // entrada direta: não mostra o resumo/modal
+        }
+      } catch { /* payload inválido: segue o fluxo normal */ }
+    }
     void loadOverview();
   }, []);
 
@@ -144,8 +163,10 @@ export function FlashcardTrainer() {
       const data = await response.json() as { ok?: boolean; hardDays?: number; easyDays?: number };
       if (!response.ok || !data.ok || typeof data.hardDays !== "number" || typeof data.easyDays !== "number") throw new Error("preview unavailable");
       setRevealed({ match, forgot, responseTimeMs, hardDays: data.hardDays, easyDays: data.easyDays });
+      celebrateMatch({ forgot, match });
     } catch {
       setRevealed({ match, forgot, responseTimeMs, hardDays: null, easyDays: null });
+      celebrateMatch({ forgot, match });
     }
   }
 
@@ -254,7 +275,7 @@ export function FlashcardTrainer() {
   if (result) return <div className="flashcard-screen">
     <Link className="back-link" href="/palavras"><ArrowLeft /> Palavras</Link>
     <section className="flashcard-result">
-      <div className="flashcard-trophy"><Trophy /></div><div className="eyebrow">Treino concluído</div><h1 className="title">{result.score}% de acerto</h1>
+      <SessionCelebration eyebrow="Treino concluído" score={result.score} />
       <p className="subtitle">Cada tentativa ajustou o domínio e a próxima revisão das palavras.</p>
       <div className="flashcard-result-grid"><div><strong>{result.uniqueCardCount}</strong><span>cards únicos</span></div><div><strong>{result.presentationCount}</strong><span>apresentações</span></div><div><strong>{result.recoveredCards}</strong><span>recuperados</span></div></div>
       <section className="flashcard-result-details" aria-label="Detalhes do resultado">
@@ -367,6 +388,15 @@ function matchLabel(match: AnswerMatch) {
 
 function isAutoForgot(revealed: { forgot: boolean; match: AnswerMatch }) {
   return revealed.forgot || revealed.match === "incorrect" || revealed.match === "unknown";
+}
+
+// Feedback do veredito no reveal: errado/não lembro desce, quase acerta soa
+// neutro, acerto sobe com vibração de sucesso. Falhas são silenciosas nas libs.
+function celebrateMatch(revealed: { forgot: boolean; match: AnswerMatch }) {
+  if (revealed.forgot || revealed.match === "incorrect" || revealed.match === "unknown") { playSound("wrong"); vibrate("warn"); return; }
+  if (revealed.match === "minor_error") { playSound("neutral"); return; }
+  playSound("correct");
+  vibrate("success");
 }
 
 function formatAccuracy(value: number | null | undefined) { return typeof value === "number" ? `${value}%` : "—"; }

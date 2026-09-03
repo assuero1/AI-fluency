@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft, Loader2, Mic, MicOff, Sparkles, Trophy } from "lucide-react";
+import { ArrowLeft, Loader2, Mic, MicOff, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -16,9 +16,12 @@ import {
 import { unlockAudioForPlayback, requestSpeech, reportVoiceFailure } from "./voice-shared";
 import { createAudioPrefetchQueue, type AudioPrefetchQueue } from "@/lib/learning/audio-prefetch";
 import { compareFlashcardAnswer } from "@/lib/learning/flashcard-answer";
-import { playButtonSound } from "@/lib/client/ui-sound";
+import { playSound } from "@/lib/client/ui-sound";
+import { vibrate } from "@/lib/client/haptics";
 import { AppShell } from "./AppShell";
 import { Pill } from "./Pill";
+import { SessionCelebration } from "./SessionCelebration";
+import { StartFlashcardsWithWords } from "./StartFlashcardsWithWords";
 import { VoiceButton } from "./VoiceButton";
 
 type Recognition = { lang: string; interimResults: boolean; continuous: boolean; start(): void; stop(): void; abort(): void; onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null };
@@ -61,6 +64,7 @@ export function NewWordsTrainer() {
   const [senseCreated, setSenseCreated] = useState(false);
   const [result, setResult] = useState<NewWordsSessionResult | null>(null);
   const [resumable, setResumable] = useState<{ sessionId: string; nextSentenceId: string; answeredCount: number; sentenceCount: number } | null>(null);
+  const [exitOpen, setExitOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [audioFailed, setAudioFailed] = useState(false);
@@ -293,7 +297,7 @@ export function NewWordsTrainer() {
     event?.preventDefault();
     // Som de confirmação no gesto: o AudioContext só destrava dentro do gesto
     // do usuário, então toca aqui (antes de qualquer await) e só no Traduzir.
-    playButtonSound();
+    playSound("button");
     if (!current || judgment || busy || !input.trim()) return;
     recognitionRef.current?.stop();
     const translation = input.trim();
@@ -308,6 +312,8 @@ export function NewWordsTrainer() {
     // espera essa promise antes de avançar/complete. Sem busy: nada a esperar.
     if (compareFlashcardAnswer(translation, current.translation) === "exact") {
       setJudgment({ verdict: "correct", feedback: "", correctedTranslation: current.translation });
+      playSound("correct");
+      vibrate("success");
       setAnsweredIds((previous) => new Set([...previous, current.id]));
       cancelAutoAdvance();
       autoAdvanceRef.current = setTimeout(() => { autoAdvanceRef.current = null; void continueToNextRef.current(); }, AUTO_ADVANCE_MS);
@@ -340,6 +346,11 @@ export function NewWordsTrainer() {
       const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string; attempt?: { judgment: JudgedTranslation; senseCreated: boolean } };
       if (!response.ok || !data.ok || !data.attempt) throw new Error(data.error ?? "Não foi possível avaliar a tradução.");
       setJudgment(data.attempt.judgment); setSenseCreated(Boolean(data.attempt.senseCreated));
+      const verdict = data.attempt.judgment.verdict;
+      if (verdict === "correct" || verdict === "acceptable") { playSound("correct"); vibrate("success"); }
+      else if (verdict === "minor_error") playSound("neutral");
+      else { playSound("wrong"); vibrate("warn"); }
+      if (data.attempt.senseCreated) playSound("achievement");
       setAnsweredIds((previous) => new Set([...previous, current.id]));
       // O julgamento fica visível 4s (a barrinha dá o feedback visual do tempo)
       // e a próxima frase abre sozinha; tocar na barrinha adianta.
@@ -433,9 +444,7 @@ export function NewWordsTrainer() {
     <audio ref={audioRef} className="sr-only" preload="auto" />
     <Link className="back-link" href="/palavras"><ArrowLeft /> Palavras</Link>
     <section className="flashcard-result">
-      <div className="flashcard-trophy"><Trophy /></div>
-      <div className="eyebrow">Sessão concluída</div>
-      <h1 className="title">{result.score}% de acerto</h1>
+      <SessionCelebration eyebrow="Sessão concluída" score={result.score} />
       <p className="subtitle">Você aprendeu {result.wordCount} palavra{result.wordCount === 1 ? "" : "s"} nova{result.wordCount === 1 ? "" : "s"} com {result.sentenceCount} frases.</p>
       <div className="flashcard-result-grid">
         <div><strong>{result.wordCount}</strong><span>palavras novas</span></div>
@@ -446,6 +455,7 @@ export function NewWordsTrainer() {
         {result.words.map((word) => <div key={word.wordId}><span>{word.lemma}</span><strong>{word.translation}</strong></div>)}
       </section>
       <button className="green-button full-button" onClick={() => { setResult(null); setSentences([]); setWords([]); setAnsweredIds(new Set()); }} type="button"><Sparkles /> Aprender mais palavras</button>
+      <StartFlashcardsWithWords label="Revisar em cards" wordIds={result.words.map((word) => word.wordId)} />
       <Link className="outline-button full-button" href="/palavras">Voltar às palavras</Link>
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
     </section>
@@ -456,7 +466,7 @@ export function NewWordsTrainer() {
     return shell(<div className="flashcard-screen">
       <audio ref={audioRef} className="sr-only" preload="auto" />
       <div className="top-row">
-        <button className="back-link button-reset" onClick={() => void abandonSession()} disabled={busy} type="button"><ArrowLeft /> Sair</button>
+        <button className="back-link button-reset" onClick={() => setExitOpen(true)} disabled={busy} type="button"><ArrowLeft /> Sair</button>
         <Pill>{answeredIds.size}/{sentences.length} frases{wordIndex >= 0 ? ` · palavra ${wordIndex + 1}/${words.length}` : ""}</Pill>
       </div>
       <div className="progress-line"><span style={{ width: `${(answeredIds.size / Math.max(1, sentences.length)) * 100}%` }} /></div>
@@ -496,6 +506,14 @@ export function NewWordsTrainer() {
       </section>}
       {busy ? <p className="speech-status"><Loader2 className="spin" /> Salvando...</p> : null}
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
+      {exitOpen ? <div className="modal-backdrop" role="presentation"><section aria-labelledby="leave-new-words-title" aria-modal="true" className="confirmation-modal" role="dialog">
+        <h2 className="section-title" id="leave-new-words-title">Sair da sessão?</h2>
+        <p className="row-meta">As frases já traduzidas continuam valendo. Se sair agora, as frases pendentes não entram na revisão de hoje.</p>
+        <div className="modal-actions">
+          <button className="outline-button" disabled={busy} onClick={() => setExitOpen(false)} type="button">Continuar traduzindo</button>
+          <button className="danger-button" disabled={busy} onClick={() => { setExitOpen(false); void abandonSession(); }} type="button">Sair e abandonar</button>
+        </div>
+      </section></div> : null}
     </div>, true);
   }
 
