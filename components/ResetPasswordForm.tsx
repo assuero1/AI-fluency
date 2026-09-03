@@ -3,6 +3,7 @@
 import { useActionState } from "react";
 import { updatePassword, type AuthFormState } from "@/app/login/actions";
 import { AuthMascot } from "@/components/AuthMascot";
+import { LoadingScene } from "@/components/LoadingScene";
 
 const initialState: AuthFormState = {};
 
@@ -41,6 +42,7 @@ export function ResetPasswordForm() {
           <button type="submit" disabled={pending} className="green-button full-button auth-submit">
             {pending ? "Aguarde..." : "Salvar nova senha"}
           </button>
+          {pending ? <LoadingScene variant="overlay" moment="save" palette="neutral" title="Salvando nova senha..." /> : null}
         </form>
       </div>
     </>

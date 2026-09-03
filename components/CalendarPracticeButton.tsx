@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { LoadingScene, type LoadingPalette } from "./LoadingScene";
 
 type CalendarPracticeButtonProps = {
   date: string;
@@ -15,7 +16,7 @@ type CalendarTopicButtonProps = {
 };
 
 export function CalendarPracticeButton({ date, compact = false }: CalendarPracticeButtonProps) {
-  return <PracticeRequestButton endpoint={`/api/daily-feedback/${date}/practice`} label="Praticar este foco" compact={compact} />;
+  return <PracticeRequestButton endpoint={`/api/daily-feedback/${date}/practice`} label="Praticar este foco" compact={compact} loadingTitle="Preparando a prática deste foco..." palette="calendario" />;
 }
 
 export function CalendarTopicButton({ title, reason }: CalendarTopicButtonProps) {
@@ -25,6 +26,8 @@ export function CalendarTopicButton({ title, reason }: CalendarTopicButtonProps)
       endpoint="/api/conversations/start"
       label="Praticar"
       compact
+      loadingTitle="Preparando sua conversa..."
+      palette="chat"
     />
   );
 }
@@ -33,12 +36,16 @@ function PracticeRequestButton({
   endpoint,
   label,
   compact = false,
-  body
+  body,
+  loadingTitle,
+  palette
 }: {
   endpoint: string;
   label: string;
   compact?: boolean;
   body?: Record<string, string>;
+  loadingTitle: string;
+  palette: LoadingPalette;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -66,10 +73,11 @@ function PracticeRequestButton({
   return (
     <div className={compact ? "calendar-practice-wrap compact" : "calendar-practice-wrap"}>
       <button className={compact ? "outline-button" : "dark-button full-button"} disabled={loading} onClick={start} type="button">
-        {loading ? <Loader2 className="spin" /> : compact ? null : <ArrowRight />}
+        {compact ? null : <ArrowRight />}
         {label}
       </button>
       {error ? <p className="practice-error" role="alert">{error}</p> : null}
+      {loading ? <LoadingScene variant="overlay" moment="enter" palette={palette} title={loadingTitle} /> : null}
     </div>
   );
 }

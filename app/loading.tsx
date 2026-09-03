@@ -1,14 +1,10 @@
 import { AppShell } from "@/components/AppShell";
-import { LoadingDots } from "@/components/LoadingDots";
+import { LoadingScene } from "@/components/LoadingScene";
 
 export default function Loading() {
   return (
     <AppShell noNav>
-      <div className="app-loading" aria-live="polite">
-        <span className="loading-mark" aria-hidden="true" />
-        <span>Carregando sua prática</span>
-        <LoadingDots srText="Carregando sua prática..." />
-      </div>
+      <LoadingScene moment="enter" palette="brand" title="Carregando sua prática" />
     </AppShell>
   );
 }

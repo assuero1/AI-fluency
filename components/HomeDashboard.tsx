@@ -5,7 +5,6 @@ import {
   ChevronDown,
   Edit3,
   Laptop,
-  Loader2,
   MessageCircle,
   Sparkles,
   TrendingUp
@@ -20,6 +19,7 @@ import { QuestList } from "./QuestList";
 import { IconBubble } from "./IconBubble";
 import { ConversationSetupDialog, ConfirmedConversationStart, ConversationStartDraft } from "./ConversationSetupDialog";
 import { EmptyState } from "./EmptyState";
+import { LoadingScene } from "./LoadingScene";
 import { MetricGrid } from "./MetricGrid";
 import { Pill } from "./Pill";
 import { ScreenHeader } from "./ScreenHeader";
@@ -205,7 +205,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
             <Edit3 />
           </label>
           <button className="outline-button" disabled={pendingAction === "suggest"} onClick={suggestTopic} type="button">
-            {pendingAction === "suggest" ? <Loader2 className="spin" /> : <Sparkles />}
+            <Sparkles />
             Sugerir um tema para mim
           </button>
         </div>
@@ -215,10 +215,10 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           onClick={() => setStartDraft({ title: topic, mode: "custom_topic", source: "user_custom" })}
           type="button"
         >
-          {pendingAction === topic ? <Loader2 className="spin" /> : null}
           Começar com este tema
         </button>
         {error ? <div className="inline-error" role="alert">{error}</div> : null}
+        {pendingAction === "suggest" ? <LoadingScene variant="overlay" moment="think" palette="chat" title="Pensando em um tema para você..." /> : null}
       </section>
 
       <section className="section">
@@ -226,7 +226,6 @@ export function HomeDashboard({ home }: { home: HomeData }) {
         <div className="row-list">
           {suggestions.length ? suggestions.map((item, index) => {
             const Icon = suggestionIcons[index] ?? MessageCircle;
-            const actionKey = item.id ?? item.title;
             return (
               <div className="list-row" key={`${item.id ?? item.title}-${index}`}>
                 <IconBubble Icon={Icon} tone={item.tone} />
@@ -250,7 +249,6 @@ export function HomeDashboard({ home }: { home: HomeData }) {
                   }
                   type="button"
                 >
-                  {pendingAction === actionKey ? <Loader2 className="spin" /> : null}
                   Começar
                 </button>
               </div>

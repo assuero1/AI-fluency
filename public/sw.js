@@ -61,7 +61,9 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (url.pathname.startsWith("/_next/static/") || APP_SHELL.includes(url.pathname)) {
+  // Assets estáticos + vídeos das telas de carregamento (assets imutáveis por
+  // versão do cache): cache-first, atualizam no bump do CACHE_NAME.
+  if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/loading/") || APP_SHELL.includes(url.pathname)) {
     event.respondWith(
       caches.match(request).then(
         (cached) =>

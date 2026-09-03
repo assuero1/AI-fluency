@@ -1,0 +1,10 @@
+{
+  "rows": [
+    {"name": "brand",      "hue": 0,   "sat": 1,    "main": "#58cc02", "deep": "#58a700", "soft": "#e7f8d5", "ink": "#417c00"},
+    {"name": "chat",       "hue": 105, "sat": 1,    "main": "#1cb0f6", "deep": "#148fd6", "soft": "#ddf1fe", "ink": "#0d649a"},
+    {"name": "palavras",   "hue": 175, "sat": 1,    "main": "#a560ff", "deep": "#8549e8", "soft": "#f1e6ff", "ink": "#7443c9"},
+    {"name": "calendario", "hue": 297, "sat": 1,    "main": "#ff9600", "deep": "#d97c00", "soft": "#ffeed6", "ink": "#a35a00"},
+    {"name": "progresso",  "hue": 312, "sat": 1,    "main": "#ffc800", "deep": "#c79a00", "soft": "#fff3c4", "ink": "#8a6a00"},
+    {"name": "neutral",    "hue": 105, "sat": 0.22, "main": "#52667a", "deep": "#3f5062", "soft": "#e9eef3", "ink": "#3f5062"}
+  ]
+}

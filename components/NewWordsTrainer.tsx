@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Mic, MicOff, Sparkles } from "lucide-react";
+import { Mic, MicOff, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -17,10 +17,10 @@ import { unlockAudioForPlayback, requestSpeech, reportVoiceFailure } from "./voi
 import { createAudioPrefetchQueue, type AudioPrefetchQueue } from "@/lib/learning/audio-prefetch";
 import { compareFlashcardAnswer } from "@/lib/learning/flashcard-answer";
 import { playSound } from "@/lib/client/ui-sound";
-import { PreparingCards } from "./PreparingCards";
 import { vibrate } from "@/lib/client/haptics";
 import { AppShell } from "./AppShell";
 import { BackButton } from "./BackButton";
+import { LoadingScene } from "./LoadingScene";
 import { ModalDialog } from "./ModalDialog";
 import { Pill } from "./Pill";
 import { SessionCelebration } from "./SessionCelebration";
@@ -41,6 +41,19 @@ const PREPARING_ERROR = "Não foi possível montar as frases agora. Tente novame
 // Auto-avanço: o julgamento fica visível 4s antes da próxima frase abrir
 // sozinha (a barrinha animada acompanha a contagem).
 const AUTO_ADVANCE_MS = 4000;
+
+// Dicas rotativas da espera do preparo do deck (IA gera as frases em 15–40s).
+const PREPARING_TIPS = [
+  "Revisar pouco e sempre fixa mais que muito de uma vez.",
+  "Dizer a tradução em voz alta antes de digitar aumenta a retenção.",
+  "Errar faz parte: cada erro ajusta quando a palavra volta a aparecer.",
+  "Palavras usadas em conversa grudam mais que palavras de lista.",
+  "Cinco minutos por dia vencem uma hora por semana."
+];
+
+// Esperas da sessão ativa que ganham tela própria: "judge" = IA avaliando a
+// tradução (think), "save" = gravando tentativa/conclusão (save).
+type SessionWait = "none" | "judge" | "save";
 
 // Quando o proxy/deploy devolve HTML (página de erro, build antigo), o
 // response.json() lança um erro cru do navegador ("Unexpected token '<'").
@@ -71,6 +84,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
   const [resumable, setResumable] = useState<{ sessionId: string; nextSentenceId: string; answeredCount: number; sentenceCount: number } | null>(null);
   const [exitOpen, setExitOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [wait, setWait] = useState<SessionWait>("none");
   const [error, setError] = useState("");
   const [audioFailed, setAudioFailed] = useState(false);
   const [audioReplayCount, setAudioReplayCount] = useState(0);
@@ -343,8 +357,8 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
       });
       return;
     }
-    // Demais traduções: aguarda o julgamento da IA (busy/spinner).
-    setBusy(true); setError("");
+    // Demais traduções: aguarda o julgamento da IA (tela própria de espera).
+    setBusy(true); setWait("judge"); setError("");
     try {
       const response = await fetch("/api/practice/new-words/judge", { method: "POST", headers: { "Content-Type": "application/json" }, body: judgeBody });
       const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string; attempt?: { judgment: JudgedTranslation; senseCreated: boolean } };
@@ -361,7 +375,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
       cancelAutoAdvance();
       autoAdvanceRef.current = setTimeout(() => { autoAdvanceRef.current = null; void continueToNextRef.current(); }, AUTO_ADVANCE_MS);
     } catch (submitError) { setError(submitError instanceof Error ? submitError.message : "Não foi possível avaliar a tradução."); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setWait("none"); }
   }
 
   async function continueToNext() {
@@ -387,7 +401,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
     const index = sentences.findIndex((sentence) => sentence.id === current.id);
     const next = sentences[index + 1];
     if (next) { setCurrent(next); resetAttempt(); return; }
-    setBusy(true); setError("");
+    setBusy(true); setWait("save"); setError("");
     try {
       const response = await fetch("/api/practice/new-words/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, clientCompletionId: completionId }) });
       const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string } & Partial<NewWordsSessionResult>;
@@ -398,7 +412,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
       prefetchRef.current?.dispose();
       setResult(data as NewWordsSessionResult); setCurrent(null); setResumable(null);
     } catch (finishError) { setError(finishError instanceof Error ? finishError.message : "Não foi possível concluir a sessão."); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setWait("none"); }
   }
 
   // Mantém o ref sempre apontando para a continueToNext da última renderização:
@@ -511,7 +525,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
           <span className="auto-advance-bar" />
         </button>
       </section>}
-      {busy ? <p className="speech-status"><Loader2 className="spin" /> Salvando...</p> : null}
+      {wait !== "none" ? <LoadingScene variant="overlay" moment={wait === "judge" ? "think" : "save"} palette="palavras" title={wait === "judge" ? "A IA está avaliando sua tradução..." : "Salvando sua sessão..."} /> : null}
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
       {exitOpen ? (
         <ModalDialog busy={busy} onClose={() => setExitOpen(false)} titleId="leave-new-words-title">
@@ -530,6 +544,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
     {/* O MESMO elemento <audio> precisa existir em todas as telas: é ele que é
         destravado no gesto de "Começar" e reusado pelo autoplay de cada frase. */}
     <audio ref={audioRef} className="sr-only" preload="auto" />
+    {preparing ? <LoadingScene moment="enter" palette="palavras" title="Preparando suas frases..." note={`A IA está escolhendo palavras do seu nível e montando frases em ${languageName}. Costuma levar até 1 minuto.`} tips={PREPARING_TIPS} /> : <>
     <BackButton href="/palavras" label="Voltar às palavras" />
     <section className="flashcard-intro">
       <div className="flashcard-brand"><Sparkles aria-hidden="true" /></div>
@@ -556,11 +571,11 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
         ))}
       </div>
       <button className="green-button full-button" disabled={busy || preparing} onClick={() => void start()} type="button">
-        {busy || preparing ? <><Loader2 className="spin" /> Preparando suas frases...</> : <><Sparkles /> Começar com {size} palavra{size === 1 ? "" : "s"}</>}
+        {busy || preparing ? "Preparando suas frases..." : <><Sparkles /> Começar com {size} palavra{size === 1 ? "" : "s"}</>}
       </button>
       <p className="row-meta">Cada palavra vem em {SENTENCES_PER_WORD} frases curtas. Ouça, traduza e a IA corrige na hora.</p>
     </section>
-    {preparing ? <PreparingCards languageName={languageName} /> : null}
+    </>}
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
   </div>, false);
 

@@ -1,8 +1,8 @@
 "use client";
 
-import { Bot, GraduationCap, Loader2, Send, X } from "lucide-react";
+import { Bot, GraduationCap, Send, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LoadingDots } from "./LoadingDots";
+import { LoadingScene } from "./LoadingScene";
 import { IconBubble } from "./IconBubble";
 import { ModalDialog } from "./ModalDialog";
 import type { MessageFields } from "@/lib/learning/conversations";
@@ -184,8 +184,7 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
       <div className="teacher-chat-history" ref={historyRef}>
         {loadState.status === "loading" ? (
           <div className="teacher-chat-state">
-            <LoadingDots srText="Carregando conversa com o professor..." />
-            <span>Carregando conversa com o professor...</span>
+            <LoadingScene variant="inline" moment="enter" palette="chat" title="Carregando conversa com o professor..." />
           </div>
         ) : null}
 
@@ -242,7 +241,7 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
         }}
       >
         <button className="send-button" disabled={busy || !text.trim() || loadState.status !== "ready"} type="submit" aria-label="Enviar pergunta ao professor">
-          {busy ? <Loader2 className="spin" /> : <Send />}
+          <Send />
         </button>
         <textarea
           aria-label="Pergunta para o professor"

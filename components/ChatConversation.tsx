@@ -1,13 +1,13 @@
 "use client";
 
-import { Bot, CalendarDays, Check, ChevronRight, Clock3, GraduationCap, Languages, Loader2, LogOut, MessageCircle, Mic, MicOff, Send, Shuffle, Users, Volume2 } from "lucide-react";
+import { Bot, CalendarDays, Check, ChevronRight, Clock3, GraduationCap, Languages, LogOut, MessageCircle, Mic, MicOff, Send, Shuffle, Users, Volume2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { IconBubble } from "./IconBubble";
 import { CopyButton } from "./CopyButton";
 import { ConversationGoalProgress } from "./ConversationGoalProgress";
-import { LoadingDots } from "@/components/LoadingDots";
+import { LoadingScene } from "./LoadingScene";
 import { ModalDialog } from "./ModalDialog";
 import { Pill } from "./Pill";
 import { TranslationButton } from "./TranslationButton";
@@ -96,6 +96,9 @@ export function ChatConversation({
   );
   const [text, setText] = useState("");
   const [isSending, setIsSending] = useState(false);
+  // Espera de fechamento do treino com tela própria (diferente do isSending de
+  // mensagens, que usa a bolha de pensamento no feed).
+  const [closing, setClosing] = useState<"none" | "finish" | "abandon">("none");
   const [isListening, setIsListening] = useState(false);
   const [speechSupport, setSpeechSupport] = useState<"checking" | "supported" | "unsupported">("checking");
   const [error, setError] = useState<string | null>(null);
@@ -400,7 +403,7 @@ export function ChatConversation({
 
   async function finishConversation() {
     if (readOnly) return;
-    setIsSending(true);
+    setIsSending(true); setClosing("finish");
     setError(null);
 
     try {
@@ -416,13 +419,13 @@ export function ChatConversation({
     } catch (finishError) {
       setError(normalizeChatError(finishError, "Não foi possível finalizar a conversa agora. Tente novamente."));
     } finally {
-      setIsSending(false);
+      setIsSending(false); setClosing("none");
     }
   }
 
   async function abandonConversation() {
     if (readOnly) return;
-    setIsSending(true);
+    setIsSending(true); setClosing("abandon");
     setError(null);
 
     try {
@@ -435,7 +438,7 @@ export function ChatConversation({
     } catch (abandonError) {
       setError(normalizeChatError(abandonError, "Não foi possível abandonar o treino agora. Tente novamente."));
       setIsExitDialogOpen(false);
-      setIsSending(false);
+      setIsSending(false); setClosing("none");
     }
   }
 
@@ -701,7 +704,7 @@ export function ChatConversation({
             <div className="modal-actions">
               <button className="outline-button" disabled={isSending} onClick={() => setIsTopicDialogOpen(false)} type="button">Cancelar</button>
               <button className="green-button" disabled={isSending || !nextTopicTitle.trim()} onClick={changeTopic} type="button">
-                {isSending ? <Loader2 className="spin" /> : <Shuffle />} Confirmar
+                <Shuffle /> Confirmar
               </button>
             </div>
         </ModalDialog>
@@ -724,7 +727,7 @@ export function ChatConversation({
               Continuar treino
             </button>
             <button className="danger-button" disabled={isSending} onClick={abandonConversation} type="button">
-              {isSending ? <Loader2 className="spin" /> : <LogOut />} Abandonar treino
+              <LogOut /> Abandonar treino
             </button>
           </div>
         </ModalDialog>
@@ -747,11 +750,14 @@ export function ChatConversation({
               Continuar conversando
             </button>
             <button className="green-button" disabled={isSending} onClick={() => { setIsFinalizeDialogOpen(false); void finishConversation(); }} type="button">
-              {isSending ? <Loader2 className="spin" /> : <Check />} Finalizar
+              <Check /> Finalizar
             </button>
           </div>
         </ModalDialog>
       ) : null}
+
+      {closing === "abandon" ? <LoadingScene variant="overlay" moment="save" palette="chat" title="Encerrando o treino..." /> : null}
+      {closing === "finish" ? <LoadingScene variant="overlay" moment="think" palette="chat" title="Preparando seu resumo..." /> : null}
 
       <div className="chat-stack" ref={chatStackRef}>
         {messages.map((message) => {
@@ -808,11 +814,11 @@ export function ChatConversation({
           );
         })}
 
-        {isSending ? (
+        {isSending && closing === "none" ? (
           <div className="chat-row">
             <IconBubble Icon={Bot} />
             <div className="bubble ai typing-bubble">
-              <LoadingDots srText="A IA está preparando a próxima resposta..." />
+              <LoadingScene variant="inline" moment="think" palette="chat" title="" />
             </div>
           </div>
         ) : null}
@@ -830,7 +836,7 @@ export function ChatConversation({
 
         {selectedText ? <div className="selection-explainer" ref={selectionExplainerRef}>
           <div><span className="eyebrow">Trecho selecionado</span><strong>{selectedText}</strong></div>
-          <button className="outline-button" disabled={isExplaining} onClick={explainSelectedText} type="button">{isExplaining ? <Loader2 className="spin" /> : <Languages />} Explicar seleção</button>
+          <button className="outline-button" disabled={isExplaining} onClick={explainSelectedText} type="button"><Languages /> {isExplaining ? "Explicando..." : "Explicar seleção"}</button>
           {selectionExplanation ? <div className="selection-explanation" aria-live="polite">
             <p><strong>Tradução:</strong> {selectionExplanation.translation}</p>
             <p><strong>Gramática:</strong> {selectionExplanation.grammar}</p>
@@ -840,7 +846,6 @@ export function ChatConversation({
         </div> : null}
 
         {!readOnly ? <button className="green-button full-button" disabled={isSending} onClick={requestFinalize} type="button">
-          {isSending ? <Loader2 className="spin" /> : null}
           Finalizar conversa
         </button> : <div className="empty-state">Esta conversa foi finalizada e está disponível apenas para consulta.</div>}
 
@@ -882,7 +887,7 @@ export function ChatConversation({
             value={text}
           />
           <button className="send-button" disabled={isSending || !text.trim()} type="submit" aria-label="Enviar mensagem">
-            {isSending ? <Loader2 className="spin" /> : <Send />}
+            <Send />
           </button>
         </form> : null}
         {!readOnly ? (

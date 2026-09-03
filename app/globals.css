@@ -3114,5 +3114,106 @@ textarea:focus-visible,
 /* === Celebração de fim de onboarding === */
 .onboarding-celebration { display: grid; gap: 16px; text-align: center; padding-top: 30vh; }
 
-/* === Espera do preparo do deck (palavras novas) === */
-.preparing-cards { display: grid; gap: 12px; }
+/* === LoadingScene: telas de carregamento com o mascote camaleão ===
+   Vídeos gerados com hyperframes (assets/loading-anim), um por momento
+   (enter/save/think) × paleta de seção. O card mostra o vídeo; o resto da
+   cena (texto, pontos) usa os tokens da paleta escolhida via .palette-*. */
+.loading-scene.palette-brand { --sc-main: var(--brand); --sc-deep: var(--brand-deep); --sc-soft: var(--brand-soft); --sc-text: #417c00; --sc-hue: 0deg; --sc-sat: 1; }
+.loading-scene.palette-chat { --sc-main: var(--chat); --sc-deep: var(--chat-deep); --sc-soft: var(--chat-soft); --sc-text: #0d649a; --sc-hue: 105deg; --sc-sat: 1; }
+.loading-scene.palette-calendario { --sc-main: var(--calendario); --sc-deep: var(--calendario-deep); --sc-soft: var(--calendario-soft); --sc-text: #a35a00; --sc-hue: 297deg; --sc-sat: 1; }
+.loading-scene.palette-palavras { --sc-main: var(--palavras); --sc-deep: var(--palavras-deep); --sc-soft: var(--palavras-soft); --sc-text: #7443c9; --sc-hue: 175deg; --sc-sat: 1; }
+.loading-scene.palette-progresso { --sc-main: var(--progresso); --sc-deep: var(--progresso-deep); --sc-soft: var(--progresso-soft); --sc-text: #8a6a00; --sc-hue: 312deg; --sc-sat: 1; }
+.loading-scene.palette-neutral { --sc-main: var(--neutral); --sc-deep: var(--neutral-deep); --sc-soft: var(--neutral-soft); --sc-text: var(--neutral-deep); --sc-hue: 105deg; --sc-sat: 0.22; }
+/* Os pontinhos (LoadingDots) herdam a paleta da cena, não a da página */
+.loading-scene { --section: var(--sc-main); }
+
+.loading-scene.screen {
+  display: grid;
+  place-items: center;
+  min-height: 62svh;
+  padding: var(--space-8) var(--screen-pad);
+  background:
+    radial-gradient(130% 90% at 50% 0%, var(--sc-soft) 0%, transparent 62%),
+    transparent;
+}
+
+.loading-scene.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: grid;
+  place-items: center;
+  padding: var(--space-6);
+  background: rgba(31, 31, 31, 0.4);
+  backdrop-filter: blur(2px);
+  animation: pop-in .25s cubic-bezier(.34, 1.4, .64, 1) both;
+}
+
+.loading-scene-box {
+  display: grid;
+  justify-items: center;
+  gap: var(--space-3);
+  text-align: center;
+}
+.loading-scene.overlay .loading-scene-box {
+  width: min(88vw, 380px);
+  padding: var(--space-6) var(--space-5);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: 0 10px 0 rgba(31, 31, 31, 0.06), var(--shadow-soft);
+}
+
+.loading-scene-card {
+  position: relative;
+  display: block;
+  width: min(64vw, 300px);
+  aspect-ratio: 1;
+  overflow: hidden;
+  border-radius: var(--radius-lg);
+  background: var(--sc-soft);
+  box-shadow: 0 8px 0 color-mix(in srgb, var(--sc-deep) 14%, #fff), 0 18px 36px rgba(31, 31, 31, 0.1);
+}
+/* Mascote estático sob o vídeo: aparece na hora, o vídeo cobre ao carregar.
+   Recebe o mesmo hue-rotate dos vídeos para casar com a paleta da cena. */
+.loading-scene-still {
+  position: absolute;
+  inset: 12%;
+  width: 76%;
+  height: 76%;
+  object-fit: contain;
+  filter: hue-rotate(var(--sc-hue, 0deg)) saturate(var(--sc-sat, 1)) drop-shadow(0 10px 14px rgba(31, 31, 31, 0.14));
+}
+.loading-scene-video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity .24s ease;
+}
+.loading-scene-video.ready { opacity: 1; }
+
+.loading-scene-title { color: var(--sc-text); font-size: 18px; font-weight: 800; }
+.loading-scene-note,
+.loading-scene-tip {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+  max-width: 320px;
+}
+.loading-scene-tip { min-height: 19px; }
+
+.loading-scene.inline {
+  display: inline-grid;
+  justify-items: center;
+  gap: var(--space-2);
+  vertical-align: top;
+}
+.loading-scene.inline .loading-scene-card {
+  width: 120px;
+  border-radius: var(--radius-md);
+  box-shadow: 0 5px 0 color-mix(in srgb, var(--sc-deep) 14%, #fff), 0 10px 20px rgba(31, 31, 31, 0.08);
+}
+.loading-scene.inline .loading-scene-title { font-size: 14px; }
+.loading-scene.inline .loading-scene-note,
+.loading-scene.inline .loading-scene-tip { font-size: 12px; max-width: 220px; }

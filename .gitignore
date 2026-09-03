@@ -25,3 +25,10 @@ pnpm-debug.log*
 # SDD scratch (ledger, briefs, review packages)
 .superpowers/
 .playwright-mcp/
+
+# Artefatos de QA do Playwright (screenshots de verificação)
+test-results/
+
+# Artefatos regeneráveis dos projetos hyperframes (fonte em assets/loading-anim)
+assets/loading-anim/*/renders/
+assets/loading-anim/*/snapshots/

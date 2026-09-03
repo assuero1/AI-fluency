@@ -73,4 +73,12 @@ Todas CSS puras e neutralizadas por `@media (prefers-reduced-motion: reduce)`:
 
 - `components/LoadingDots.tsx` — 3 pontos saltitantes com `role="status"` e `srText` para leitores de tela.
 - `components/Skeleton.tsx` — variantes `line`/`card`/`circle`, `aria-hidden`.
-- `app/loading.tsx` + `app/{palavras,progresso,calendario}/loading.tsx` — loading raiz animado e skeletons por rota.
+- `app/loading.tsx` + `app/{palavras,progresso,calendario,chat,palavras/novas,palavras/treino}/loading.tsx` — telas de rota com `LoadingScene`.
+
+## LoadingScene (telas de carregamento com o mascote)
+
+- `components/LoadingScene.tsx` — tela dedicada por momento de espera: `moment="enter"` (entrar em módulo/sessão), `"save"` (salvando resultado) e `"think"` (esperando a IA). `variant="screen"` ocupa a área de conteúdo (rotas), `"overlay"` cobre a tela com fundo escurecido (salvar/entrar por clique) e `"inline"` é a versão compacta (bolha do chat, painéis).
+- **Paleta por seção** via `palette="brand|chat|palavras|calendario|progresso|neutral"`: o vídeo do camaleão é gerado por módulo (o mascote muda de cor via hue-rotate na paleta da seção) e texto/pontos usam `--sc-*` definidos em `globals.css` (`.palette-*`).
+- **Vídeos**: `public/loading/{moment}-{palette}.mp4` (11 arquivos, H.264 ~728 KB no total), cacheados pelo service worker (cache-first em `/loading/`). Fonte em `assets/loading-anim/{enter,save,think}` (projetos hyperframes; re-render com `npx hyperframes render --batch palettes.json`).
+- **Fallbacks**: `prefers-reduced-motion` ou vídeo ainda não carregado mostram o mascote estático (`public/loading/mascot.png`) com hue-rotate da paleta; `LoadingDots` e título dão o feedback textual.
+- **Regra**: esperas curtas de micro-interação (TTS, tradução, autosave, ações destrutivas) continuam com spinners/texto legado; `LoadingScene` fica para entrar em módulo/sessão, salvar resultado e esperar a IA.

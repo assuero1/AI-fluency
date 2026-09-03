@@ -1,12 +1,13 @@
 "use client";
 
-import { Check, Loader2, Mic, PartyPopper, Sparkles } from "lucide-react";
+import { Check, Mic, PartyPopper, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { languages } from "@/data/mock";
 import { DEFAULT_LANGUAGE_LEVEL, LANGUAGE_LEVELS, LanguageLevel } from "@/lib/learning/levels";
 import { BackButton } from "./BackButton";
+import { LoadingScene } from "./LoadingScene";
 import { LevelPills } from "./LevelPills";
 import { Pill } from "./Pill";
 import { burstConfetti } from "@/lib/client/confetti";
@@ -198,10 +199,10 @@ export function OnboardingForm({
 
         <div className="section">
           <button className="green-button full-button" disabled={isSaving} onClick={submit} type="button">
-            {isSaving ? <Loader2 className="spin" /> : null}
             {isSaving ? "Trocando idioma..." : `Usar ${selectedLanguage.title}`}
           </button>
         </div>
+        {isSaving ? <LoadingScene variant="overlay" moment="save" palette="neutral" title="Trocando idioma..." /> : null}
       </>
     );
   }
@@ -215,8 +216,9 @@ export function OnboardingForm({
         <h1 className="title">Perfil pronto, {firstName}!</h1>
         <p className="subtitle">Em 1 minuto você faz sua primeira conversa — a IA ajusta tudo ao seu nível.</p>
         <button className="green-button full-button" disabled={startingChat} onClick={() => void startFirstConversation()} type="button">
-          {startingChat ? <Loader2 className="spin" /> : <Mic />} Fazer minha primeira conversa
+          <Mic /> Fazer minha primeira conversa
         </button>
+        {startingChat ? <LoadingScene variant="overlay" moment="enter" palette="neutral" title="Preparando sua primeira conversa..." /> : null}
         <Link className="outline-button full-button" href="/">Explorar o app</Link>
       </section>
     );
@@ -363,11 +365,11 @@ export function OnboardingForm({
             </button>
           ) : (
             <button className="green-button full-button" disabled={isSaving || !name.trim()} onClick={submit} type="button">
-              {isSaving ? <Loader2 className="spin" /> : null}
               {isSaving ? "Salvando perfil..." : "Salvar e continuar"}
             </button>
           )}
         </div>
+        {isSaving ? <LoadingScene variant="overlay" moment="save" palette="neutral" title="Salvando seu perfil..." /> : null}
       </div>
     </>
   );

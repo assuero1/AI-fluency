@@ -1,6 +1,6 @@
 "use client";
 
-import { Brain, Check, Clock3, Layers3, Loader2, MessageCircle, Mic, MicOff, RotateCcw, Sparkles } from "lucide-react";
+import { Brain, Check, Clock3, Layers3, MessageCircle, Mic, MicOff, RotateCcw, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { compareAnswerForCard } from "@/lib/learning/flashcard-answer";
@@ -10,6 +10,7 @@ import { releaseMicForPlayback } from "@/lib/learning/speech";
 import { playSound } from "@/lib/client/ui-sound";
 import { vibrate } from "@/lib/client/haptics";
 import { BackButton } from "./BackButton";
+import { LoadingScene } from "./LoadingScene";
 import { ModalDialog } from "./ModalDialog";
 import { Pill } from "./Pill";
 import { SessionCelebration } from "./SessionCelebration";
@@ -55,6 +56,9 @@ export function FlashcardTrainer() {
   const [result, setResult] = useState<FlashcardPracticeResult | null>(null);
   const [exitConfirmationOpen, setExitConfirmationOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  // Esperas com tela própria: "boot" = montando o treino (enter), "save" =
+  // gravando tentativa/conclusão (save). Demais busy seguem sem cena.
+  const [wait, setWait] = useState<"none" | "boot" | "save">("none");
   const [error, setError] = useState("");
   const [dailyQueue, setDailyQueue] = useState<DailyQueueSummary | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
@@ -127,7 +131,7 @@ export function FlashcardTrainer() {
   }, [undoState]);
 
   async function start(queueKind: FlashcardQueueKind) {
-    setBusy(true); setError("");
+    setBusy(true); setWait("boot"); setError("");
     try {
       const body = queueKind === "custom" ? { queueKind, criterion, count } : { queueKind };
       const response = await fetch("/api/practice/flashcards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -136,7 +140,7 @@ export function FlashcardTrainer() {
       const initialQueue = createFlashcardQueue(data.cards);
       setSessionId(data.sessionId); setCompletionId(crypto.randomUUID()); setCards(data.cards); setQueue(initialQueue); setCurrentItem(selectNextQueueItem(initialQueue, 0)); setLanguageCode(data.languageCode ?? "es"); setLanguageName(data.languageName ?? "idioma estudado"); setAdapted(data.adapted === true); setResumable(null); setAnswers([]); setResult(null); resetAttempt();
     } catch (startError) { setError(startError instanceof Error ? startError.message : "Não foi possível montar o treino."); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setWait("none"); }
   }
 
   function changeQuota(delta: number) {
@@ -179,7 +183,7 @@ export function FlashcardTrainer() {
 
   async function grade(difficulty: "hard" | "easy" | null) {
     if (!revealed || busy || !currentItem) return;
-    setBusy(true); setError("");
+    setBusy(true); setWait("save"); setError("");
     const clientAttemptId = currentAttemptId || crypto.randomUUID();
     setCurrentAttemptId(clientAttemptId);
     let persisted: FlashcardAnswer;
@@ -189,13 +193,13 @@ export function FlashcardTrainer() {
       if (!attemptResponse.ok || !attemptData.ok || !attemptData.attempt) throw new Error(attemptData.error ?? "Não foi possível salvar a tentativa.");
       persisted = attemptData.attempt;
     } catch (attemptError) {
-      setError(attemptError instanceof Error ? attemptError.message : "Não foi possível salvar a tentativa."); setBusy(false); return;
+      setError(attemptError instanceof Error ? attemptError.message : "Não foi possível salvar a tentativa."); setBusy(false); setWait("none"); return;
     }
     const nextAnswers = [...answers, persisted];
     const nextQueue = advanceFlashcardQueue(queue, currentItem, persisted.rating, nextAnswers.length);
     const nextItem = selectNextQueueItem(nextQueue, nextAnswers.length);
     if (nextItem) {
-      setAnswers(nextAnswers); setQueue(nextQueue); setCurrentItem(nextItem); setUndoState({ expiresAt: Date.now() + 5_000 }); setBusy(false); resetAttempt(); return;
+      setAnswers(nextAnswers); setQueue(nextQueue); setCurrentItem(nextItem); setUndoState({ expiresAt: Date.now() + 5_000 }); setBusy(false); setWait("none"); resetAttempt(); return;
     }
     try {
       const response = await fetch("/api/practice/flashcards/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, clientCompletionId: completionId, answers: nextAnswers }) });
@@ -206,7 +210,7 @@ export function FlashcardTrainer() {
       }
       setAnswers(nextAnswers); setResult(data as FlashcardPracticeResult); setResumable(null);
     } catch (finishError) { setError(finishError instanceof Error ? finishError.message : "Não foi possível concluir o treino."); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setWait("none"); }
   }
 
   async function undoLast() {
@@ -251,7 +255,7 @@ export function FlashcardTrainer() {
   }
 
   async function startRetraining(mode: "wrong" | "difficult") {
-    setBusy(true); setError("");
+    setBusy(true); setWait("boot"); setError("");
     try {
       const response = await fetch("/api/practice/flashcards/retrain", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceSessionId: sessionId, mode }) });
       const data = await response.json() as { ok?: boolean; error?: string; sessionId?: string; cards?: Flashcard[]; languageCode?: string; languageName?: string; adapted?: boolean };
@@ -259,7 +263,7 @@ export function FlashcardTrainer() {
       const initialQueue = createFlashcardQueue(data.cards);
       setSessionId(data.sessionId); setCompletionId(crypto.randomUUID()); setCards(data.cards); setQueue(initialQueue); setCurrentItem(selectNextQueueItem(initialQueue, 0)); setLanguageCode(data.languageCode ?? languageCode); setLanguageName(data.languageName ?? languageName); setAdapted(data.adapted === true); setAnswers([]); setResult(null); resetAttempt();
     } catch (retrainError) { setError(retrainError instanceof Error ? retrainError.message : "Não foi possível iniciar o retreino."); }
-    finally { setBusy(false); }
+    finally { setBusy(false); setWait("none"); }
   }
 
   function toggleSpeech() {
@@ -304,6 +308,7 @@ export function FlashcardTrainer() {
         <MessageCircle aria-hidden="true" size={16} /> Usar palavras em conversa
       </Link>
       <Link className="outline-button full-button" href="/palavras">Voltar às palavras</Link>
+      {wait === "boot" ? <LoadingScene variant="overlay" moment="enter" palette="palavras" title="Montando seu treino..." /> : null}
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
     </section>
   </div>;
@@ -349,7 +354,7 @@ export function FlashcardTrainer() {
         </div>}
       </section>}
       {undoState ? <p className="speech-status">Avaliação registrada. <button className="outline-button" disabled={busy} onClick={() => void undoLast()} type="button">Desfazer</button></p> : null}
-      {busy ? <p className="speech-status"><Loader2 className="spin" /> Salvando resultado...</p> : null}{error ? <p className="inline-error" role="alert">{error}</p> : null}
+      {wait === "save" ? <LoadingScene variant="overlay" moment="save" palette="palavras" title="Salvando resultado..." /> : null}{error ? <p className="inline-error" role="alert">{error}</p> : null}
       {exitConfirmationOpen ? (
         <ModalDialog busy={busy} onClose={() => setExitConfirmationOpen(false)} titleId="leave-training-title">
           <h2 className="section-title" id="leave-training-title">Sair do treino?</h2>
@@ -382,7 +387,7 @@ export function FlashcardTrainer() {
       <h2 className="section-title">Fila de hoje</h2>
       {dailyQueue.sessionCardCount > 0 ? <>
         <p className="row-meta">{dailyQueue.dueCount} revisões + {dailyQueue.newCount} novas · ~{dailyQueue.estimatedMinutes} min{dailyQueue.remainingCount > 0 ? ` · +${dailyQueue.remainingCount} continuam depois` : ""}</p>
-        <button className="green-button full-button" disabled={busy} onClick={() => void start("daily")} type="button">{busy ? <Loader2 className="spin" /> : <Brain />} Começar revisão de hoje</button>
+        <button className="green-button full-button" disabled={busy} onClick={() => void start("daily")} type="button"><Brain /> Começar revisão de hoje</button>
       </> : <p className="row-meta">{dailyQueue.introducedToday > 0 ? "Fila de hoje concluída. Amanhã há mais — ou pratique abaixo." : "Nada na fila de hoje. Converse para salvar palavras novas ou monte uma sessão custom."}</p>}
       <div className="top-row row-meta">
         <span>Novas por dia</span>
@@ -400,8 +405,9 @@ export function FlashcardTrainer() {
       <section className="section"><h2 className="section-title">Quais palavras priorizar?</h2><p className="row-meta">Palavras com revisão vencida sempre entram primeiro; o critério ordena o restante.</p><div className="flashcard-choice-grid"><button className={criterion === "least_used" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("least_used")} type="button"><Layers3 /><div><strong>Menos usadas</strong><span>Reforça palavras com pouca prática</span></div></button><button className={criterion === "oldest" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("oldest")} type="button"><Clock3 /><div><strong>Há mais tempo sem usar</strong><span>Recupera vocabulário esquecido</span></div></button></div></section>
       <section className="section"><div className="top-row"><h2 className="section-title">Quantidade de palavras</h2><strong>{count}</strong></div><input aria-label="Quantidade de palavras" className="flashcard-range" min="2" max="30" onChange={(event) => setCount(Number(event.target.value))} step="1" type="range" value={count} /><div className="top-row row-meta"><span>2</span><span>30</span></div></section>
       <div className="soft-card"><Sparkles aria-hidden="true" size={24} /><div><strong>Como funciona</strong><p className="row-meta">Tente lembrar antes de ver a resposta — o treino agenda a próxima revisão pelo seu acerto.</p></div></div>
-      <button className="green-button full-button" disabled={busy} onClick={() => void start("custom")} type="button">{busy ? <Loader2 className="spin" /> : <Brain />} Montar treino com {count} palavras</button>
+      <button className="green-button full-button" disabled={busy} onClick={() => void start("custom")} type="button"><Brain /> Montar treino com {count} palavras</button>
     </> : null}
+    {wait === "boot" ? <LoadingScene variant="overlay" moment="enter" palette="palavras" title="Montando seu treino..." /> : null}
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
   </div>;
 }

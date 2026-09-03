@@ -1,7 +1,8 @@
 "use client";
 
-import { Loader2, MessageCircle, Target, Users } from "lucide-react";
+import { MessageCircle, Target, Users } from "lucide-react";
 import { useState } from "react";
+import { LoadingScene } from "./LoadingScene";
 import { ModalDialog } from "./ModalDialog";
 
 export type ConversationStartDraft = {
@@ -154,10 +155,10 @@ export function ConversationSetupDialog({ busy, draft, onCancel, onConfirm }: Co
           onClick={confirm}
           type="button"
         >
-          {busy ? <Loader2 className="spin" /> : null}
           Começar prática
         </button>
       </div>
+      {busy ? <LoadingScene variant="overlay" moment="enter" palette="chat" title="Preparando sua conversa..." /> : null}
     </ModalDialog>
   );
 }

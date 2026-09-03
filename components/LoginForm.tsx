@@ -3,6 +3,7 @@
 import { useActionState, useState } from "react";
 import { login, requestPasswordReset, signup, type AuthFormState } from "@/app/login/actions";
 import { AuthMascot } from "@/components/AuthMascot";
+import { LoadingScene } from "@/components/LoadingScene";
 
 type Mode = "login" | "signup" | "reset";
 
@@ -107,6 +108,7 @@ export function LoginForm() {
           <button type="submit" disabled={pending} className="green-button full-button auth-submit">
             {pending ? "Aguarde..." : mode === "login" ? "Entrar" : mode === "signup" ? "Criar conta" : "Enviar link"}
           </button>
+          {pending ? <LoadingScene variant="overlay" moment="enter" palette="neutral" title={mode === "login" ? "Entrando na sua conta..." : "Criando sua conta..."} /> : null}
         </form>
 
         <div className="auth-links">

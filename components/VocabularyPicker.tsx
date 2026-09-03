@@ -1,6 +1,7 @@
 "use client";
 
-import { BookOpen, Check, Loader2 } from "lucide-react";
+import { BookOpen, Check } from "lucide-react";
+import { LoadingScene } from "./LoadingScene";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { VocabularyCandidateGroup } from "@/lib/learning/vocabulary-selection";
@@ -68,7 +69,7 @@ export function VocabularyPicker({ conversationId }: {
   return <section className="section vocabulary-picker">
     <h2 className="section-title">Escolha o que vai para seu vocabulário</h2>
     <p className="row-meta">Aqui aparecem apenas palavras que ainda não estão no seu vocabulário. Nada é salvo automaticamente.</p>
-    {candidateGroups === null ? <div className="empty-state"><Loader2 className="spin" /> Analisando formas relacionadas...</div> : null}
+    {candidateGroups === null ? <div className="empty-state"><LoadingScene variant="inline" moment="think" palette="palavras" title="Analisando formas relacionadas..." /></div> : null}
     {candidateGroups?.length === 0 && !message ? <div className="empty-state">Nenhuma palavra nova disponível nesta conversa.</div> : null}
     {(() => {
       const items = candidateGroups ?? [];
@@ -95,8 +96,9 @@ export function VocabularyPicker({ conversationId }: {
       </div>;
     })()}
     <button className="green-button full-button" disabled={candidateGroups === null || saving || selected.size === 0} onClick={save} type="button">
-      {saving ? <Loader2 className="spin" /> : <BookOpen />} Salvar {selected.size} selecionada(s)
+      <BookOpen /> Salvar {selected.size} selecionada(s)
     </button>
+    {saving ? <LoadingScene variant="overlay" moment="save" palette="palavras" title="Salvando palavras..." /> : null}
     {message ? <p className="row-meta" aria-live="polite">{message}</p> : null}
   </section>;
 }

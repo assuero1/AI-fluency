@@ -1,8 +1,9 @@
 "use client";
 
-import { ArrowRight, Loader2 } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { LoadingScene } from "./LoadingScene";
 
 export function FocusPracticeButton() {
   const router = useRouter();
@@ -27,10 +28,11 @@ export function FocusPracticeButton() {
   return (
     <div className="focus-practice-wrap">
       <button className="dark-button full-button" disabled={loading} onClick={start} type="button">
-        {loading ? <Loader2 className="spin" /> : <ArrowRight />}
+        <ArrowRight />
         Treinar foco da semana
       </button>
       {error ? <p className="practice-error" role="alert">{error}</p> : null}
+      {loading ? <LoadingScene variant="overlay" moment="enter" palette="progresso" title="Preparando o treino de foco..." /> : null}
     </div>
   );
 }
