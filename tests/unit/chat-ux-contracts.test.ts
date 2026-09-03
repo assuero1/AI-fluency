@@ -25,8 +25,9 @@ describe("chat ux contracts", () => {
   it("asks for confirmation before finalizing the conversation", () => {
     const chat = read("components/ChatConversation.tsx");
     expect(chat).toContain("const [isFinalizeDialogOpen, setIsFinalizeDialogOpen] = useState(false);");
-    // O botão da tela só abre o diálogo; a ação final acontece na confirmação.
-    expect(chat).toContain('onClick={() => setIsFinalizeDialogOpen(true)}');
+    // O botão da tela só abre o diálogo (via requestFinalize); a ação final acontece na confirmação.
+    expect(chat).toContain("const requestFinalize = () => setIsFinalizeDialogOpen(true);");
+    expect(chat).toContain("onClick={requestFinalize}");
     expect(chat).toContain("Finalizar e ver o resumo?");
     expect(chat).toContain("void finishConversation()");
   });
