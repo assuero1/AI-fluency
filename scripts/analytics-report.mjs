@@ -2,8 +2,6 @@
 // push_subscriptions em memória (base pequena, sem SQL avançado).
 // Uso: node scripts/analytics-report.mjs --env .env.local
 // Métricas e alvos: docs/ANALYTICS_ENGAJAMENTO.md
-import fs from "node:fs";
-import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { readEnv, required } from "./qa-env.mjs";
 
