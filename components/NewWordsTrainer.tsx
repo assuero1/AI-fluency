@@ -296,9 +296,8 @@ export function NewWordsTrainer() {
 
   async function submitTranslation(event?: FormEvent) {
     event?.preventDefault();
-    // Som de confirmação no gesto: o AudioContext só destrava dentro do gesto
-    // do usuário, então toca aqui (antes de qualquer await) e só no Traduzir.
-    playSound("button");
+    // O clique do botão já toca via ButtonFeedback (global); o destravamento
+    // do AudioContext acontece nesse mesmo gesto do usuário.
     if (!current || judgment || busy || !input.trim()) return;
     recognitionRef.current?.stop();
     const translation = input.trim();

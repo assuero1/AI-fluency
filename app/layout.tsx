@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Nunito } from "next/font/google";
 import "./globals.css";
+import { ButtonFeedback } from "@/components/ButtonFeedback";
 import { PwaRegistration } from "@/components/PwaRegistration";
 
 const nunito = Nunito({
@@ -37,6 +38,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="pt-BR">
       <body className={nunito.variable}>
         {children}
+        <ButtonFeedback />
         <PwaRegistration />
       </body>
     </html>
