@@ -8,6 +8,7 @@ import { WordFields, WordSenseFields } from "./conversations";
 import { addLearnedWordsToDailyFeedback, toDateKey } from "./feedback";
 import { resolveTimeZone } from "./tz";
 import { getActiveLanguageProfile, getSessionUser } from "./profile";
+import { evaluateAchievements } from "./achievements";
 import { canonicalVocabularyKey, normalizeVocabularyToken } from "./vocabulary-selection";
 import { canonicalSenseKey, createWordSense, listSensesByWordIds, matchesCanonicalSenseKey, nextSenseOrderFromList, updateWordSense } from "./word-senses";
 import { applyReviewToSense as applySenseReview, type FlashcardAttemptFields, type FlashcardFields, type PracticeSessionFields } from "./flashcards";
@@ -583,6 +584,10 @@ async function completeNewWordsPracticeUnlocked(sessionId: string, clientComplet
     score, wordCount: words.length, sentenceCount: sentences.length,
     correctSentences, firstAttemptCorrect, newSensesAdded, durationSeconds, words
   };
+
+  // Conquistas: best-effort, avaliadas ANTES de persistir o focus (o retry
+  // idempotente reconstrói o resultado do que foi persistido).
+  result.achievementsUnlocked = await evaluateAchievements(user.id, { newWordsLearned: words.length }).catch(() => []);
 
   const endedAt = new Date().toISOString();
   await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, {

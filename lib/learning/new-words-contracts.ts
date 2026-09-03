@@ -57,6 +57,7 @@ export type NewWordsSessionResult = {
   newSensesAdded: number;
   durationSeconds: number;
   words: NewWordPreview[];
+  achievementsUnlocked?: Array<{ key: string; title: string; description: string }>;
 };
 
 /** Sessão em preparação: o deck ainda está sendo gerado; o app faz polling do GET. */

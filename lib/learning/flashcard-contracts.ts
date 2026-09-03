@@ -79,6 +79,7 @@ export type FlashcardPracticeResult = {
   durationSeconds: number;
   difficultWords: number;
   slowWords: number;
+  achievementsUnlocked?: Array<{ key: string; title: string; description: string }>;
 };
 
 export type DailyQueueSummary = {

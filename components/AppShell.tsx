@@ -1,3 +1,4 @@
+import { AchievementToast } from "./AchievementToast";
 import { BottomNav, NavKey } from "./BottomNav";
 
 export type SectionKey = "chat" | "palavras" | "novas" | "calendario" | "progresso" | "neutral";
@@ -17,6 +18,7 @@ export function AppShell({ children, activeNav, noNav = false, section }: AppShe
       <main className={shellClass}>
         <div className={noNav ? "screen no-nav" : "screen"} id="main-content" tabIndex={-1}>{children}</div>
         {!noNav ? <BottomNav active={activeNav} /> : null}
+        <AchievementToast />
       </main>
     </>
   );

@@ -199,6 +199,9 @@ export function FlashcardTrainer() {
       const response = await fetch("/api/practice/flashcards/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, clientCompletionId: completionId, answers: nextAnswers }) });
       const data = await response.json() as ({ ok?: boolean; error?: string } & Partial<FlashcardPracticeResult>);
       if (!response.ok || !data.ok || typeof data.score !== "number") throw new Error(data.error ?? "Não foi possível concluir o treino.");
+      if (Array.isArray(data.achievementsUnlocked) && data.achievementsUnlocked.length) {
+        sessionStorage.setItem("ai-fluency:unlocked-achievements", JSON.stringify(data.achievementsUnlocked));
+      }
       setAnswers(nextAnswers); setResult(data as FlashcardPracticeResult); setResumable(null);
     } catch (finishError) { setError(finishError instanceof Error ? finishError.message : "Não foi possível concluir o treino."); }
     finally { setBusy(false); }

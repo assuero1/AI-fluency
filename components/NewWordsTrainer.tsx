@@ -388,6 +388,9 @@ export function NewWordsTrainer() {
       const response = await fetch("/api/practice/new-words/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, clientCompletionId: completionId }) });
       const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string } & Partial<NewWordsSessionResult>;
       if (!response.ok || !data.ok || typeof data.score !== "number") throw new Error(data.error ?? "Não foi possível concluir a sessão.");
+      if (Array.isArray(data.achievementsUnlocked) && data.achievementsUnlocked.length) {
+        sessionStorage.setItem("ai-fluency:unlocked-achievements", JSON.stringify(data.achievementsUnlocked));
+      }
       prefetchRef.current?.dispose();
       setResult(data as NewWordsSessionResult); setCurrent(null); setResumable(null);
     } catch (finishError) { setError(finishError instanceof Error ? finishError.message : "Não foi possível concluir a sessão."); }

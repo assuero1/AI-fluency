@@ -6,6 +6,8 @@ import { getEnv } from "@/lib/env";
 import { LearningStateError } from "./access";
 import { WordFields, WordSenseFields } from "./conversations";
 import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser } from "./profile";
+import { evaluateAchievements } from "./achievements";
+import type { FlashcardPracticeResult } from "./flashcard-contracts";
 import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, summarizeDailyQueue } from "./daily-queue";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
 import { isRatingCorrect, rebuildFlashcardQueue, inferRecallRating, resolveBinaryRating, resolveDifficultyRating } from "./flashcard-queue";
@@ -845,7 +847,10 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
   const averageResponseTimeMs = presentationCount ? Math.round(validatedAnswers.reduce((sum, answer) => sum + answer.responseTimeMs, 0) / presentationCount) : 0;
   const difficultWords = [...results.keys()].filter((wordId) => words.find((word) => word.id === wordId)?.fields.review_state === "difficult").length;
   const slowWords = new Set(validatedAnswers.filter((answer) => answer.responseTimeMs >= 8_000).flatMap((answer) => answer.wordIds)).size;
-  const result = { score, correctCards, wrongCards: uniqueCardCount - correctCards, totalCards: uniqueCardCount, reviewedWords: results.size, uniqueCardCount, presentationCount, firstAttemptCorrect, recoveredCards, firstAttemptAccuracy, eventualRecallAccuracy: score, productionAccuracy: accuracyFor(["native_to_target", "cloze"]), comprehensionAccuracy: accuracyFor(["target_to_native"]), listeningAccuracy: accuracyFor(["listening"]), averageResponseTimeMs, durationSeconds, difficultWords, slowWords };
+  const result: FlashcardPracticeResult = { score, correctCards, wrongCards: uniqueCardCount - correctCards, totalCards: uniqueCardCount, reviewedWords: results.size, uniqueCardCount, presentationCount, firstAttemptCorrect, recoveredCards, firstAttemptAccuracy, eventualRecallAccuracy: score, productionAccuracy: accuracyFor(["native_to_target", "cloze"]), comprehensionAccuracy: accuracyFor(["target_to_native"]), listeningAccuracy: accuracyFor(["listening"]), averageResponseTimeMs, durationSeconds, difficultWords, slowWords };
+  // Conquistas: best-effort, avaliadas ANTES de persistir o focus (o retry
+  // idempotente reconstrói o resultado do que foi persistido).
+  result.achievementsUnlocked = await evaluateAchievements(user.id, { bestFlashcardScore: Math.round(score) }).catch(() => []);
   await client.createEvent(user.id, "flashcard_practice_completed", {
     session_id: session.id, correct_cards: correctCards, total_cards: uniqueCardCount, presentation_count: presentationCount, score,
     strong_word_ids: [...results].filter(([, value]) => value.correct > value.wrong).map(([id]) => id),

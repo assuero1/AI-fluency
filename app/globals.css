@@ -2852,3 +2852,12 @@ textarea:focus-visible,
 @media (min-height: 760px) {
   .auth-mascot { width: 184px; }
 }
+
+/* === Conquistas: toast global e itens bloqueados === */
+.achievement-toast { position: fixed; z-index: 9998; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 12px; align-items: center; width: min(92vw, 380px); padding: 14px; border: 2px solid var(--line); border-radius: 18px; background: #fff; box-shadow: 0 6px 0 rgba(31, 25, 16, .12); animation: pop-in .45s cubic-bezier(.34, 1.4, .64, 1) both; }
+.achievement-toast .flashcard-trophy { margin: 0; width: 44px; height: 44px; border-radius: 14px; display: grid; place-items: center; flex: none; }
+.achievement-locked { opacity: .55; }
+.milestone-modal { text-align: center; }
+.home-today { background: var(--section-soft); border-radius: 24px; }
+.quest-complete { opacity: .75; }
+.nav-badge { position: absolute; top: 2px; right: 22%; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #e0524a; color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; }

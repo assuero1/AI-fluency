@@ -23,6 +23,7 @@ import { normalizeStoredInteractionMode } from "./chat-contracts";
 import { listSensesByWordIds } from "./word-senses";
 import type { PracticeSessionFields } from "./flashcards";
 import { dateKeyInTimeZone, DEFAULT_TIMEZONE, resolveTimeZone } from "./tz";
+import { evaluateAchievements } from "./achievements";
 
 type ConversationSummary = {
   correction_score?: number;
@@ -141,6 +142,9 @@ async function finalizeConversation(conversationId: string, options: { pausedMs?
     new_words_count: dailyFeedback.fields.new_words_count
   });
 
+  // Conquistas: best-effort; nunca derrubam a conclusão da conversa.
+  const achievementsUnlocked = await evaluateAchievements(context.conversation.fields.user_id).catch(() => []);
+
   const completionSummary = buildCompletionSummary(context, completedConversation, dailyFeedback, [], words);
   if (completionCache.size >= MAX_COMPLETION_CACHE_ENTRIES) {
     const oldestKey = completionCache.keys().next().value;
@@ -153,6 +157,7 @@ async function finalizeConversation(conversationId: string, options: { pausedMs?
     dailyFeedback,
     words: conversationWords,
     corrections: context.corrections,
+    achievementsUnlocked,
     redirectTo: `/resumo?conversationId=${encodeURIComponent(context.conversation.id)}`
   };
 }

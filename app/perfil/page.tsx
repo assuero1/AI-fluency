@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CalendarDays } from "lucide-react";
+import { CalendarDays, Trophy } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { LogoutButton } from "@/components/LogoutButton";
 import { ProfilePreferences } from "@/components/ProfilePreferences";
@@ -20,6 +20,9 @@ export default async function ProfilePage() {
         <Link className="outline-button full-button" href="/calendario"><CalendarDays /> Calendário</Link>
       </div>
       <div className="px-4 pb-6">
+        <Link className="outline-button full-button" href="/perfil/conquistas">
+          <Trophy aria-hidden="true" /> Conquistas
+        </Link>
         <LogoutButton />
       </div>
     </AppShell>
