@@ -20,6 +20,7 @@ export function StartFlashcardsWithWords({ wordIds, label, disabled }: StartFlas
       const response = await fetch("/api/practice/flashcards", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ wordIds }) });
       const data = await response.json() as CreatedSession;
       if (!response.ok || !data.ok || !data.sessionId) throw new Error(data.error ?? "Não foi possível montar o treino.");
+      void fetch("/api/events", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event_name: "cta_clicked", payload: { cta: "review_cards" } }) }).catch(() => undefined);
       // Handoff 1-toque: o trainer encontra esta sessão no mount e entra direto.
       sessionStorage.setItem("ai-fluency:pending-flashcards", JSON.stringify(data));
       router.push("/palavras/treino");

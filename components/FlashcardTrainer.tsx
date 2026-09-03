@@ -293,7 +293,7 @@ export function FlashcardTrainer() {
       <section className="flashcard-retrain" aria-label="Retreinos">
         <strong>Praticar novamente</strong>
         <div><button className="outline-button" disabled={busy} onClick={() => void startRetraining("wrong")} type="button">Somente erradas</button><button className="outline-button" disabled={busy} onClick={() => void startRetraining("difficult")} type="button">Somente difíceis</button></div>
-        <Link className="outline-button" href={`/chat?flashcardSession=${encodeURIComponent(sessionId)}`}>Usar palavras em conversa</Link>
+        <Link className="outline-button" href={`/chat?flashcardSession=${encodeURIComponent(sessionId)}`} onClick={() => { void fetch("/api/events", { method: "POST", keepalive: true, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event_name: "cta_clicked", payload: { cta: "chat_from_flashcards" } }) }).catch(() => undefined); }}>Usar palavras em conversa</Link>
       </section>
       <button className="green-button full-button" onClick={() => { setCards([]); setResult(null); void loadOverview(); }} type="button"><RotateCcw /> Novo treino</button>
       <Link className="outline-button full-button" href="/palavras">Voltar às palavras</Link>
