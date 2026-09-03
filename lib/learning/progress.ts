@@ -118,7 +118,15 @@ export async function getProgressData() {
     focus,
     errors,
     streak: practiceStreak.streak,
-    activityDays: practice.activityDays
+    activityDays: practice.activityDays,
+    charts: {
+      fluency: scopedFeedbacks
+        .map((feedback) => ({ date: dateKey(feedback.fields.date || feedback.fields.created_at, timeZone), value: Number(feedback.fields.fluency_score ?? 0) }))
+        .filter((point) => point.value > 0 && point.date)
+        .slice(0, 30)
+        .reverse(),
+      weeklyWords: buildWeeklyWords(scopedWords, timeZone, now)
+    }
   };
 }
 
@@ -256,6 +264,31 @@ function average(values: number[]) {
   const valid = values.filter((value) => Number.isFinite(value) && value > 0);
   if (!valid.length) return 0;
   return Math.round((valid.reduce((sum, value) => sum + value, 0) / valid.length) * 10) / 10;
+}
+
+// Palavras novas por semana: 8 baldes de 7 dias terminando hoje (fuso local).
+function buildWeeklyWords(words: TeableRecord<WordFields>[], timeZone: string, now: Date) {
+  const today = new Date(`${dateKeyInTimeZone(now, timeZone)}T12:00:00Z`);
+  const weeks = Array.from({ length: 8 }, (_, index) => {
+    const end = new Date(today);
+    end.setUTCDate(end.getUTCDate() - index * 7);
+    const start = new Date(end);
+    start.setUTCDate(start.getUTCDate() - 6);
+    return {
+      label: new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "short", timeZone: "UTC" }).format(start),
+      start: start.getTime(),
+      end: end.getTime() + 24 * 60 * 60 * 1000 - 1,
+      value: 0
+    };
+  }).reverse();
+  for (const word of words) {
+    if (!word.fields.first_used_at) continue;
+    const time = new Date(word.fields.first_used_at).getTime();
+    if (Number.isNaN(time)) continue;
+    const week = weeks.find((candidate) => time >= candidate.start && time <= candidate.end);
+    if (week) week.value += 1;
+  }
+  return weeks.map(({ label, value }) => ({ label, value }));
 }
 
 function dateKey(value: string | undefined, timeZone: string) {

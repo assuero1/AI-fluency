@@ -7,6 +7,7 @@ import { MetricGrid } from "@/components/MetricGrid";
 import { Pill } from "@/components/Pill";
 import { ScreenHeader } from "@/components/ScreenHeader";
 import { getProgressData } from "@/lib/learning/progress";
+import { MiniChart } from "@/components/MiniChart";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 
 export const dynamic = "force-dynamic";
@@ -75,6 +76,29 @@ export default async function ProgressPage() {
       <section className="section">
         <MetricGrid metrics={metrics} />
       </section>
+
+      {progress.charts.fluency.length > 1 ? (
+        <section className="section">
+          <h2 className="section-title">Fluidez — últimos feedbacks</h2>
+          <MiniChart
+            ariaLabel={`Gráfico de fluência dos últimos ${progress.charts.fluency.length} feedbacks`}
+            labels={progress.charts.fluency.map((point) => point.date)}
+            tone="primary"
+            values={progress.charts.fluency.map((point) => point.value)}
+          />
+        </section>
+      ) : null}
+      {progress.charts.weeklyWords.some((week) => week.value > 0) ? (
+        <section className="section">
+          <h2 className="section-title">Palavras novas por semana</h2>
+          <MiniChart
+            ariaLabel="Palavras novas por semana nas últimas 8 semanas"
+            labels={progress.charts.weeklyWords.map((week) => week.label)}
+            tone="info"
+            values={progress.charts.weeklyWords.map((week) => week.value)}
+          />
+        </section>
+      ) : null}
 
       <section className="section">
         <h2 className="section-title">Pontos fortes</h2>
