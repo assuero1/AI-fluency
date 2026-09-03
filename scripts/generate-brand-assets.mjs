@@ -1,8 +1,9 @@
-// Gera os assets de marca do Talkkito a partir das imagens originais do usuário em logo/.
+// Gera os assets de marca do Talkito a partir das imagens originais do usuário em logo/.
 // Uso: node scripts/generate-brand-assets.mjs
 //
-// Saídas em public/: mascot.png (recorte transparente), icon-192/512.png,
-// icon-maskable-192/512.png, apple-touch-icon.png e icon.svg (raster embutido).
+// Saídas em public/: mascot.png (recorte transparente), logo-talkito.png (wordmark
+// extraído do logo completo), icon-192/512.png, icon-maskable-192/512.png,
+// apple-touch-icon.png e icon.svg (raster embutido).
 // As fontes em logo/ e assets/ são arquivos do usuário (não versionados).
 
 import { readFileSync, writeFileSync } from "node:fs";
@@ -16,6 +17,7 @@ const sharp = require("sharp");
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publicDir = path.join(root, "public");
 const sourcePath = path.join(root, "logo", "Captura de Tela 2026-09-03 às 18.18.17.png");
+const logoPath = path.join(root, "logo", "Gemini_Generated_Image_e934obe934obe934.jpeg");
 
 // Corte do fundo: flood-fill a partir das bordas. Fundo = branco puro ou sombra
 // cinza-clara (pouca saturação). O interior fechado (branco dos olhos) não é alcançado.
@@ -127,6 +129,40 @@ function keepLargestComponent(pixels, width, height) {
   return bestSize;
 }
 
+// Extrai o wordmark "Talkito" do logo completo. O texto é verde-escuro sobre
+// branco: o alfa vem da luminância (halo do JPEG vira anti-aliasing suave) e o
+// RGB é uniformizado com o verde médio do traço, limpando artefatos de compressão.
+function luminanceAlpha(raw, width, height) {
+  const pixels = new Uint8ClampedArray(raw); // RGBA
+  let sr = 0;
+  let sg = 0;
+  let sb = 0;
+  let n = 0;
+  for (let i = 0; i < width * height; i++) {
+    const o = i * 4;
+    const lum = 0.2126 * pixels[o] + 0.7152 * pixels[o + 1] + 0.0722 * pixels[o + 2];
+    const a = Math.max(0, Math.min(1, (235 - lum) / (235 - 110)));
+    if (a > 0.85) {
+      sr += pixels[o];
+      sg += pixels[o + 1];
+      sb += pixels[o + 2];
+      n++;
+    }
+    pixels[o + 3] = Math.round(a * 255);
+  }
+  const cr = Math.round(sr / n);
+  const cg = Math.round(sg / n);
+  const cb = Math.round(sb / n);
+  for (let i = 0; i < width * height; i++) {
+    const o = i * 4;
+    pixels[o] = cr;
+    pixels[o + 1] = cg;
+    pixels[o + 2] = cb;
+    if (pixels[o + 3] < 10) pixels[o + 3] = 0;
+  }
+  return { pixels, color: [cr, cg, cb] };
+}
+
 async function main() {
   const padding = 8;
   const { data, info } = await sharp(sourcePath).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
@@ -146,6 +182,28 @@ async function main() {
     .png(pngOptions)
     .toBuffer();
   await sharp(mascot).toFile(path.join(publicDir, "mascot.png"));
+
+  // Wordmark "Talkito" extraído do logo completo (faixa de texto à direita do mascote).
+  const wordRaw = await sharp(logoPath)
+    .extract({ left: 1040, top: 400, width: 1700, height: 700 })
+    .ensureAlpha()
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  const marked = luminanceAlpha(wordRaw.data, wordRaw.info.width, wordRaw.info.height);
+  console.log(`cor do wordmark: rgb(${marked.color.join(", ")})`);
+  const wBox = bounds(marked.pixels, wordRaw.info.width, wordRaw.info.height);
+  const wLeft = Math.max(0, wBox.minX - 6);
+  const wTop = Math.max(0, wBox.minY - 6);
+  const wWidth = Math.min(wordRaw.info.width, wBox.maxX + 6) - wLeft;
+  const wHeight = Math.min(wordRaw.info.height, wBox.maxY + 6) - wTop;
+  const wordmark = await sharp(marked.pixels, { raw: { width: wordRaw.info.width, height: wordRaw.info.height, channels: 4 } })
+    .extract({ left: wLeft, top: wTop, width: wWidth, height: wHeight })
+    .resize({ width: 900 })
+    .png(pngOptions)
+    .toBuffer();
+  await sharp(wordmark).toFile(path.join(publicDir, "logo-talkito.png"));
+  const wMeta = await sharp(wordmark).metadata();
+  console.log(`logo-talkito.png: ${wMeta.width}x${wMeta.height}`);
 
   // Ícones: fundo branco, mascote em alturas diferentes. Maskable usa zona de
   // segurança (~64% do lado) para o recorte circular do Android.
@@ -181,7 +239,7 @@ async function main() {
     .png(pngOptions)
     .toBuffer();
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
-  <title id="title">Talkkito</title>
+  <title id="title">Talkito</title>
   <image width="512" height="512" href="data:image/png;base64,${embedded.toString("base64")}" />
 </svg>
 `;

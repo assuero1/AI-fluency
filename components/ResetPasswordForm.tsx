@@ -14,7 +14,8 @@ export function ResetPasswordForm() {
       <header className="auth-hero">
         <AuthMascot bubble="Quase lá!" />
         <h1 className="auth-wordmark">
-          Talk<span>kito</span>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img className="auth-wordmark-img" src="/logo-talkito.png" alt="Talkito" width={900} height={230} loading="eager" />
         </h1>
         <p className="auth-tagline">Escolha uma nova senha para continuar.</p>
       </header>

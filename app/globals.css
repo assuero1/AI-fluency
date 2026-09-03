@@ -2877,7 +2877,7 @@ textarea:focus-visible,
 .interval-hint { display: block; font-size: 12px; opacity: 0.7; font-weight: 400; }
 
 /* === Telas de autenticação (login, signup, reset) === */
-/* Identidade usa o verde da marca (camaleão Talkkito) definido em :root. */
+/* Identidade usa o verde da marca (camaleão Talkito) definido em :root. */
 .auth-screen {
   min-height: 100dvh;
   display: flex;
@@ -2948,14 +2948,12 @@ textarea:focus-visible,
 
 .auth-wordmark {
   margin-top: 12px;
-  font-size: 31px;
-  font-weight: 900;
-  letter-spacing: -0.5px;
-  color: var(--text);
 }
 
-.auth-wordmark span {
-  color: var(--brand-deep);
+.auth-wordmark-img {
+  display: block;
+  width: 178px;
+  height: auto;
 }
 
 .auth-tagline {
@@ -3086,6 +3084,7 @@ textarea:focus-visible,
 
 @media (min-height: 760px) {
   .auth-mascot-img { width: 152px; }
+  .auth-wordmark-img { width: 196px; }
 }
 
 /* === Conquistas: toast global e itens bloqueados === */

@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Talkkito",
-    short_name: "Talkkito",
+    name: "Talkito",
+    short_name: "Talkito",
     description: "Aprendizado de línguas com IA conversacional.",
     id: "/",
     start_url: "/",

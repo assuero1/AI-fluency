@@ -4,7 +4,7 @@ import { isPublicPath, updateSession } from "@/lib/supabase/middleware";
 
 describe("isPublicPath", () => {
   it("libera rotas de auth e assets públicos", () => {
-    for (const path of ["/login", "/auth/callback", "/reset-password", "/offline", "/sw.js", "/icon.svg", "/icon-192.png", "/icon-512.png", "/icon-maskable-192.png", "/icon-maskable-512.png", "/apple-touch-icon.png", "/mascot.png", "/manifest.webmanifest"]) {
+    for (const path of ["/login", "/auth/callback", "/reset-password", "/offline", "/sw.js", "/icon.svg", "/icon-192.png", "/icon-512.png", "/icon-maskable-192.png", "/icon-maskable-512.png", "/apple-touch-icon.png", "/mascot.png", "/logo-talkito.png", "/manifest.webmanifest"]) {
       expect(isPublicPath(path)).toBe(true);
     }
   });

@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { checkRateLimit, matchApiRateLimitRule } from "@/lib/api/rate-limit";
 
 const PUBLIC_PAGES = ["/login", "/auth/callback", "/reset-password", "/offline"];
-const PUBLIC_FILES = ["/sw.js", "/icon.svg", "/icon-192.png", "/icon-512.png", "/icon-maskable-192.png", "/icon-maskable-512.png", "/apple-touch-icon.png", "/mascot.png", "/manifest.webmanifest"];
+const PUBLIC_FILES = ["/sw.js", "/icon.svg", "/icon-192.png", "/icon-512.png", "/icon-maskable-192.png", "/icon-maskable-512.png", "/apple-touch-icon.png", "/mascot.png", "/logo-talkito.png", "/manifest.webmanifest"];
 
 export function isPublicPath(pathname: string) {
   return PUBLIC_FILES.includes(pathname) || PUBLIC_PAGES.some((path) => pathname === path || pathname.startsWith(`${path}/`));
