@@ -2624,6 +2624,7 @@ textarea:focus-visible,
 .correction-award { display: inline-flex; margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: #e8f7eb; color: #237a3b; font-size: 12px; font-weight: 800; animation: pop-in .45s cubic-bezier(.34, 1.4, .64, 1) .15s both; }
 .correction-block { animation: pop-in .38s cubic-bezier(.34, 1.4, .64, 1) .1s both; }
 .message-goal.reached-fireworks { border-color: var(--section); animation: bounce-in .5s cubic-bezier(.34, 1.56, .64, 1) both; }
+.pop-in { animation: pop-in .38s cubic-bezier(.34, 1.4, .64, 1) both; }
 
 .pill svg.lucide-flame { transform-origin: center; animation: flame-pulse 1.8s ease-in-out infinite; }
 .flashcard-card-inner { transition: transform .55s cubic-bezier(.34, 1.3, .64, 1); }
