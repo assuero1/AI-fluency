@@ -211,12 +211,13 @@ git commit -m "feat(juice): catálogo de sons sintetizados com mute persistido"
 // lib/client/haptics.ts
 const HAPTICS_ENABLED_KEY = "ai-fluency:haptics-enabled";
 
+// Sem `as const`: tuplas readonly não são atribuíveis a VibratePattern (number | number[]).
 const PATTERNS = {
   tap: 15,
   success: [18, 40, 18],
   warn: [30, 50, 30],
   celebrate: [20, 50, 20, 50, 40]
-} as const;
+};
 
 export type VibratePatternName = keyof typeof PATTERNS;
 
