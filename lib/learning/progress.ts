@@ -8,6 +8,7 @@ import { getPracticeActivity } from "./practice-activity";
 import type { PracticeSessionFields } from "./flashcards";
 import { dateKeyInTimeZone, resolveTimeZone } from "./tz";
 import { syncStreakForUser } from "./streak";
+import { computeLevelProgress } from "./level";
 
 type ProgressError = {
   type: string;
@@ -91,7 +92,13 @@ export async function getProgressData() {
     profile: {
       languageName: profile?.fields.language_name ?? "Idioma ativo",
       level: profile?.fields.level ?? "Ainda não definido",
-      levelProgress: levelProgress(profile?.fields.level),
+      levelDetail: computeLevelProgress({
+        level: profile?.fields.level ?? "",
+        wordsConsolidated: scopedWords.filter((word) => word.fields.review_state === "review").length,
+        avgFluency: (currentFluency || Number(latestFeedback?.fields.fluency_score ?? 0)) || null,
+        xpTotal: Number(user.fields.xp_total ?? 0)
+      }),
+      xpTotal: Number(user.fields.xp_total ?? 0),
       monthlyFluency: currentFluency || Number(latestFeedback?.fields.fluency_score ?? 0),
       fluencyChange,
       monthlyConversations: monthlyConversations.length
@@ -276,15 +283,6 @@ function shiftMonth(value: string, offset: number, timeZone: string) {
   const [year, month] = value.split("-").map(Number);
   const date = new Date(Date.UTC(year, month - 1 + offset, 1));
   return monthKey(date, timeZone);
-}
-
-function levelProgress(level: string | undefined) {
-  const values: Record<string, number> = {
-    "Iniciante": 20,
-    "Intermediário (B1)": 55,
-    "Avançado": 82
-  };
-  return values[level ?? ""] ?? 35;
 }
 
 function errorLabel(type: string) {

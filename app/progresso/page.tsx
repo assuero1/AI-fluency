@@ -48,14 +48,27 @@ export default async function ProgressPage() {
       <ScreenHeader title="Progresso" subtitle="Seu panorama de fluência" streak={progress.streak} />
       <section className="section">
         <div className="progress-level-card">
-          <div className="word-big" style={{ color: "var(--section-text)" }}>
-            {shortLevel(progress.profile.level)}
+          <div className="top-row">
+            <div>
+              <div className="word-big" style={{ color: "var(--section-text)" }}>
+                {shortLevel(progress.profile.level)}
+              </div>
+              <div className="row-title">{progress.profile.level}</div>
+            </div>
+            <Pill tone="primary">{progress.profile.xpTotal} XP</Pill>
           </div>
-          <div className="row-title">{progress.profile.level}</div>
           <div className="row-meta">{progress.profile.languageName} · {fluencyLabel}</div>
-          <div className="progress-line">
-            <span style={{ width: `${progress.profile.levelProgress}%` }} />
+          <div className="progress-line" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress.profile.levelDetail.percent} aria-label={`${progress.profile.levelDetail.percent}% rumo a ${progress.profile.levelDetail.label}`}>
+            <span style={{ width: `${progress.profile.levelDetail.percent}%` }} />
           </div>
+          {progress.profile.levelDetail.missing ? (
+            <>
+              <div className="row-meta">{progress.profile.levelDetail.missing}</div>
+              <div className="row-meta">Próximo nível: {progress.profile.levelDetail.label} ({progress.profile.levelDetail.code})</div>
+            </>
+          ) : (
+            <div className="row-meta" style={{ color: "var(--section-text)" }}>Nível conquistado! 🎉</div>
+          )}
         </div>
       </section>
 
