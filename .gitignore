@@ -24,3 +24,4 @@ pnpm-debug.log*
 
 # SDD scratch (ledger, briefs, review packages)
 .superpowers/
+.playwright-mcp/
