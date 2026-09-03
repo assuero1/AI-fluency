@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { IconBubble } from "./IconBubble";
 import { LevelPills } from "./LevelPills";
 import { ModalDialog } from "./ModalDialog";
+import { isHapticsEnabled, setHapticsEnabled } from "@/lib/client/haptics";
+import { isSoundEnabled, setSoundEnabled } from "@/lib/client/ui-sound";
 import { DEFAULT_LANGUAGE_LEVEL } from "@/lib/learning/levels";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 
@@ -49,11 +51,20 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
   const [deleteChallenge, setDeleteChallenge] = useState<{ token: string; phrase: string } | null>(null);
   const [deletePhrase, setDeletePhrase] = useState("");
   const [nameStatus, setNameStatus] = useState<"idle" | "saving" | "saved">("idle");
+  // Preferências de som/vibração vivem no dispositivo (localStorage). O valor
+  // inicial sincroniza após a montagem para casar com o HTML do servidor.
+  const [soundEnabled, setSoundEnabledState] = useState(true);
+  const [hapticsEnabled, setHapticsEnabledState] = useState(true);
   const savedNameRef = useRef(initial.user.name.trim());
   const nameSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
     if (nameSaveTimerRef.current) clearTimeout(nameSaveTimerRef.current);
+  }, []);
+
+  useEffect(() => {
+    setSoundEnabledState(isSoundEnabled());
+    setHapticsEnabledState(isHapticsEnabled());
   }, []);
 
   async function request(path: string, method: "PATCH" | "POST" | "DELETE", body?: Record<string, unknown>) {
@@ -136,6 +147,17 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
     } finally {
       setPending(null);
     }
+  }
+
+  // Som e vibração são preferências locais: salvamento imediato, sem botão.
+  function handleSoundEnabledChange(checked: boolean) {
+    setSoundEnabledState(checked);
+    setSoundEnabled(checked);
+  }
+
+  function handleHapticsEnabledChange(checked: boolean) {
+    setHapticsEnabledState(checked);
+    setHapticsEnabled(checked);
   }
 
   async function openDeleteConfirmation() {
@@ -243,6 +265,14 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
         <div className="settings-card">
           <ToggleRow checked={preferences.transcriptEnabled} label="Mostrar transcrição" onChange={(checked) => savePreference({ transcriptEnabled: checked })} />
           <ToggleRow checked={preferences.calendarMemoryEnabled} label="Usar memória do calendário" onChange={(checked) => savePreference({ calendarMemoryEnabled: checked })} />
+        </div>
+      </section>
+
+      <section className="section">
+        <h2 className="section-title">Som e vibração</h2>
+        <div className="settings-card">
+          <ToggleRow checked={soundEnabled} label="Sons do app" onChange={handleSoundEnabledChange} />
+          <ToggleRow checked={hapticsEnabled} label="Vibração" onChange={handleHapticsEnabledChange} />
         </div>
       </section>
 
