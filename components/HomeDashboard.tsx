@@ -3,7 +3,6 @@
 import {
   ArrowRight,
   BriefcaseBusiness,
-  BellRing,
   ChevronDown,
   Edit3,
   Keyboard,
@@ -18,6 +17,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { MilestoneModal } from "./MilestoneModal";
+import { HomeTodayCard } from "./HomeTodayCard";
 import { IconBubble } from "./IconBubble";
 import { ConversationSetupDialog, ConfirmedConversationStart, ConversationStartDraft } from "./ConversationSetupDialog";
 import { MetricGrid } from "./MetricGrid";
@@ -47,6 +47,14 @@ type HomeData = {
     practicedToday: boolean;
     activityDays?: Array<{ label: string; date: string; active: boolean }>;
     milestoneToCelebrate?: number | null;
+  };
+  today?: {
+    goalMinutes: number;
+    minutesToday: number;
+    percent: number;
+    complete: boolean;
+    weekConversations: number;
+    weekConversationGoal: number;
   };
   words: {
     totalUsed: number;
@@ -165,28 +173,18 @@ export function HomeDashboard({ home }: { home: HomeData }) {
 
       <div className="divider" />
 
-      {!home.practice.practicedToday ? (
-        <section className="section practice-reminder" aria-labelledby="practice-reminder-title">
-          <IconBubble Icon={BellRing} tone="warning" />
-          <div className="row-copy">
-            <h2 className="row-title" id="practice-reminder-title">
-              {home.practice.streak > 0 ? "Mantenha sua sequência" : "Lembrete de prática"}
-            </h2>
-            <p className="row-meta">
-              {home.practice.streak > 0
-                ? "Uma conversa curta hoje preserva seu ritmo de estudos."
-                : "Reserve alguns minutos para iniciar sua prática de hoje."}
-            </p>
-          </div>
-          <button
-            className="outline-button practice-reminder-action"
-            disabled={Boolean(pendingAction)}
-            onClick={() => setStartDraft({ mode: "free_conversation", title: "Conversa livre" })}
-            type="button"
-          >
-            Praticar agora
-          </button>
-        </section>
+      {home.today ? (
+        <HomeTodayCard
+          complete={home.today.complete}
+          goalMinutes={home.today.goalMinutes}
+          minutesToday={home.today.minutesToday}
+          onStartPractice={() => setStartDraft({ mode: "free_conversation", title: "Conversa livre" })}
+          percent={home.today.percent}
+          practicedToday={home.practice.practicedToday}
+          streak={home.practice.streak}
+          weekConversationGoal={home.today.weekConversationGoal}
+          weekConversations={home.today.weekConversations}
+        />
       ) : null}
 
       <section className="section">

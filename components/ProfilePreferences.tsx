@@ -10,10 +10,11 @@ import { isHapticsEnabled, setHapticsEnabled } from "@/lib/client/haptics";
 import { isSoundEnabled, setSoundEnabled } from "@/lib/client/ui-sound";
 import { DEFAULT_LANGUAGE_LEVEL } from "@/lib/learning/levels";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
+import { DAILY_GOAL_OPTIONS } from "@/lib/learning/daily-goal";
 
 type ProfilePreferencesProps = {
   initial: {
-    user: { name: string; timezone: string; activeLanguageId: string };
+    user: { name: string; timezone: string; activeLanguageId: string; dailyGoalMinutes?: number };
     activeProfile: {
       id: string;
       languageName: string;
@@ -39,11 +40,13 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
   const router = useRouter();
   const [name, setName] = useState(initial.user.name);
   const [activeLanguageId, setActiveLanguageId] = useState(initial.user.activeLanguageId);
+  const dailyGoalOptions = DAILY_GOAL_OPTIONS;
   const [preferences, setPreferences] = useState({
     level: initial.activeProfile?.level ?? DEFAULT_LANGUAGE_LEVEL,
     correctionStyle: initial.activeProfile?.correctionStyle ?? "Corrigir sempre",
     transcriptEnabled: initial.activeProfile?.transcriptEnabled ?? true,
-    calendarMemoryEnabled: initial.activeProfile?.calendarMemoryEnabled ?? true
+    calendarMemoryEnabled: initial.activeProfile?.calendarMemoryEnabled ?? true,
+    dailyGoalMinutes: initial.user.dailyGoalMinutes ?? 15
   });
   const [pending, setPending] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -237,6 +240,24 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
           <LevelPills level={preferences.level} onChange={(option) => savePreference({ level: option })} />
         </section>
       ) : null}
+
+      <section className="section">
+        <h2 className="section-title">Meta diária de prática</h2>
+        <div className="settings-list">
+          {dailyGoalOptions.map((option) => (
+            <button
+              className={preferences.dailyGoalMinutes === option ? "settings-option active" : "settings-option"}
+              disabled={pending === "preferences"}
+              key={option}
+              onClick={() => savePreference({ dailyGoalMinutes: option })}
+              type="button"
+            >
+              {option} min
+            </button>
+          ))}
+        </div>
+        <p className="row-meta">Qualquer prática conta: conversa, treino de cards ou palavras novas.</p>
+      </section>
 
       <section className="section">
         <h2 className="section-title">Como a IA deve te corrigir?</h2>

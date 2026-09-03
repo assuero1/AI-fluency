@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { getConnectionStatus } from "@/lib/settings/status";
-import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
+import { getTeableClient, safeUpdateRecord, TeableRecord } from "@/lib/supabase/client";
+import { normalizeDailyGoalMinutes } from "./daily-goal";
 import type { TeableTableKey } from "@/lib/supabase/tables";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields, WordOccurrenceFields, WordUsageSummaryFields } from "./conversations";
 import type { DailyFeedbackFields, TopicFields } from "./home";
@@ -25,6 +26,8 @@ type PreferenceInput = {
   calendarMemoryEnabled?: boolean;
   weeklyConversationGoal?: number;
   weeklyWordGoal?: number;
+  dailyGoalMinutes?: number;
+  reminderHour?: number | null;
 };
 
 type ProfileInput = {
@@ -63,7 +66,8 @@ export async function getProfileSettings() {
       name: user.fields.Name ?? user.fields.name ?? "",
       timezone: user.fields.timezone ?? "America/Sao_Paulo",
       activeLanguageId: activeProfile?.id ?? "",
-      dailyNewCardsQuota: getDailyNewCardsQuota(user)
+      dailyNewCardsQuota: getDailyNewCardsQuota(user),
+      dailyGoalMinutes: normalizeDailyGoalMinutes(user.fields.daily_goal_minutes)
     },
     activeProfile: activeProfile
       ? {
@@ -148,7 +152,22 @@ export async function updatePreferences(input: PreferenceInput) {
   if (!finalAudio && !finalTranscript) throw new AccountValidationError("Mantenha áudio ou transcrição ativados para continuar estudando.");
 
   const updated = await client.updateRecord<LanguageProfileFields>("languageProfiles", profile.id, fields);
-  await client.createEvent(user.id, "preferences_updated", { fields: Object.keys(fields).filter((key) => key !== "updated_at") });
+
+  // Preferências do usuário (tabela users): meta diária e hora do lembrete.
+  const userFields: Record<string, unknown> = {};
+  if (typeof input.dailyGoalMinutes === "number") {
+    userFields.daily_goal_minutes = normalizeDailyGoalMinutes(input.dailyGoalMinutes);
+  }
+  if (input.reminderHour === null) {
+    userFields.reminder_hour = null;
+  } else if (typeof input.reminderHour === "number" && Number.isInteger(input.reminderHour) && input.reminderHour >= 0 && input.reminderHour <= 23) {
+    userFields.reminder_hour = input.reminderHour;
+  }
+  if (Object.keys(userFields).length) {
+    await safeUpdateRecord("users", user.id, userFields);
+  }
+
+  await client.createEvent(user.id, "preferences_updated", { fields: Object.keys(fields).filter((key) => key !== "updated_at").concat(Object.keys(userFields)) });
   return updated;
 }
 

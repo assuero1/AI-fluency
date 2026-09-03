@@ -4,7 +4,8 @@ import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser } from 
 import type { ConversationFields } from "./conversations";
 import { getPracticeActivity } from "./practice-activity";
 import { summarizeDailyQueue, type DailyQueueSessionFields } from "./daily-queue";
-import { resolveTimeZone } from "./tz";
+import { dateKeyInTimeZone, resolveTimeZone } from "./tz";
+import { computeDailyGoalProgress, normalizeDailyGoalMinutes } from "./daily-goal";
 import { STREAK_MILESTONES, syncStreakForUser } from "./streak";
 
 export type TopicFields = {
@@ -85,6 +86,11 @@ export async function getHomeData() {
       ])
     : [[], [], [], [], []];
 
+  const now = new Date();
+  const todayKey = dateKeyInTimeZone(now, timeZone);
+  const localDayOf = (record: { fields: { ended_at?: string; started_at?: string } }) =>
+    dateKeyInTimeZone(new Date(record.fields.ended_at || record.fields.started_at || ""), timeZone);
+
   const profileTopics = topics;
   const profileFeedbacks = feedbacks;
   const profileWords = words;
@@ -107,6 +113,26 @@ export async function getHomeData() {
   const milestoneToCelebrate = STREAK_MILESTONES.find(
     (milestone) => practiceStreak.streak >= milestone && milestone > Number(user.fields.milestone_seen ?? 0)
   ) ?? null;
+
+  // Meta diária: minutos de QUALQUER modalidade concluída hoje (dia local).
+  const completedToday = conversations.filter(
+    (conversation) => conversation.fields.status === "completed" && localDayOf(conversation) === todayKey
+  );
+  const sessionsToday: Array<{ fields: { duration_seconds?: number; type?: string } }> = sessions.filter(
+    (session) => session.fields.status === "completed" && localDayOf(session) === todayKey
+  );
+  const secondsOf = (records: Array<{ fields: { duration_seconds?: number } }>) =>
+    records.reduce((sum, record) => sum + Math.max(0, Number(record.fields.duration_seconds ?? 0)), 0);
+  const todayGoal = computeDailyGoalProgress({
+    goalMinutes: normalizeDailyGoalMinutes(user.fields.daily_goal_minutes),
+    conversationSeconds: secondsOf(completedToday),
+    flashcardSeconds: secondsOf(sessionsToday.filter((session) => session.fields.type !== "new_words")),
+    newWordsSeconds: secondsOf(sessionsToday.filter((session) => session.fields.type === "new_words"))
+  });
+  const weekConversations = conversations.filter(
+    (conversation) => conversation.fields.status === "completed" && isWithinDays(conversation.fields.ended_at || conversation.fields.started_at, 7)
+  ).length;
+  const weekConversationGoal = Math.max(1, Number(profile?.fields.weekly_conversation_goal ?? 7));
 
   return {
     user: {
@@ -149,6 +175,14 @@ export async function getHomeData() {
       practicedToday: practiceStreak.practicedToday,
       activityDays: practice.activityDays,
       milestoneToCelebrate
+    },
+    today: {
+      goalMinutes: todayGoal.goalMinutes,
+      minutesToday: todayGoal.minutesToday,
+      percent: todayGoal.percent,
+      complete: todayGoal.complete,
+      weekConversations,
+      weekConversationGoal
     },
     readiness: await getConnectionStatus()
   };
