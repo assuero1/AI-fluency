@@ -12,6 +12,14 @@ export type UserFields = {
   active_language_id?: string;
   timezone?: string;
   daily_new_cards_quota?: number;
+  current_streak?: number;
+  longest_streak?: number;
+  last_practice_day?: string;
+  streak_freeze_used_on?: string;
+  milestone_seen?: number;
+  daily_goal_minutes?: number;
+  reminder_hour?: number;
+  last_reminder_sent?: string;
   created_at?: string;
 };
 

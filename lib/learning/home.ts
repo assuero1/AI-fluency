@@ -5,6 +5,7 @@ import type { ConversationFields } from "./conversations";
 import { getPracticeActivity } from "./practice-activity";
 import { summarizeDailyQueue, type DailyQueueSessionFields } from "./daily-queue";
 import { resolveTimeZone } from "./tz";
+import { STREAK_MILESTONES, syncStreakForUser } from "./streak";
 
 export type TopicFields = {
   Name?: string;
@@ -90,16 +91,22 @@ export async function getHomeData() {
   const recentFeedback = [...profileFeedbacks].sort((a, b) => dateValue(b.fields.date || b.fields.created_at) - dateValue(a.fields.date || a.fields.created_at))[0] ?? null;
   const topWord = [...profileWords].sort((a, b) => dateValue(b.fields.last_used_at) - dateValue(a.fields.last_used_at))[0];
   const weeklyNewWords = profileWords.filter((word) => isWithinDays(word.fields.first_used_at, 7)).length;
+  // Fonte única da streak (3 modalidades, persistida) para todas as telas.
+  const [practiceStreak, dailyQueue] = await Promise.all([
+    syncStreakForUser(user.id, { timeZone }),
+    profile
+      ? summarizeDailyQueue(profileWords, sessions, { userId: user.id, profileId: profile.id }, { quota: getDailyNewCardsQuota(user), timeZone })
+      : Promise.resolve(null)
+  ]);
   const practice = getPracticeActivity(
     conversations
       .filter((conversation) => conversation.fields.status === "completed")
       .map((conversation) => conversation.fields.ended_at || conversation.fields.started_at),
     { timeZone }
   );
-
-  const dailyQueue = profile
-    ? summarizeDailyQueue(profileWords, sessions, { userId: user.id, profileId: profile.id }, { quota: getDailyNewCardsQuota(user), timeZone })
-    : null;
+  const milestoneToCelebrate = STREAK_MILESTONES.find(
+    (milestone) => practiceStreak.streak >= milestone && milestone > Number(user.fields.milestone_seen ?? 0)
+  ) ?? null;
 
   return {
     user: {
@@ -137,7 +144,12 @@ export async function getHomeData() {
         }
         : null
     },
-    practice,
+    practice: {
+      streak: practiceStreak.streak,
+      practicedToday: practiceStreak.practicedToday,
+      activityDays: practice.activityDays,
+      milestoneToCelebrate
+    },
     readiness: await getConnectionStatus()
   };
 }

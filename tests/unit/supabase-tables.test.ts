@@ -13,6 +13,8 @@ const tables = tablesJson.tables as unknown as Array<{
 // As 17 chaves históricas do antigo lib/teable/schema.ts — tables.json é agora
 // a fonte única de TeableTableKey.
 const EXPECTED_KEYS: TeableTableKey[] = [
+  "engagementAchievements",
+  "pushSubscriptions",
   "users",
   "languageProfiles",
   "aiProviderSettings",

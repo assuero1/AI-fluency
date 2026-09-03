@@ -7,6 +7,7 @@ import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import { getPracticeActivity } from "./practice-activity";
 import type { PracticeSessionFields } from "./flashcards";
 import { dateKeyInTimeZone, resolveTimeZone } from "./tz";
+import { syncStreakForUser } from "./streak";
 
 type ProgressError = {
   type: string;
@@ -72,6 +73,8 @@ export async function getProgressData() {
   }, 0);
   const errors = buildRecurringErrors(scopedCorrections, scopedConversations, now);
   const latestFeedback = scopedFeedbacks[0] ?? null;
+  // Mesma fonte única da Home: streak persistida (3 modalidades).
+  const practiceStreak = await syncStreakForUser(user.id, { now, timeZone });
   const practice = getPracticeActivity(
     [...completedConversations.map((conversation) => conversation.fields.ended_at || conversation.fields.started_at), ...completedFlashcards.map((session) => session.fields.ended_at || session.fields.started_at)],
     { now, timeZone }
@@ -107,7 +110,7 @@ export async function getProgressData() {
     strengths,
     focus,
     errors,
-    streak: practice.streak,
+    streak: practiceStreak.streak,
     activityDays: practice.activityDays
   };
 }

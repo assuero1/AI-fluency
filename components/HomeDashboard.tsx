@@ -17,6 +17,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { MilestoneModal } from "./MilestoneModal";
 import { IconBubble } from "./IconBubble";
 import { ConversationSetupDialog, ConfirmedConversationStart, ConversationStartDraft } from "./ConversationSetupDialog";
 import { MetricGrid } from "./MetricGrid";
@@ -44,6 +45,8 @@ type HomeData = {
   practice: {
     streak: number;
     practicedToday: boolean;
+    activityDays?: Array<{ label: string; date: string; active: boolean }>;
+    milestoneToCelebrate?: number | null;
   };
   words: {
     totalUsed: number;
@@ -60,6 +63,7 @@ const suggestionIcons = [BriefcaseBusiness, MessageCircle, Laptop];
 
 export function HomeDashboard({ home }: { home: HomeData }) {
   const router = useRouter();
+  const [milestone, setMilestone] = useState<number | null>(home.practice.milestoneToCelebrate ?? null);
   const [topic, setTopic] = useState("");
   const [suggestions, setSuggestions] = useState(home.suggestions);
   const [pendingAction, setPendingAction] = useState<string | null>(null);
@@ -333,6 +337,16 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           </button>
         </div>
       </section>
+
+      {milestone ? (
+        <MilestoneModal
+          onAck={() => {
+            setMilestone(null);
+            void fetch("/api/streak/ack-milestone", { method: "POST" }).catch(() => undefined);
+          }}
+          streak={milestone}
+        />
+      ) : null}
 
       {startDraft ? (
         <ConversationSetupDialog
