@@ -9,6 +9,9 @@ import { addLearnedWordsToDailyFeedback, toDateKey } from "./feedback";
 import { resolveTimeZone } from "./tz";
 import { getActiveLanguageProfile, getSessionUser } from "./profile";
 import { evaluateAchievements } from "./achievements";
+import { awardQuestXpIfNew, awardXp, XP_AMOUNTS } from "./xp";
+import { buildDailyQuests, collectQuestInputs } from "./quests";
+import { getDailyNewCardsQuota } from "./profile";
 import { canonicalVocabularyKey, normalizeVocabularyToken } from "./vocabulary-selection";
 import { canonicalSenseKey, createWordSense, listSensesByWordIds, matchesCanonicalSenseKey, nextSenseOrderFromList, updateWordSense } from "./word-senses";
 import { applyReviewToSense as applySenseReview, type FlashcardAttemptFields, type FlashcardFields, type PracticeSessionFields } from "./flashcards";
@@ -585,9 +588,15 @@ async function completeNewWordsPracticeUnlocked(sessionId: string, clientComplet
     correctSentences, firstAttemptCorrect, newSensesAdded, durationSeconds, words
   };
 
-  // Conquistas: best-effort, avaliadas ANTES de persistir o focus (o retry
-  // idempotente reconstrói o resultado do que foi persistido).
+  // Conquistas + XP: best-effort, avaliados ANTES de persistir o focus (o
+  // retry idempotente reconstrói o resultado do que foi persistido e não
+  // re-executa este trecho).
   result.achievementsUnlocked = await evaluateAchievements(user.id, { newWordsLearned: words.length }).catch(() => []);
+  try {
+    const questInputs = await collectQuestInputs(user.id, profile.id, resolveTimeZone(user.fields.timezone), getDailyNewCardsQuota(user));
+    await awardQuestXpIfNew(user.id, questInputs.dayStamp, buildDailyQuests(questInputs));
+    await awardXp(user.id, XP_AMOUNTS.new_words, "new_words");
+  } catch { /* XP é best-effort */ }
 
   const endedAt = new Date().toISOString();
   await client.updateRecord<PracticeSessionFields>("practiceSessions", session.id, {

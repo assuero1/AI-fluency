@@ -24,6 +24,9 @@ import { listSensesByWordIds } from "./word-senses";
 import type { PracticeSessionFields } from "./flashcards";
 import { dateKeyInTimeZone, DEFAULT_TIMEZONE, resolveTimeZone } from "./tz";
 import { evaluateAchievements } from "./achievements";
+import { awardQuestXpIfNew, awardXp, XP_AMOUNTS } from "./xp";
+import { buildDailyQuests, collectQuestInputs } from "./quests";
+import { getDailyNewCardsQuota } from "./profile";
 
 type ConversationSummary = {
   correction_score?: number;
@@ -144,6 +147,20 @@ async function finalizeConversation(conversationId: string, options: { pausedMs?
 
   // Conquistas: best-effort; nunca derrubam a conclusão da conversa.
   const achievementsUnlocked = await evaluateAchievements(context.conversation.fields.user_id).catch(() => []);
+
+  // XP: best-effort — sessão já está salva; premiação não pode derrubá-la.
+  try {
+    if (context.profile) {
+      const questInputs = await collectQuestInputs(
+        context.conversation.fields.user_id,
+        context.profile.id,
+        timeZone,
+        getDailyNewCardsQuota(sessionUser)
+      );
+      await awardQuestXpIfNew(context.conversation.fields.user_id, questInputs.dayStamp, buildDailyQuests(questInputs));
+      await awardXp(context.conversation.fields.user_id, XP_AMOUNTS.conversation, "conversation");
+    }
+  } catch { /* XP é best-effort */ }
 
   const completionSummary = buildCompletionSummary(context, completedConversation, dailyFeedback, [], words);
   if (completionCache.size >= MAX_COMPLETION_CACHE_ENTRIES) {

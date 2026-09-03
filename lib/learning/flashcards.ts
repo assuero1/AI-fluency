@@ -7,6 +7,8 @@ import { LearningStateError } from "./access";
 import { WordFields, WordSenseFields } from "./conversations";
 import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser } from "./profile";
 import { evaluateAchievements } from "./achievements";
+import { awardQuestXpIfNew, awardXp, XP_AMOUNTS } from "./xp";
+import { buildDailyQuests, collectQuestInputs } from "./quests";
 import type { FlashcardPracticeResult } from "./flashcard-contracts";
 import { computeDailyQueue, countNewCardsIntroducedToday, selectDifficultWords, summarizeDailyQueue } from "./daily-queue";
 import { compareAnswerForCard, normalizeFlashcardAnswer } from "./flashcard-answer";
@@ -848,9 +850,15 @@ async function completeFlashcardPracticeUnlocked(sessionId: string, clientComple
   const difficultWords = [...results.keys()].filter((wordId) => words.find((word) => word.id === wordId)?.fields.review_state === "difficult").length;
   const slowWords = new Set(validatedAnswers.filter((answer) => answer.responseTimeMs >= 8_000).flatMap((answer) => answer.wordIds)).size;
   const result: FlashcardPracticeResult = { score, correctCards, wrongCards: uniqueCardCount - correctCards, totalCards: uniqueCardCount, reviewedWords: results.size, uniqueCardCount, presentationCount, firstAttemptCorrect, recoveredCards, firstAttemptAccuracy, eventualRecallAccuracy: score, productionAccuracy: accuracyFor(["native_to_target", "cloze"]), comprehensionAccuracy: accuracyFor(["target_to_native"]), listeningAccuracy: accuracyFor(["listening"]), averageResponseTimeMs, durationSeconds, difficultWords, slowWords };
-  // Conquistas: best-effort, avaliadas ANTES de persistir o focus (o retry
-  // idempotente reconstrói o resultado do que foi persistido).
+  // Conquistas + XP: best-effort, avaliados ANTES de persistir o focus (o
+  // retry idempotente reconstrói o resultado do que foi persistido e não
+  // re-executa este trecho).
   result.achievementsUnlocked = await evaluateAchievements(user.id, { bestFlashcardScore: Math.round(score) }).catch(() => []);
+  try {
+    const questInputs = await collectQuestInputs(user.id, profile.id, user.fields.timezone ?? "UTC", getDailyNewCardsQuota(user));
+    await awardQuestXpIfNew(user.id, questInputs.dayStamp, buildDailyQuests(questInputs));
+    await awardXp(user.id, XP_AMOUNTS.flashcards, "flashcards");
+  } catch { /* XP é best-effort */ }
   await client.createEvent(user.id, "flashcard_practice_completed", {
     session_id: session.id, correct_cards: correctCards, total_cards: uniqueCardCount, presentation_count: presentationCount, score,
     strong_word_ids: [...results].filter(([, value]) => value.correct > value.wrong).map(([id]) => id),

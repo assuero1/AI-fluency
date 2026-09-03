@@ -4,6 +4,7 @@
 // devolvidos na resposta para o toast do cliente.
 import { getTeableClient, type TeableRecord } from "@/lib/supabase/client";
 import { dateKeyInTimeZone, resolveTimeZone } from "./tz";
+import { awardXp, XP_AMOUNTS } from "./xp";
 
 export type AchievementSnapshot = {
   conversationsCompleted: number;
@@ -114,6 +115,7 @@ export async function evaluateAchievements(userId: string, partial: Partial<Achi
     try {
       await client.createRecord("engagementAchievements", { user_id: userId, achievement_key: definition.key });
       await client.createEvent(userId, "achievement_unlocked", { achievement_key: definition.key });
+      await awardXp(userId, XP_AMOUNTS.achievement, `achievement:${definition.key}`);
     } catch {
       // Corrida inofensiva: o índice único recusa duplicado.
     }

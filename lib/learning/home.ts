@@ -4,9 +4,9 @@ import { getActiveLanguageProfile, getDailyNewCardsQuota, getSessionUser } from 
 import type { ConversationFields } from "./conversations";
 import { getPracticeActivity } from "./practice-activity";
 import { summarizeDailyQueue, type DailyQueueSessionFields } from "./daily-queue";
-import { dateKeyInTimeZone, resolveTimeZone } from "./tz";
+import { resolveTimeZone } from "./tz";
 import { computeDailyGoalProgress, normalizeDailyGoalMinutes } from "./daily-goal";
-import { buildDailyQuests } from "./quests";
+import { buildDailyQuests, summarizeDayPractice, toQuestInputs } from "./quests";
 import { STREAK_MILESTONES, syncStreakForUser } from "./streak";
 
 export type TopicFields = {
@@ -87,11 +87,6 @@ export async function getHomeData() {
       ])
     : [[], [], [], [], []];
 
-  const now = new Date();
-  const todayKey = dateKeyInTimeZone(now, timeZone);
-  const localDayOf = (record: { fields: { ended_at?: string; started_at?: string } }) =>
-    dateKeyInTimeZone(new Date(record.fields.ended_at || record.fields.started_at || ""), timeZone);
-
   const profileTopics = topics;
   const profileFeedbacks = feedbacks;
   const profileWords = words;
@@ -115,49 +110,27 @@ export async function getHomeData() {
     (milestone) => practiceStreak.streak >= milestone && milestone > Number(user.fields.milestone_seen ?? 0)
   ) ?? null;
 
-  // Meta diária: minutos de QUALQUER modalidade concluída hoje (dia local).
-  const completedToday = conversations.filter(
-    (conversation) => conversation.fields.status === "completed" && localDayOf(conversation) === todayKey
-  );
-  const sessionsToday: Array<{ fields: { duration_seconds?: number; type?: string } }> = sessions.filter(
-    (session) => session.fields.status === "completed" && localDayOf(session) === todayKey
-  );
-  const secondsOf = (records: Array<{ fields: { duration_seconds?: number } }>) =>
-    records.reduce((sum, record) => sum + Math.max(0, Number(record.fields.duration_seconds ?? 0)), 0);
+  // Meta diária + missões avaliadas sobre o MESMO snapshot dos hooks de XP.
+  const daySummary = summarizeDayPractice({
+    userId: user.id,
+    profileId: profile?.id ?? "",
+    timeZone,
+    quota: getDailyNewCardsQuota(user),
+    conversations,
+    sessions,
+    words: profileWords
+  });
   const todayGoal = computeDailyGoalProgress({
     goalMinutes: normalizeDailyGoalMinutes(user.fields.daily_goal_minutes),
-    conversationSeconds: secondsOf(completedToday),
-    flashcardSeconds: secondsOf(sessionsToday.filter((session) => session.fields.type !== "new_words")),
-    newWordsSeconds: secondsOf(sessionsToday.filter((session) => session.fields.type === "new_words"))
+    conversationSeconds: daySummary.conversationSecondsToday,
+    flashcardSeconds: daySummary.flashcardSecondsToday,
+    newWordsSeconds: daySummary.newWordsSecondsToday
   });
+  const quests = buildDailyQuests(toQuestInputs(daySummary, user.id));
   const weekConversations = conversations.filter(
     (conversation) => conversation.fields.status === "completed" && isWithinDays(conversation.fields.ended_at || conversation.fields.started_at, 7)
   ).length;
   const weekConversationGoal = Math.max(1, Number(profile?.fields.weekly_conversation_goal ?? 7));
-
-  // Missões diárias: avaliadas sobre o MESMO snapshot do dia local.
-  const flashcardSessionsToday = sessionsToday.filter((session) => session.fields.type !== "new_words");
-  const newWordsToday = sessionsToday
-    .filter((session) => session.fields.type === "new_words")
-    .reduce((sum, session) => sum + Math.max(0, Number((session as { fields: { selected_word_count?: number } }).fields.selected_word_count ?? 0)), 0);
-  const bestFlashcardScoreToday = flashcardSessionsToday.reduce((best, session) => {
-    try {
-      const focus = JSON.parse((session as { fields: { focus?: string } }).fields.focus || "{}") as { result?: { score?: number } };
-      return Math.max(best, Math.round(Number(focus.result?.score ?? 0)));
-    } catch {
-      return best;
-    }
-  }, 0);
-  const quests = buildDailyQuests({
-    userId: user.id,
-    dayStamp: todayKey,
-    conversationsToday: completedToday.length,
-    flashcardsToday: flashcardSessionsToday.length,
-    bestFlashcardScoreToday,
-    newWordsToday,
-    minutesToday: todayGoal.minutesToday,
-    queueSessionCardCount: dailyQueue?.sessionCardCount ?? 0
-  });
 
   return {
     user: {
