@@ -2880,3 +2880,6 @@ textarea:focus-visible,
 
 /* === Celebração de fim de onboarding === */
 .onboarding-celebration { display: grid; gap: 16px; text-align: center; padding-top: 30vh; }
+
+/* === Espera do preparo do deck (palavras novas) === */
+.preparing-cards { display: grid; gap: 12px; }

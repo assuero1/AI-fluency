@@ -17,6 +17,7 @@ import { unlockAudioForPlayback, requestSpeech, reportVoiceFailure } from "./voi
 import { createAudioPrefetchQueue, type AudioPrefetchQueue } from "@/lib/learning/audio-prefetch";
 import { compareFlashcardAnswer } from "@/lib/learning/flashcard-answer";
 import { playSound } from "@/lib/client/ui-sound";
+import { PreparingCards } from "./PreparingCards";
 import { vibrate } from "@/lib/client/haptics";
 import { AppShell } from "./AppShell";
 import { Pill } from "./Pill";
@@ -552,6 +553,7 @@ export function NewWordsTrainer() {
       </button>
       <p className="row-meta">Cada palavra vem em {SENTENCES_PER_WORD} frases curtas. Ouça, traduza e a IA corrige na hora.</p>
     </section>
+    {preparing ? <PreparingCards languageName={languageName} /> : null}
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
   </div>, false);
 
