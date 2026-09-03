@@ -338,8 +338,9 @@ test("mobile learner navigation keeps the standard bottom menu", async ({ page }
   await expect(navigation.getByRole("link", { name: "Início" })).toBeVisible();
   await expect(navigation.getByRole("link", { name: "Chat" })).toBeVisible();
   await expect(navigation.getByRole("link", { name: "Palavras" })).toBeVisible();
-  await expect(navigation.getByRole("link", { name: "Calendário" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Novas" })).toBeVisible();
   await expect(navigation.getByRole("link", { name: "Perfil" })).toBeVisible();
+  await expect(navigation.getByRole("link", { name: "Calendário" })).toHaveCount(0);
   await expect(navigation.getByRole("link", { name: "Início" })).toHaveAttribute("aria-current", "page");
 });
 
@@ -547,6 +548,8 @@ test("voice playback supports pause, resume, replay, and one active audio", asyn
       }
       async play() {
         this.playAttempts += 1;
+        // Primeira tentativa falha: o player deve recuperar sozinho (retry
+        // interno de 300ms) — rejeição transiente de autoplay é o caso real do iOS.
         if (this.playAttempts === 1) throw new Error("Autoplay blocked after synthesis");
         this.paused = false;
       }
@@ -568,22 +571,51 @@ test("voice playback supports pause, resume, replay, and one active audio", asyn
   const playButtons = page.getByRole("button", { name: "Ouvir mensagem" });
   await expect(playButtons.first()).toBeVisible();
   await playButtons.first().click();
-  const retry = page.getByRole("button", { name: "Voz indisponível. Tentar novamente" }).first();
-  await expect(retry).toBeVisible();
-  expect(synthesisLanguage).toBe("en");
-  await retry.click();
+  // Recuperação automática da rejeição inicial: toca sem intervenção.
   const pause = page.getByRole("button", { name: "Pausar áudio" }).first();
   await expect(pause).toBeVisible();
+  expect(synthesisLanguage).toBe("en");
   await pause.click();
   const resume = page.getByRole("button", { name: "Continuar áudio" }).first();
   await expect(resume).toBeVisible();
   await resume.click();
   await expect(page.getByRole("button", { name: "Pausar áudio" }).first()).toBeVisible();
+  // O destravamento cria um <audio> extra (nudge de rota) sem handler: dispara
+  // o fim em todos — o da mensagem é que transita para o estado "ended".
   await page.evaluate(() => {
     const audios = (window as unknown as { __qaAudios: Array<{ onended: (() => void) | null }> }).__qaAudios;
-    audios.at(-1)?.onended?.();
+    for (const audio of audios) audio.onended?.();
   });
   await expect(page.getByRole("button", { name: "Ouvir novamente" }).first()).toBeVisible();
+});
+
+test("voice playback surfaces a persistent failure with a retry", async ({ page }) => {
+  await page.addInitScript(() => {
+    class BrokenAudio {
+      currentTime = 0;
+      src = "";
+      onended: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      paused = true;
+      constructor(src: string) { this.src = src; }
+      async play() { throw new Error("Autoplay blocked for good"); }
+      pause() { this.paused = true; }
+      removeAttribute() { this.src = ""; }
+      load() {}
+    }
+    (window as unknown as { Audio: typeof BrokenAudio }).Audio = BrokenAudio;
+  });
+  await page.route("**/api/voice/captioned", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, audioUrl: "/mock-audio.mp3", words: [] }) });
+  });
+
+  await page.goto(`/chat?conversationId=${fixtureConversationId()}`);
+  const playButtons = page.getByRole("button", { name: "Ouvir mensagem" });
+  await expect(playButtons.first()).toBeVisible();
+  await playButtons.first().click();
+  // Nem o retry interno nem o manual salvam: o estado de erro fica visível.
+  const retry = page.getByRole("button", { name: "Voz indisponível. Tentar novamente" }).first();
+  await expect(retry).toBeVisible();
 });
 
 test("voice playback replays an ended message", async ({ page }) => {
@@ -620,7 +652,7 @@ test("voice playback replays an ended message", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Pausar áudio" }).first()).toBeVisible();
   await page.evaluate(() => {
     const audios = (window as unknown as { __qaReplayAudios: Array<{ onended: (() => void) | null }> }).__qaReplayAudios;
-    audios.at(-1)?.onended?.();
+    for (const audio of audios) audio.onended?.();
   });
   const replay = page.getByRole("button", { name: "Ouvir novamente" }).first();
   await expect(replay).toBeVisible();
@@ -719,6 +751,8 @@ test("meta de mensagens avança, reverte em falha e retry não duplica", async (
   let attempts = 0;
   const clientRequestIds: string[] = [];
   await page.route("**/api/conversations/*/messages", async (route) => {
+    // O chat também faz GET de mensagens no load; só o POST é do cenário.
+    if (route.request().method() !== "POST") return route.fallback();
     attempts += 1;
     const body = route.request().postDataJSON() as { text: string; clientRequestId: string };
     clientRequestIds.push(body.clientRequestId);
@@ -745,7 +779,12 @@ test("meta de mensagens avança, reverte em falha e retry não duplica", async (
     });
   });
 
-  await page.goto(`/chat?conversationId=${fixtureConversationId()}`);
+  // Conversa própria do teste: outros testes finalizam a conversa do fixture,
+  // e o chat é somente leitura para conversa concluída.
+  const startResponse = await page.request.post("/api/conversations/start", { data: { mode: "free_conversation", title: "Meta QA", targetUserMessageCount: 2 } });
+  const startData = (await startResponse.json()) as { ok?: boolean; redirectTo?: string };
+  const goalConversationId = new URL(startData.redirectTo ?? "/chat", "http://localhost").searchParams.get("conversationId") ?? "";
+  await page.goto(`/chat?conversationId=${goalConversationId}`);
   await expect(page.getByText("0 de 2 mensagens")).toBeVisible();
   const composer = page.getByRole("textbox", { name: "Mensagem para a IA" });
   await composer.fill("Primeira mensagem");

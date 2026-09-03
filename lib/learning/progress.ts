@@ -6,7 +6,7 @@ import { getActiveLanguageProfile, getSessionUser } from "./profile";
 import { getTeableClient, TeableRecord } from "@/lib/supabase/client";
 import { getPracticeActivity } from "./practice-activity";
 import type { PracticeSessionFields } from "./flashcards";
-import { dateKeyInTimeZone, resolveTimeZone } from "./tz";
+import { dateKeyInTimeZone, dayKeyFromDateColumn, resolveTimeZone } from "./tz";
 import { syncStreakForUser } from "./streak";
 import { computeLevelProgress } from "./level";
 
@@ -56,8 +56,8 @@ export async function getProgressData() {
   const now = new Date();
   const currentMonth = monthKey(now, timeZone);
   const previousMonth = shiftMonth(currentMonth, -1, timeZone);
-  const currentMonthFeedbacks = scopedFeedbacks.filter((feedback) => dateKey(feedback.fields.date || feedback.fields.created_at, timeZone).startsWith(currentMonth));
-  const previousMonthFeedbacks = scopedFeedbacks.filter((feedback) => dateKey(feedback.fields.date || feedback.fields.created_at, timeZone).startsWith(previousMonth));
+  const currentMonthFeedbacks = scopedFeedbacks.filter((feedback) => dayKeyFromDateColumn(feedback.fields.date, timeZone).startsWith(currentMonth));
+  const previousMonthFeedbacks = scopedFeedbacks.filter((feedback) => dayKeyFromDateColumn(feedback.fields.date, timeZone).startsWith(previousMonth));
   const currentFluency = average(currentMonthFeedbacks.map((feedback) => Number(feedback.fields.fluency_score ?? 0)));
   const previousFluency = average(previousMonthFeedbacks.map((feedback) => Number(feedback.fields.fluency_score ?? 0)));
   const fluencyChange = currentFluency > 0 && previousFluency > 0 ? Math.round(((currentFluency - previousFluency) / previousFluency) * 100) : null;
@@ -121,7 +121,7 @@ export async function getProgressData() {
     activityDays: practice.activityDays,
     charts: {
       fluency: scopedFeedbacks
-        .map((feedback) => ({ date: dateKey(feedback.fields.date || feedback.fields.created_at, timeZone), value: Number(feedback.fields.fluency_score ?? 0) }))
+        .map((feedback) => ({ date: dayKeyFromDateColumn(feedback.fields.date, timeZone), value: Number(feedback.fields.fluency_score ?? 0) }))
         .filter((point) => point.value > 0 && point.date)
         .slice(0, 30)
         .reverse(),

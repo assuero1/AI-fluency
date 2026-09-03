@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { WordFields, WordSenseFields, WordUsageSummaryFields } from "../../lib/learning/conversations";
 import { LearningStateError } from "../../lib/learning/access";
 import { canonicalSenseKey } from "../../lib/learning/word-senses";
@@ -123,6 +123,14 @@ describe("getWordDetail with senses", () => {
     vi.clearAllMocks();
     listRecords.mockResolvedValue([]);
     createEvent.mockResolvedValue({ id: "event-a", fields: {} });
+    // Relógio fixo ANTES das datas do fixture (due 2026-08-20): sem isso o
+    // teste era uma bomba-relógio — virava o mês e needsReview invertia.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("returns every sense ordered by sense_order with its own SRS state", async () => {
@@ -216,6 +224,14 @@ describe("addManualWordSense", () => {
     vi.clearAllMocks();
     listRecords.mockResolvedValue([]);
     createEvent.mockResolvedValue({ id: "event-a", fields: {} });
+    // Relógio fixo ANTES das datas do fixture (due 2026-08-20): sem isso o
+    // teste era uma bomba-relógio — virava o mês e needsReview invertia.
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-15T12:00:00.000Z"));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it("creates a manual sense with the next sense_order, scheduled immediately, and re-aggregates the word cache", async () => {

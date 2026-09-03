@@ -28,6 +28,11 @@ export function computeStreakState(
 ): StreakState {
   const days = new Set(activeDays);
   const practicedToday = days.has(options.today);
+  // O dia já coberto por um freeze anterior é direito adquirido: conta como
+  // ativo na caminhada SEMPRE (senão a próxima sincronização quebra a streak
+  // exatamente no dia congelado, pois o freeze não pode ser consumido duas
+  // vezes dentro do cooldown).
+  const previouslyFrozen = options.freezeUsedOn ? new Set([options.freezeUsedOn]) : null;
   // Sem prática hoje, a caminhada parte de ontem: a streak exibida é a que
   // está "em risco" (mesma semântica de practice-activity.ts).
   let cursor = practicedToday ? options.today : shiftDay(options.today, -1);
@@ -37,7 +42,7 @@ export function computeStreakState(
     || (Date.parse(`${options.today}T12:00:00Z`) - Date.parse(`${options.freezeUsedOn}T12:00:00Z`)) / 86_400_000 >= FREEZE_COOLDOWN_DAYS;
 
   for (let guard = 0; guard < WALK_GUARD; guard += 1) {
-    if (days.has(cursor)) {
+    if (days.has(cursor) || previouslyFrozen?.has(cursor)) {
       streak += 1;
       cursor = shiftDay(cursor, -1);
       continue;

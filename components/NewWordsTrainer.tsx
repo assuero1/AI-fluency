@@ -52,7 +52,9 @@ async function readJsonOrThrow(response: Response): Promise<unknown> {
   }
 }
 
-export function NewWordsTrainer() {
+type NewWordsTrainerProps = { initialLanguageName?: string };
+
+export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: NewWordsTrainerProps) {
   const [size, setSize] = useState<number>(5);
   const [sessionId, setSessionId] = useState("");
   const [completionId, setCompletionId] = useState("");
@@ -72,7 +74,7 @@ export function NewWordsTrainer() {
   const [audioReplayCount, setAudioReplayCount] = useState(0);
   const [usedSpeech, setUsedSpeech] = useState(false);
   const [languageCode, setLanguageCode] = useState("en");
-  const [languageName, setLanguageName] = useState("idioma estudado");
+  const [languageName, setLanguageName] = useState(initialLanguageName);
   const [startedAt, setStartedAt] = useState(0);
   const [listening, setListening] = useState(false);
   const [speechSupported, setSpeechSupported] = useState(false);

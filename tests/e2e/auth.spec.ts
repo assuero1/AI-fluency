@@ -31,6 +31,6 @@ test("logout volta para /login", async ({ page }) => {
   await page.getByRole("button", { name: "Entrar" }).click();
   await expect(page).toHaveURL("/");
   await page.goto("/perfil");
-  await page.getByRole("button", { name: "Sair da conta" }).click();
+  await page.getByRole("button", { name: "Logout" }).click();
   await expect(page).toHaveURL(/\/login/);
 });

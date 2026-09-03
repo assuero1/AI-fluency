@@ -22,7 +22,7 @@ import { createTopic } from "./topics";
 import { normalizeStoredInteractionMode } from "./chat-contracts";
 import { listSensesByWordIds } from "./word-senses";
 import type { PracticeSessionFields } from "./flashcards";
-import { dateKeyInTimeZone, DEFAULT_TIMEZONE, resolveTimeZone } from "./tz";
+import { dateKeyInTimeZone, dayKeyFromDateColumn, DEFAULT_TIMEZONE, resolveTimeZone } from "./tz";
 import { evaluateAchievements } from "./achievements";
 import { syncStreakForUser } from "./streak";
 import { awardQuestXpIfNew, awardXp, XP_AMOUNTS } from "./xp";
@@ -199,7 +199,7 @@ async function getPersistedCompletion(
     (feedback) =>
       feedback.fields.user_id === context.conversation.fields.user_id &&
       feedback.fields.language_profile_id === context.conversation.fields.language_profile_id &&
-      toDateKey(feedback.fields.date, timeZone) === date
+      feedbackDayKey(feedback.fields, timeZone) === date
   );
   if (!dailyFeedback) throw new LearningStateError("O feedback desta conversa ainda não está disponível.", 409);
   const wordIds = new Set(
@@ -247,7 +247,7 @@ export async function getConversationSummary(conversationId: string) {
       (feedback) =>
         feedback.fields.user_id === context.conversation.fields.user_id &&
         feedback.fields.language_profile_id === context.conversation.fields.language_profile_id &&
-        toDateKey(feedback.fields.date, timeZone) === feedbackDate
+        feedbackDayKey(feedback.fields, timeZone) === feedbackDate
     ) ?? null;
 
   const hasCompleteFeedback = Boolean(
@@ -335,7 +335,7 @@ export async function addLearnedWordsToDailyFeedback(userId: string, profileId: 
   const feedback = feedbacks.find((item) =>
     item.fields.user_id === userId &&
     item.fields.language_profile_id === profileId &&
-    toDateKey(item.fields.date, timeZone) === dateKey
+    feedbackDayKey(item.fields, timeZone) === dateKey
   );
   if (feedback) {
     await client.updateRecord<DailyFeedbackFields>("dailyFeedbacks", feedback.id, {
@@ -364,7 +364,7 @@ export async function getCalendarData(monthInput?: string) {
     : [[], [], []];
   const { year, month, key } = normalizeCalendarMonth(monthInput);
   const scoped = dailyFeedbacks;
-  const validFeedbacks = scoped.filter((feedback) => safeDateKey(feedback.fields.date || feedback.fields.created_at, timeZone));
+  const validFeedbacks = scoped.filter((feedback) => feedbackDayKey(feedback.fields, timeZone));
   const sorted = sortFeedbacks(validFeedbacks);
   const feedbackByDate = new Map<string, TeableRecord<DailyFeedbackFields>>();
   const flashcardsByDate = new Map<string, { minutes: number; words: number; correct: number }>();
@@ -378,7 +378,7 @@ export async function getCalendarData(monthInput?: string) {
     flashcardsByDate.set(date, current);
   }
   for (const feedback of sorted) {
-    const date = safeDateKey(feedback.fields.date || feedback.fields.created_at, timeZone);
+    const date = feedbackDayKey(feedback.fields, timeZone);
     if (date && date.startsWith(key) && !feedbackByDate.has(date)) feedbackByDate.set(date, feedback);
   }
   const conversationSecondsByDate = new Map<string, number>();
@@ -461,7 +461,7 @@ export async function getDailyFeedback(date: string) {
     : [[], []];
   const feedback = sortFeedbacks(
     dailyFeedbacks.filter(
-      (item) => safeDateKey(item.fields.date || item.fields.created_at, timeZone) === date
+      (item) => feedbackDayKey(item.fields, timeZone) === date
     )
   )[0] ?? null;
   const completedConversations = conversations
@@ -597,7 +597,7 @@ async function saveDailyFeedback(
     (feedback) =>
       feedback.fields.user_id === conversation.fields.user_id &&
       feedback.fields.language_profile_id === conversation.fields.language_profile_id &&
-      toDateKey(feedback.fields.date, timeZone) === date
+      feedbackDayKey(feedback.fields, timeZone) === date
   );
 
   const previousCompletedCount = conversations.filter(
@@ -728,6 +728,15 @@ function safeDateKey(value: string | undefined, timeZone: string = DEFAULT_TIMEZ
   if (DAY_KEY_PATTERN.test(value)) return value;
   const key = dateKeyInTimeZone(new Date(value), resolveTimeZone(timeZone));
   return key || null;
+}
+
+// daily_feedbacks.date é coluna DATE: guarda o dia LOCAL como meia-noite UTC
+// (artefato do tipo). Extrair a parte da data; nunca reconverter pelo fuso
+// (deslocaria um dia em fusos negativos). created_at, quando usado como
+// fallback, é instante real e segue pelo caminho de fuso.
+function feedbackDayKey(feedback: { date?: string; created_at?: string }, timeZone: string) {
+  if (feedback.date) return dayKeyFromDateColumn(feedback.date, timeZone);
+  return safeDateKey(feedback.created_at, timeZone);
 }
 
 export function parseSuggestedTopics(value: string | undefined): CalendarSuggestion[] {

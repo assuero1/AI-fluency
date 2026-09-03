@@ -56,3 +56,28 @@ describe("computeStreakState", () => {
     expect(state.milestone).toBeNull();
   });
 });
+
+describe("computeStreakState — dia congelado adquirido", () => {
+  const today = "2026-09-03";
+  const day = (offset: number) => {
+    const date = new Date(`${today}T12:00:00Z`);
+    date.setUTCDate(date.getUTCDate() - offset);
+    return date.toISOString().slice(0, 10);
+  };
+
+  it("mantém a streak estável em sincronizações seguintes ao freeze", () => {
+    // Praticou 01 e 03; 02 foi congelado na sincronização anterior.
+    const activeDays = [day(2), day(0)];
+    const again = computeStreakState(activeDays, { today, previousStreak: 3, longestStreak: 3, freezeUsedOn: day(1) });
+    expect(again.streak).toBe(2 + 1); // 03 + 02 congelado; 01 continua ativo
+    expect(again.streak).toBe(3);
+    expect(again.freezeConsumedOn).toBeNull();
+  });
+
+  it("dia congelado não concede freeze novo em cadeia", () => {
+    const activeDays = [day(2), day(5), day(6)];
+    const state = computeStreakState(activeDays, { today, previousStreak: 3, longestStreak: 3, freezeUsedOn: day(1) });
+    // 03 ✓, 02 congelado ✓, 01 ✗ e freeze em cooldown → para em 2.
+    expect(state.streak).toBe(2);
+  });
+});
