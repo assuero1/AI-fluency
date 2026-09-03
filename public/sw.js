@@ -9,6 +9,38 @@ self.addEventListener("message", (event) => {
   if (event.data?.type === "SKIP_WAITING") self.skipWaiting();
 });
 
+// Web push: lembrete diário anti-quebra de streak. O payload vem do
+// /api/notifications/tick no formato { title, body, url }.
+self.addEventListener("push", (event) => {
+  let payload = { title: "AI Fluency", body: "Hora da prática de hoje!", url: "/" };
+  try {
+    if (event.data) payload = { ...payload, ...event.data.json() };
+  } catch {
+    // payload cru: usa o padrão acima
+  }
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: "/icon-192.png",
+      badge: "/icon-192.png",
+      tag: "ai-fluency-reminder",
+      data: { url: payload.url || "/" }
+    })
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = event.notification.data?.url || "/";
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
+      const existing = clients.find((client) => new URL(client.url).pathname.startsWith(target));
+      if (existing) return existing.focus();
+      return self.clients.openWindow(target);
+    })
+  );
+});
+
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches

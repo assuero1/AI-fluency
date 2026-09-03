@@ -67,7 +67,8 @@ export async function getProfileSettings() {
       timezone: user.fields.timezone ?? "America/Sao_Paulo",
       activeLanguageId: activeProfile?.id ?? "",
       dailyNewCardsQuota: getDailyNewCardsQuota(user),
-      dailyGoalMinutes: normalizeDailyGoalMinutes(user.fields.daily_goal_minutes)
+      dailyGoalMinutes: normalizeDailyGoalMinutes(user.fields.daily_goal_minutes),
+      reminderHour: typeof user.fields.reminder_hour === "number" ? user.fields.reminder_hour : null
     },
     activeProfile: activeProfile
       ? {

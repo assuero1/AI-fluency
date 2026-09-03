@@ -14,7 +14,7 @@ import { DAILY_GOAL_OPTIONS } from "@/lib/learning/daily-goal";
 
 type ProfilePreferencesProps = {
   initial: {
-    user: { name: string; timezone: string; activeLanguageId: string; dailyGoalMinutes?: number };
+    user: { name: string; timezone: string; activeLanguageId: string; dailyGoalMinutes?: number; reminderHour?: number | null };
     activeProfile: {
       id: string;
       languageName: string;
@@ -46,7 +46,8 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
     correctionStyle: initial.activeProfile?.correctionStyle ?? "Corrigir sempre",
     transcriptEnabled: initial.activeProfile?.transcriptEnabled ?? true,
     calendarMemoryEnabled: initial.activeProfile?.calendarMemoryEnabled ?? true,
-    dailyGoalMinutes: initial.user.dailyGoalMinutes ?? 15
+    dailyGoalMinutes: initial.user.dailyGoalMinutes ?? 15,
+    reminderHour: initial.user.reminderHour ?? null
   });
   const [pending, setPending] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -257,6 +258,24 @@ export function ProfilePreferences({ initial, streak }: ProfilePreferencesProps)
           ))}
         </div>
         <p className="row-meta">Qualquer prática conta: conversa, treino de cards ou palavras novas.</p>
+      </section>
+
+      <section className="section">
+        <h2 className="section-title">Lembrete diário</h2>
+        <label className="profile-select-row">
+          <span>Horário do aviso</span>
+          <select
+            disabled={pending === "preferences"}
+            onChange={(event) => savePreference({ reminderHour: event.target.value === "" ? null : Number(event.target.value) })}
+            value={preferences.reminderHour ?? ""}
+          >
+            <option value="">Desativado</option>
+            {Array.from({ length: 24 }, (_, hour) => (
+              <option key={hour} value={hour}>{String(hour).padStart(2, "0")}:00</option>
+            ))}
+          </select>
+        </label>
+        <p className="row-meta">Enviado só nos dias em que você ainda não praticou.</p>
       </section>
 
       <section className="section">

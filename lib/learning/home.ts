@@ -210,6 +210,7 @@ export async function getHomeData() {
       weekConversationGoal
     },
     quests,
+    completedConversations: conversations.filter((conversation) => conversation.fields.status === "completed").length,
     readiness: await getConnectionStatus()
   };
 }
