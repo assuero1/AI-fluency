@@ -76,9 +76,9 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
       <ResumoConfetti />
       <ScreenHeader title="Conversa finalizada" subtitle={`${duration} min · Feedback salvo no calendário`} />
       <section className="section">
-        <div className="choice-card active pop-in">
-          <IconBubble Icon={Check} />
-          <div>
+        <div className="celebration-hero pop-in">
+          <IconBubble Icon={Check} tone="primary" />
+          <div className="row-copy">
             <div className="row-title">Muito bem, {learnerName}!</div>
             <div className="row-meta">{topicTitle}</div>
           </div>

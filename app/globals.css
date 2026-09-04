@@ -399,19 +399,25 @@ a {
 .card-copy {
   margin: 0;
   color: var(--text);
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1.45;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.5;
 }
 
 /* Linha de ações de wizard (Voltar + Continuar) */
 .choice-actions {
   display: flex;
   gap: var(--space-3);
+  align-items: center;
 }
 
 .choice-actions .outline-button {
   flex: 0 0 auto;
+  min-width: 100px;
+}
+
+.choice-actions .green-button {
+  flex: 1;
 }
 
 .practice-reminder {
@@ -590,11 +596,13 @@ a {
 
 .nav-item.active {
   color: var(--primary);
+  font-weight: 700;
 }
 
 .nav-item.active svg {
-  fill: var(--primary);
   stroke: var(--primary);
+  stroke-width: 2.5;
+  fill: none;
 }
 
 .metric-grid {
@@ -847,11 +855,28 @@ a {
   margin-top: var(--space-4);
 }
 
+.word-summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: var(--card-pad);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
 .word-summary {
   display: grid;
   grid-template-columns: 1fr 1.35fr;
-  gap: 26px;
+  gap: 24px;
   align-items: center;
+}
+
+.word-distribution-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-subtle);
 }
 
 .word-search-form {
@@ -863,7 +888,15 @@ a {
   padding: 0 16px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
+  background: #ffffff;
   color: var(--muted);
+  box-shadow: var(--shadow-sm);
+  transition: border-color var(--motion-fast), box-shadow var(--motion-fast);
+}
+
+.word-search-form:focus-within {
+  border-color: var(--section);
+  box-shadow: 0 0 0 3px var(--section-soft);
 }
 
 /* Chips de filtro têm alvo de toque de 44px */
@@ -1163,18 +1196,21 @@ a {
   display: flex;
   align-items: flex-start;
   gap: 14px;
-  padding: 18px;
-  border-radius: var(--radius-md);
-  background: var(--primary-soft);
-  color: var(--primary);
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--section-soft);
+  border: 1px solid var(--line-subtle);
+  color: var(--section-text);
 }
 
 .practice-tip .row-title {
-  font-size: 18px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--section-text);
 }
 
 .practice-tip .row-meta {
-  color: #287d3b;
+  color: var(--text-muted);
 }
 
 .word-big {
@@ -2212,21 +2248,26 @@ a {
   line-height: 1.35;
 }
 
-.calendar-focus-line {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
-  color: var(--primary);
-  font-size: 16px;
-  font-weight: 700;
-  line-height: 1.35;
-}
-
 .soft-card {
   min-width: 0;
   padding: var(--card-pad);
   border-radius: var(--radius-lg);
-  background: var(--primary-soft);
+  background: var(--surface);
+}
+
+.celebration-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 18px 20px;
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.celebration-hero .row-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text);
 }
 
 .progress-level-card,
@@ -3024,7 +3065,9 @@ textarea:focus-visible,
 .soft-card,
 .progress-level-card,
 .progress-focus-card,
-.calendar-feedback-card {
+.calendar-feedback-card,
+.word-summary-card,
+.celebration-hero {
   border: 1px solid var(--line-soft);
   box-shadow: var(--shadow-card);
 }
@@ -3042,12 +3085,17 @@ textarea:focus-visible,
 .voice-icon-button { color: var(--section-text); }
 .mic-button { color: var(--section-text); }
 .nav-item.active {
-  padding: 6px 12px;
+  padding: 6px 14px;
   border-radius: 999px;
   background: var(--section-soft);
   color: var(--section-text);
+  font-weight: 700;
 }
-.nav-item.active svg { fill: var(--section-text); stroke: var(--section-text); }
+.nav-item.active svg {
+  stroke: var(--section-text);
+  stroke-width: 2.5;
+  fill: none;
+}
 
 
 /* === Loading: pontinhos saltitantes === */
@@ -3399,7 +3447,7 @@ textarea:focus-visible,
   flex: 1 1 140px;
 }
 .quest-complete { opacity: .75; }
-.nav-badge { position: absolute; top: 2px; right: 22%; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #e0524a; color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; }
+.nav-badge { position: absolute; top: 2px; right: 20%; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: var(--danger); color: #fff; font-size: 11px; font-weight: 800; display: grid; place-items: center; box-shadow: 0 2px 4px rgba(255, 75, 75, 0.35); }
 
 /* === Gráficos de evolução (SVG puro) === */
 .mini-chart { margin: 0; display: grid; gap: 6px; }

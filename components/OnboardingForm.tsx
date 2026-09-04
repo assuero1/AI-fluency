@@ -320,7 +320,7 @@ export function OnboardingForm({
             <label className="switch-row">
               <span>
                 <strong>Áudio da IA</strong>
-                <small>Kokoro lê perguntas e explicações.</small>
+                <small>Voz natural da IA para ouvir pronúncia e perguntas.</small>
               </span>
               <input checked={audioEnabled} onChange={(event) => setAudioEnabled(event.target.checked)} type="checkbox" />
             </label>

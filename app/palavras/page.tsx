@@ -38,37 +38,41 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
         <div className="flashcard-entry-icon"><Brain aria-hidden="true" /></div><div className="row-copy"><div className="eyebrow"><Sparkles aria-hidden="true" size={16} /> Revisão inteligente</div><div className="row-title">Treinar com cards</div><div className="row-meta">{data.dailyQueue && data.dailyQueue.dueCount + data.dailyQueue.newCount > 0 ? `Hoje: ${data.dailyQueue.dueCount} revisões + ${data.dailyQueue.newCount} novas` : "Palavras e frases do seu vocabulário"}</div></div><ChevronRight aria-hidden="true" />
       </Link>
       <section className="section">
-        <div className="word-summary">
-          <div>
-            <div className="word-big">{data.summary.totalUses}</div>
-            <div className="row-meta">usos em conversas</div>
-          </div>
-          <div>
-            <div className="row-title text-accent">
-              +{data.summary.weeklyNew}
+        <div className="word-summary-card">
+          <div className="word-summary">
+            <div>
+              <div className="word-big">{data.summary.totalUses}</div>
+              <div className="row-meta">usos em conversas</div>
             </div>
-            <div className="row-meta">novas esta semana</div>
-            <div className="row-title mt-3">
-              {data.summary.toReview}
+            <div>
+              <div className="row-title text-accent">
+                +{data.summary.weeklyNew}
+              </div>
+              <div className="row-meta">novas esta semana</div>
+              <div className="row-title mt-3">
+                {data.summary.toReview}
+              </div>
+              <div className="row-meta">para revisar</div>
             </div>
-            <div className="row-meta">para revisar</div>
           </div>
+          <div className="progress-line">
+            <span style={{ width: `${progress}%` }} />
+          </div>
+          <div className="row-meta">Meta semanal: {data.summary.weeklyNew}/{data.summary.weeklyGoal} novas palavras</div>
+          {data.summary.totalWords > 0 ? (
+            <div className="word-distribution-wrap">
+              <div aria-label={distributionLabel(data.summary)} className="word-distribution" role="img">
+                {data.summary.learningWords > 0 ? <span className="wd-learning" style={{ flexGrow: data.summary.learningWords }} /> : null}
+                {data.summary.reviewWords > 0 ? <span className="wd-consolidating" style={{ flexGrow: data.summary.reviewWords }} /> : null}
+                {data.summary.strongWords > 0 ? <span className="wd-strong" style={{ flexGrow: data.summary.strongWords }} /> : null}
+                {data.summary.unusedWords > 0 ? <span className="wd-unused" style={{ flexGrow: data.summary.unusedWords }} /> : null}
+              </div>
+              <div className="word-distribution-caption">
+                {data.summary.strongWords} fortes · {data.summary.learningWords} aprendendo · {data.summary.reviewWords} consolidando · {data.summary.unusedWords} sem uso
+              </div>
+            </div>
+          ) : null}
         </div>
-        <div className="progress-line">
-          <span style={{ width: `${progress}%` }} />
-        </div>
-        <div className="row-meta">Meta semanal: {data.summary.weeklyNew}/{data.summary.weeklyGoal} novas palavras</div>
-        {data.summary.totalWords > 0 ? <>
-          <div aria-label={distributionLabel(data.summary)} className="word-distribution" role="img">
-            {data.summary.learningWords > 0 ? <span className="wd-learning" style={{ flexGrow: data.summary.learningWords }} /> : null}
-            {data.summary.reviewWords > 0 ? <span className="wd-consolidating" style={{ flexGrow: data.summary.reviewWords }} /> : null}
-            {data.summary.strongWords > 0 ? <span className="wd-strong" style={{ flexGrow: data.summary.strongWords }} /> : null}
-            {data.summary.unusedWords > 0 ? <span className="wd-unused" style={{ flexGrow: data.summary.unusedWords }} /> : null}
-          </div>
-          <div className="word-distribution-caption">
-            {data.summary.strongWords} fortes · {data.summary.learningWords} aprendendo · {data.summary.reviewWords} consolidando · {data.summary.unusedWords} sem uso
-          </div>
-        </> : null}
       </section>
 
       <form className="word-search-form" action="/palavras" role="search">
