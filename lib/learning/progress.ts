@@ -1,4 +1,5 @@
 import { createTopic } from "./topics";
+import { plura } from "@/lib/plural";
 import { startConversation } from "./conversations";
 import type { ConversationFields, CorrectionFields, WordFields } from "./conversations";
 import type { DailyFeedbackFields } from "./home";
@@ -208,14 +209,14 @@ function buildStrengths(input: {
   if (input.completedCount > 0) {
     strengths.push({
       title: "Consistência de prática",
-      meta: `${input.completedCount} conversa(s) concluída(s) no seu histórico.`,
+      meta: `${plura(input.completedCount, "conversa concluída", "conversas concluídas")} no seu histórico.`,
       tone: "primary"
     });
   }
   if (input.totalWordUses > 0) {
     strengths.push({
       title: "Vocabulário em uso",
-      meta: `${input.totalWordUses} uso(s) de palavras registrados em conversas.`,
+      meta: `${plura(input.totalWordUses, "uso de palavras registrado", "usos de palavras registrados")} em conversas.`,
       tone: "info"
     });
   }
@@ -239,7 +240,7 @@ function buildWeeklyFocus(errors: ProgressError[], feedback: TeableRecord<DailyF
       : "";
     return {
       title: `${errorLabel(mainError.type)} em contexto`,
-      detail: `${mainError.count} correção(ões) desse tipo nos últimos 30 dias.`,
+      detail: `${plura(mainError.count, "correção desse tipo", "correções desse tipo")} nos últimos 30 dias.`,
       reason: `Retome ${errorLabel(mainError.type).toLocaleLowerCase()} com frases naturais e uma nova tentativa.${example}`,
       source: "recurring_error"
     };
@@ -254,7 +255,7 @@ function buildWeeklyFocus(errors: ProgressError[], feedback: TeableRecord<DailyF
   }
   return {
     title: "Use seu vocabulário recente",
-    detail: `${newWordsMonth} palavra(s) nova(s) registrada(s) neste mês.`,
+    detail: `${plura(newWordsMonth, "palavra nova registrada", "palavras novas registradas")} neste mês.`,
     reason: "Converse usando palavras novas em frases mais completas e naturais.",
     source: "vocabulary"
   };

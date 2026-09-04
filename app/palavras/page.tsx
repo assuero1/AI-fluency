@@ -1,4 +1,5 @@
 import { BookOpen, Brain, ChevronRight, Search, Sparkles } from "lucide-react";
+import { plura } from "@/lib/plural";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
@@ -102,7 +103,7 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
                 <div className="row-meta">{word.translation}</div>
                 <div className="word-row-foot">
                   {word.needsReview ? "Revisar agora" : formatLastUsed(word.lastUsedAt)}
-                  {word.correctionCount > 0 ? ` · ${word.correctionCount} correção(ões)` : ""}
+                  {word.correctionCount > 0 ? ` · ${plura(word.correctionCount, "correção", "correções")}` : ""}
                 </div>
               </Link>
               <VoiceButton languageCode={data.languageCode} text={word.displayText} label="Ouvir pronúncia" compact />

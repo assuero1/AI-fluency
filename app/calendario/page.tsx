@@ -66,7 +66,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             return (
               <Link
                 aria-current={isToday ? "date" : undefined}
-                aria-label={`${formatDate(day.date)}${isToday ? ", hoje" : ""}${day.hasFeedback ? ", com feedback" : ""}${day.flashcardWords ? `, ${day.flashcardWords} palavra(s) revisada(s)` : ""}`}
+                aria-label={`${formatDate(day.date)}${isToday ? ", hoje" : ""}${day.hasFeedback ? ", com feedback" : ""}${day.flashcardWords ? `, ${plura(day.flashcardWords, "palavra revisada", "palavras revisadas")}` : ""}`}
                 className={className}
                 href={`/calendario/${day.date}`}
                 key={day.date}
