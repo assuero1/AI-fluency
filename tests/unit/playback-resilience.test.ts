@@ -242,4 +242,19 @@ describe("player resilience wiring", () => {
       expect(source).toMatch(/giveUpStalledPlayback = useCallback\(\(\) => \{[\s\S]*?reportVoiceFailure\(/);
     }
   });
+
+  it("has graceful fallback when buildSeamlessTrack fails (e.g. unsupported codec like Opus on Safari)", () => {
+    const word = read("components/MessageWordPlayer.tsx");
+    expect(word).toContain("const seamless = await buildSeamlessTrack");
+    expect(word).toMatch(/catch\s*\{[\s\S]*?audioUrl = segments\[0\]\.audioUrl;/);
+
+    const legacy = read("components/MessageAudioPlayer.tsx");
+    expect(legacy).toMatch(/if \(urls\.length === 1\) \{\s*ensureAudioElement\(\)\.src = urls\[0\];/);
+    expect(legacy).toMatch(/catch\s*\{[\s\S]*?ensureAudioElement\(\)\.src = urls\[0\];/);
+  });
+
+  it("seamless-audio wraps decodeAudioData with detailed error context", () => {
+    const seamlessSource = read("lib/learning/seamless-audio.ts");
+    expect(seamlessSource).toContain("decodeAudioData failed for");
+  });
 });
