@@ -21,20 +21,20 @@
         height: 640px;
         overflow: hidden;
         background: var(--soft);
-        font-family: ui-rounded, "Nunito", system-ui, sans-serif;
+        font-family: "Nunito", -apple-system, BlinkMacSystemFont, sans-serif;
       }
       #root { position: relative; width: 640px; height: 640px; overflow: hidden; }
       .clip { position: absolute; }
 
       #bg {
         inset: 0;
-        background: linear-gradient(180deg, var(--soft) 0%, #fdfdfb 72%, #ffffff 100%);
+        background: linear-gradient(180deg, var(--soft) 0%, #fdfdfb 70%, #ffffff 100%);
       }
       .blob { position: absolute; border-radius: 50%; }
-      #blob1 { width: 340px; height: 340px; left: -90px; top: 48px; background: var(--deep); opacity: 0.07; }
-      #blob2 { width: 280px; height: 280px; right: -70px; bottom: 30px; background: var(--main); opacity: 0.06; }
+      #blob1 { width: 340px; height: 340px; left: -90px; top: 48px; background: var(--deep); opacity: 0.08; }
+      #blob2 { width: 280px; height: 280px; right: -70px; bottom: 30px; background: var(--main); opacity: 0.07; }
 
-      .mote { position: absolute; border-radius: 50%; background: var(--deep); opacity: 0.18; }
+      .mote { position: absolute; border-radius: 50%; background: var(--deep); opacity: 0.16; }
       #mote1 { width: 16px; height: 16px; left: 88px; top: 170px; }
       #mote2 { width: 12px; height: 12px; left: 540px; top: 320px; }
 
@@ -44,12 +44,13 @@
         width: 250px; height: 36px;
         border-radius: 50%;
         background: var(--deep);
-        opacity: 0.13;
+        opacity: 0.14;
+        transform-origin: 50% 50%;
       }
 
       #mascot-breath { position: absolute; left: 170px; top: 150px; width: 300px; height: 333px; }
-      #mascot-tilt { position: relative; width: 300px; height: 333px; }
-      #mascot { position: relative; width: 300px; height: 333px; }
+      #mascot-tilt { position: relative; width: 300px; height: 333px; transform-origin: 50% 100%; }
+      #mascot { position: relative; width: 300px; height: 333px; transform-origin: 50% 100%; }
       #mascot-clip { position: relative; width: 300px; height: 333px; overflow: hidden; }
       #mascot-img {
         display: block;
@@ -59,24 +60,68 @@
 
       #bubble {
         position: absolute;
-        left: 368px; top: 64px;
-        width: 176px; height: 118px;
-        background: #ffffff;
-        border-radius: 36px;
-        box-shadow: 0 6px 0 var(--soft), 0 14px 28px rgba(31, 31, 31, 0.08);
+        left: 368px; top: 62px;
+        width: 180px; height: 122px;
+        background: linear-gradient(145deg, #ffffff 0%, var(--soft) 220%);
+        border: 2px solid rgba(255, 255, 255, 0.95);
+        border-radius: 38px;
+        box-shadow: 0 7px 0 var(--soft), 0 16px 32px rgba(31, 31, 31, 0.08);
         display: flex; align-items: center; justify-content: center;
+        transform-origin: 18% 95%;
       }
-      #trail1 { position: absolute; left: 344px; top: 190px; width: 22px; height: 22px; border-radius: 50%; background: #ffffff; box-shadow: 0 4px 0 var(--soft); }
-      #trail2 { position: absolute; left: 326px; top: 218px; width: 13px; height: 13px; border-radius: 50%; background: #ffffff; box-shadow: 0 3px 0 var(--soft); }
+      #trail1 {
+        position: absolute;
+        left: 342px; top: 190px;
+        width: 24px; height: 24px;
+        border-radius: 50%;
+        background: #ffffff;
+        border: 2px solid rgba(255, 255, 255, 0.9);
+        box-shadow: 0 4px 0 var(--soft);
+      }
+      #trail2 {
+        position: absolute;
+        left: 324px; top: 220px;
+        width: 14px; height: 14px;
+        border-radius: 50%;
+        background: #ffffff;
+        box-shadow: 0 3px 0 var(--soft);
+      }
 
-      #dots { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 12px; }
-      .dot { width: 16px; height: 16px; border-radius: 50%; background: var(--main); opacity: 0; }
+      #dots {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+      }
+      .dot {
+        width: 18px; height: 18px;
+        border-radius: 50%;
+        background: linear-gradient(135deg, var(--main) 0%, var(--deep) 100%);
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+        transform-origin: 50% 50%;
+      }
 
-      .glyph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 64px; font-weight: 800; color: var(--ink); opacity: 0; }
+      /* Insight Icon (Estrela inteligente / epifania em SVG estilizado) */
+      #insight-icon {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transform-origin: 50% 50%;
+      }
+      #insight-svg {
+        width: 56px; height: 56px;
+        filter: drop-shadow(0 4px 10px var(--main));
+      }
 
-      .twinkle { position: absolute; opacity: 0; }
-      #tw1 { left: 348px; top: 44px; }
-      #tw2 { left: 556px; top: 96px; }
+      .twinkle { position: absolute; opacity: 0; transform-origin: 50% 50%; }
+      #tw1 { left: 344px; top: 40px; }
+      #tw2 { left: 560px; top: 88px; }
+      #tw3 { left: 450px; top: 26px; }
     </style>
   </head>
   <body>
@@ -117,14 +162,22 @@
             <div id="dot2" class="dot"></div>
             <div id="dot3" class="dot"></div>
           </div>
-          <div id="glyphA" class="glyph">?</div>
-          <div id="glyphB" class="glyph">!</div>
+          <div id="insight-icon">
+            <svg id="insight-svg" viewBox="0 0 32 32" aria-hidden="true">
+              <!-- Centelha central de IA e sabedoria -->
+              <path d="M16 2 L19.5 12.5 L30 16 L19.5 19.5 L16 30 L12.5 19.5 L2 16 L12.5 12.5 Z" fill="var(--main)" stroke="var(--deep)" stroke-width="1.2" />
+              <circle cx="16" cy="16" r="4.5" fill="#ffffff" />
+            </svg>
+          </div>
         </div>
-        <svg id="tw1" class="twinkle" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
+        <svg id="tw1" class="twinkle" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 1l2.6 8.4L23 12l-8.4 2.6L12 23l-2.6-8.4L1 12l8.4-2.6z" fill="var(--main)" />
         </svg>
-        <svg id="tw2" class="twinkle" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+        <svg id="tw2" class="twinkle" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
           <path d="M12 1l2.6 8.4L23 12l-8.4 2.6L12 23l-2.6-8.4L1 12l8.4-2.6z" fill="var(--deep)" />
+        </svg>
+        <svg id="tw3" class="twinkle" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="12" cy="12" r="9" fill="var(--main)" />
         </svg>
       </div>
     </div>
@@ -134,32 +187,41 @@
       const tl = gsap.timeline({ paused: true });
 
       gsap.set("#mascot", { transformOrigin: "50% 100%" });
-      gsap.set("#bubble", { transformOrigin: "15% 95%" });
+      gsap.set("#mascot-tilt", { transformOrigin: "50% 100%" });
+      gsap.set("#bubble", { transformOrigin: "18% 95%" });
 
-      // Respiração + cabeça inclinando (ambos terminam na pose inicial)
-      tl.fromTo("#mascot-breath", { y: 0 }, { y: -8, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
-      tl.fromTo("#mascot-tilt", { rotation: -2.5 }, { rotation: 2.5, duration: 1.2, ease: "sine.inOut", yoyo: true, repeat: 1 }, 0);
+      // Respiração + postura pensativa (terminam exatamente na pose inicial)
+      tl.fromTo("#mascot-breath", { y: 0 }, { y: -7, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
+      tl.fromTo("#mascot-tilt", { rotation: -2 }, { rotation: 3.5, duration: 1.2, ease: "sine.inOut", yoyo: true, repeat: 1 }, 0);
       tl.fromTo("#ground", { scaleX: 1 }, { scaleX: 0.94, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
 
-      // Um ciclo de pensamento: pontos -> glifo -> absorve (1.2s, rodado 2x)
-      function thoughtCycle(t0, glyphSel) {
-        tl.set("#dots", { autoAlpha: 1, scale: 1 }, t0);
-        [["#dot1", 0], ["#dot2", 0.1], ["#dot3", 0.2]].forEach(([sel, off]) => {
-          tl.fromTo(sel, { autoAlpha: 0, scale: 0 }, { autoAlpha: 1, scale: 1, duration: 0.14, ease: "back.out(2.4)" }, t0 + off);
-        });
-        tl.to("#dots", { autoAlpha: 0, scale: 0.7, duration: 0.14, ease: "power1.in" }, t0 + 0.5);
-        tl.fromTo(glyphSel, { autoAlpha: 0, scale: 0.5, rotation: -12 }, { autoAlpha: 1, scale: 1, rotation: 0, duration: 0.2, ease: "back.out(2.6)" }, t0 + 0.66);
-        tl.to("#bubble", { scale: 1.05, duration: 0.14, ease: "sine.inOut", yoyo: true, repeat: 1 }, t0 + 0.88);
-        tl.to(glyphSel, { autoAlpha: 0, scale: 1.25, duration: 0.16, ease: "power1.in" }, t0 + 1.02);
-      }
-      thoughtCycle(0, "#glyphA");
-      thoughtCycle(1.2, "#glyphB");
+      // Balão de pensamento respira suavemente (ciclo 1.2s x 2)
+      tl.fromTo("#bubble", { scale: 1 }, { scale: 1.04, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
+      tl.fromTo("#trail1", { scale: 1 }, { scale: 1.06, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0.1);
 
-      // Brilhos piscando perto da bolha
-      tl.fromTo("#tw1", { autoAlpha: 0, scale: 0.6 }, { autoAlpha: 1, scale: 1, duration: 0.3, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
-      tl.fromTo("#tw2", { autoAlpha: 0, scale: 0.6 }, { autoAlpha: 0.9, scale: 1, duration: 0.3, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0.3);
+      // --- ONDA CONTÍNUA E HIPNÓTICA DOS PONTINHOS (Fase 1: 0.0s a 1.2s) ---
+      // Pulos escalonados estilo onda de digitação da IA
+      tl.fromTo("#dot1", { y: 0, scale: 0.9, opacity: 0.5 }, { y: -12, scale: 1.15, opacity: 1, duration: 0.35, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
+      tl.fromTo("#dot2", { y: 0, scale: 0.9, opacity: 0.5 }, { y: -12, scale: 1.15, opacity: 1, duration: 0.35, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0.15);
+      tl.fromTo("#dot3", { y: 0, scale: 0.9, opacity: 0.5 }, { y: -12, scale: 1.15, opacity: 1, duration: 0.35, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0.30);
 
-      // Motes e blobs em ciclo fechado
+      // --- CLÍMAX DE INSIGHT (1.3s - 1.95s): Os pontos convergem e a estrela de IA reluz ---
+      tl.to("#dots", { autoAlpha: 0, scale: 0.6, duration: 0.20, ease: "power1.in" }, 1.30);
+      tl.fromTo("#insight-icon",
+        { autoAlpha: 0, scale: 0.3, rotation: -45 },
+        { autoAlpha: 1, scale: 1.15, rotation: 0, duration: 0.24, ease: "back.out(3)" },
+        1.45
+      );
+      tl.to("#insight-icon", { scale: 1.0, duration: 0.16, ease: "sine.out" }, 1.69);
+      tl.to("#insight-icon", { autoAlpha: 0, scale: 1.2, duration: 0.22, ease: "power1.in" }, 1.95);
+      tl.to("#dots", { autoAlpha: 1, scale: 1, duration: 0.22, ease: "power1.out" }, 2.05);
+
+      // Brilhos e sinapses cintilando ao redor do balão
+      tl.fromTo("#tw1", { autoAlpha: 0, scale: 0.4 }, { autoAlpha: 1, scale: 1.2, duration: 0.3, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0.1);
+      tl.fromTo("#tw2", { autoAlpha: 0, scale: 0.4 }, { autoAlpha: 1, scale: 1.1, duration: 0.3, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0.4);
+      tl.fromTo("#tw3", { autoAlpha: 0, scale: 0.4 }, { autoAlpha: 1, scale: 1.1, duration: 0.3, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0.7);
+
+      // Motes e blobs em ciclo fechado e fluido (2.4s)
       tl.fromTo("#mote1", { y: 0 }, { y: -9, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
       tl.fromTo("#mote2", { y: -7 }, { y: 0, duration: 0.6, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
       tl.fromTo("#blob1", { scale: 1 }, { scale: 1.06, duration: 1.2, ease: "sine.inOut", yoyo: true, repeat: 1 }, 0);

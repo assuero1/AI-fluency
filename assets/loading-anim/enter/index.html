@@ -21,30 +21,32 @@
         height: 640px;
         overflow: hidden;
         background: var(--soft);
-        font-family: ui-rounded, "Nunito", system-ui, sans-serif;
+        font-family: "Nunito", -apple-system, BlinkMacSystemFont, sans-serif;
       }
       #root { position: relative; width: 640px; height: 640px; overflow: hidden; }
       .clip { position: absolute; }
 
       #bg {
         inset: 0;
-        background: linear-gradient(180deg, var(--soft) 0%, #fdfdfb 72%, #ffffff 100%);
+        background: linear-gradient(180deg, var(--soft) 0%, #fdfdfb 70%, #ffffff 100%);
       }
       .blob { position: absolute; border-radius: 50%; }
-      #blob1 { width: 340px; height: 340px; left: -90px; top: 48px; background: var(--deep); opacity: 0.07; }
-      #blob2 { width: 280px; height: 280px; right: -70px; bottom: 30px; background: var(--main); opacity: 0.06; }
+      #blob1 { width: 340px; height: 340px; left: -90px; top: 48px; background: var(--deep); opacity: 0.08; }
+      #blob2 { width: 280px; height: 280px; right: -70px; bottom: 30px; background: var(--main); opacity: 0.07; }
 
       .tile {
         position: absolute;
-        width: 76px; height: 76px;
-        background: #ffffff;
-        border-radius: 18px;
-        box-shadow: 0 5px 0 var(--soft), 0 10px 24px rgba(31, 31, 31, 0.07);
+        width: 78px; height: 78px;
+        background: linear-gradient(145deg, #ffffff 0%, var(--soft) 220%);
+        border: 2px solid rgba(255, 255, 255, 0.9);
+        border-radius: 20px;
+        box-shadow: 0 6px 0 var(--soft), 0 12px 26px rgba(31, 31, 31, 0.08);
         display: flex; align-items: center; justify-content: center;
         font-size: 34px; font-weight: 800; color: var(--ink);
+        transform-origin: 50% 50%;
       }
       #tileA { left: 92px; top: 104px; }
-      #tileB { left: 472px; top: 132px; }
+      #tileB { left: 472px; top: 124px; }
       #tileC { left: 84px; top: 336px; }
 
       #ground {
@@ -53,12 +55,13 @@
         width: 250px; height: 36px;
         border-radius: 50%;
         background: var(--deep);
-        opacity: 0.13;
+        opacity: 0.14;
+        transform-origin: 50% 50%;
       }
 
       #mascot-breath { position: absolute; left: 170px; top: 128px; width: 300px; height: 333px; }
-      #mascot-move { position: relative; width: 300px; height: 333px; }
-      #mascot { position: relative; width: 300px; height: 333px; }
+      #mascot-move { position: relative; width: 300px; height: 333px; transform-origin: 50% 100%; }
+      #mascot { position: relative; width: 300px; height: 333px; transform-origin: 50% 100%; }
       #mascot-clip { position: relative; width: 300px; height: 333px; overflow: hidden; }
       #mascot-img {
         display: block;
@@ -66,11 +69,11 @@
         filter: hue-rotate(calc(var(--hue) * 1deg)) saturate(var(--sat));
       }
 
-      .spark { position: absolute; opacity: 0; }
-      #spark1 { left: 44px; top: 26px; }
-      #spark2 { left: 236px; top: 58px; }
-      #spark3 { left: 200px; top: -12px; }
-      #spark4 { left: 96px; top: -20px; }
+      .spark { position: absolute; opacity: 0; transform-origin: 50% 50%; }
+      #spark1 { left: 40px; top: 22px; }
+      #spark2 { left: 240px; top: 52px; }
+      #spark3 { left: 204px; top: -16px; }
+      #spark4 { left: 90px; top: -24px; }
     </style>
   </head>
   <body>
@@ -102,16 +105,16 @@
                 <img id="mascot-img" src="mascot.png" alt="" width="300" height="333" />
               </div>
             </div>
-            <svg id="spark1" class="spark" width="26" height="26" viewBox="0 0 24 24" aria-hidden="true">
+            <svg id="spark1" class="spark" width="28" height="28" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 1l2.6 8.4L23 12l-8.4 2.6L12 23l-2.6-8.4L1 12l8.4-2.6z" fill="var(--main)" />
             </svg>
-            <svg id="spark2" class="spark" width="20" height="20" viewBox="0 0 24 24" aria-hidden="true">
+            <svg id="spark2" class="spark" width="22" height="22" viewBox="0 0 24 24" aria-hidden="true">
               <path d="M12 1l2.6 8.4L23 12l-8.4 2.6L12 23l-2.6-8.4L1 12l8.4-2.6z" fill="var(--deep)" />
             </svg>
-            <svg id="spark3" class="spark" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
+            <svg id="spark3" class="spark" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="12" cy="12" r="10" fill="var(--main)" />
             </svg>
-            <svg id="spark4" class="spark" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true">
+            <svg id="spark4" class="spark" width="16" height="16" viewBox="0 0 24 24" aria-hidden="true">
               <circle cx="12" cy="12" r="10" fill="var(--deep)" />
             </svg>
           </div>
@@ -124,52 +127,70 @@
       const tl = gsap.timeline({ paused: true });
 
       gsap.set("#mascot", { transformOrigin: "50% 100%" });
+      gsap.set("#mascot-move", { transformOrigin: "50% 100%" });
+      gsap.set("#ground", { transformOrigin: "50% 50%" });
 
-      // Respiração contínua — 4 meios-ciclos de 0.7s terminam exatamente na pose inicial (loop perfeito)
-      tl.fromTo("#mascot-breath", { y: 0 }, { y: -9, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
-      tl.fromTo("#ground", { scaleX: 1 }, { scaleX: 0.94, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
+      // Respiração contínua (4 meios-ciclos de 0.7s = 2.8s)
+      tl.fromTo("#mascot-breath", { y: 0 }, { y: -8, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
+      tl.fromTo("#ground", { scaleX: 1 }, { scaleX: 0.93, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
 
-      // Pulos: antecipação (agachar) -> alongar no ar -> aterrissar com squash
+      // --- SALTO 1 (Rápido e responsivo nos primeiros 600ms) ---
+      // Antecipação ágil
       tl.to("#mascot", {
         keyframes: [
-          { scaleX: 1.06, scaleY: 0.92, duration: 0.12, ease: "power1.out" },
-          { scaleX: 0.97, scaleY: 1.05, duration: 0.18, ease: "power1.in" }
+          { scaleX: 1.07, scaleY: 0.91, duration: 0.12, ease: "power1.out" },
+          { scaleX: 0.96, scaleY: 1.06, duration: 0.14, ease: "power1.in" }
         ]
-      }, 0.82);
-      tl.fromTo("#mascot-move", { y: 0 }, { y: -52, duration: 0.3, ease: "power2.out" }, 1.0);
-      tl.to("#mascot-move", { y: 0, duration: 0.26, ease: "power2.in" }, 1.3);
+      }, 0.14);
+      tl.fromTo("#mascot-move", { y: 0 }, { y: -52, duration: 0.24, ease: "power2.out" }, 0.26);
+      tl.to("#mascot-move", { y: 0, duration: 0.22, ease: "power2.in" }, 0.50);
+
+      // Aterrissagem com squash elástico
       tl.to("#mascot", {
         keyframes: [
-          { scaleX: 1.1, scaleY: 0.86, duration: 0.1, ease: "power1.out" },
-          { scaleX: 1, scaleY: 1, duration: 0.22, ease: "back.out(2)" }
+          { scaleX: 1.10, scaleY: 0.87, duration: 0.10, ease: "power1.out" },
+          { scaleX: 1, scaleY: 1, duration: 0.20, ease: "back.out(2.2)" }
         ]
-      }, 1.56);
+      }, 0.72);
 
-      // Pulo comemorativo maior, com leve inclinação
-      tl.fromTo("#mascot-move", { rotation: 0 }, { rotation: 3, duration: 0.32, ease: "sine.inOut", yoyo: true, repeat: 1 }, 1.9);
-      tl.fromTo("#mascot-move", { y: 0 }, { y: -74, duration: 0.34, ease: "power2.out" }, 1.9);
-      tl.to("#mascot-move", { y: 0, duration: 0.3, ease: "power2.in" }, 2.24);
+      // Reação sísmica do conjunto de tiles no primeiro salto
+      tl.fromTo("#tiles", { y: 0 }, { y: -10, duration: 0.14, ease: "sine.out", yoyo: true, repeat: 1 }, 0.72);
+
+      // --- SALTO 2 (Comemoração maior, expressivo aos 1.2s - 2.1s) ---
       tl.to("#mascot", {
         keyframes: [
-          { scaleX: 1.1, scaleY: 0.87, duration: 0.1, ease: "power1.out" },
-          { scaleX: 1, scaleY: 1, duration: 0.16, ease: "back.out(2)" }
+          { scaleX: 1.11, scaleY: 0.86, duration: 0.16, ease: "power1.out" },
+          { scaleX: 0.95, scaleY: 1.07, duration: 0.18, ease: "power1.in" }
         ]
-      }, 2.54);
+      }, 1.18);
+      tl.fromTo("#mascot-move", { rotation: 0 }, { rotation: 4, duration: 0.34, ease: "sine.inOut", yoyo: true, repeat: 1 }, 1.34);
+      tl.fromTo("#mascot-move", { y: 0 }, { y: -78, duration: 0.35, ease: "power2.out" }, 1.34);
 
-      // Faíscas na comemoração
-      [["#spark1", 1.96], ["#spark2", 2.06], ["#spark3", 2.14], ["#spark4", 2.24]].forEach(([sel, at]) => {
-        tl.fromTo(sel, { autoAlpha: 0, scale: 0, rotation: -30 }, { autoAlpha: 1, scale: 1, rotation: 0, duration: 0.22, ease: "back.out(3)" }, at);
-        tl.to(sel, { autoAlpha: 0, scale: 0.4, duration: 0.2, ease: "power1.in" }, at + 0.3);
+      // Faíscas no ápice do salto
+      [["#spark1", 1.42], ["#spark2", 1.50], ["#spark3", 1.58], ["#spark4", 1.66]].forEach(([sel, at]) => {
+        tl.fromTo(sel, { autoAlpha: 0, scale: 0, rotation: -40 }, { autoAlpha: 1, scale: 1.15, rotation: 10, duration: 0.22, ease: "back.out(3)" }, at);
+        tl.to(sel, { autoAlpha: 0, scale: 0.3, rotation: 35, duration: 0.22, ease: "power1.in" }, at + 0.28);
       });
 
-      // Tiles flutuando em fases opostas (terminam onde começam)
-      tl.fromTo("#tileA", { y: 0 }, { y: -12, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
-      tl.fromTo("#tileB", { y: -12 }, { y: 0, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
-      tl.fromTo("#tileC", { rotation: 6 }, { rotation: -2, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
+      tl.to("#mascot-move", { y: 0, duration: 0.32, ease: "power2.in" }, 1.70);
+      tl.to("#mascot", {
+        keyframes: [
+          { scaleX: 1.13, scaleY: 0.85, duration: 0.12, ease: "power1.out" },
+          { scaleX: 1, scaleY: 1, duration: 0.26, ease: "back.out(2.4)" }
+        ]
+      }, 2.02);
 
-      // Blobs respirando devagar
+      // Reação sísmica do conjunto de tiles no segundo salto
+      tl.fromTo("#tiles", { y: 0 }, { y: -16, duration: 0.16, ease: "sine.out", yoyo: true, repeat: 1 }, 2.02);
+
+      // Flutuação base contínua dos tiles
+      tl.fromTo("#tileA", { y: 0 }, { y: -10, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
+      tl.fromTo("#tileB", { y: -10 }, { y: 0, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
+      tl.fromTo("#tileC", { rotation: 5 }, { rotation: -3, duration: 0.7, ease: "sine.inOut", yoyo: true, repeat: 3 }, 0);
+
+      // Blobs respirando
       tl.fromTo("#blob1", { scale: 1 }, { scale: 1.07, duration: 1.4, ease: "sine.inOut", yoyo: true, repeat: 1 }, 0);
-      tl.fromTo("#blob2", { scale: 1.06 }, { scale: 1, duration: 1.4, ease: "sine.inOut", yoyo: true, repeat: 1 }, 0);
+      tl.fromTo("#blob2", { scale: 1.07 }, { scale: 1, duration: 1.4, ease: "sine.inOut", yoyo: true, repeat: 1 }, 0);
 
       window.__timelines["enter"] = tl;
     </script>
