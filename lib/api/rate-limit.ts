@@ -32,7 +32,7 @@ export const apiRateLimitRules: ApiRateLimitRule[] = [
   { name: "new-words-create", pattern: /^\/api\/practice\/new-words$/, limitPerMinute: 6 },
   { name: "new-words-judge", pattern: /^\/api\/practice\/new-words\/(judge|complete|abandon)$/, limitPerMinute: 60 },
   { name: "flashcards-create", pattern: /^\/api\/practice\/flashcards$/, limitPerMinute: 6 },
-  { name: "settings-test", pattern: /^\/api\/settings\/test-(ai|kokoro|supabase)$/, limitPerMinute: 6 }
+  { name: "settings-test", pattern: /^\/api\/settings\/test-(ai|kokoro|tts|supabase)$/, limitPerMinute: 6 }
 ];
 
 export function matchApiRateLimitRule(pathname: string): ApiRateLimitRule | null {

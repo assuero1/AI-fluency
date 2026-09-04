@@ -1,7 +1,7 @@
 import { handleApiError, jsonOk } from "@/lib/api/responses";
 import { translateToPortuguese } from "@/lib/learning/translation";
 
-const supportedSourceLanguages = new Set(["en", "es", "fr", "it", "pt"]);
+const supportedSourceLanguages = new Set(["en", "es", "fr", "it", "pt", "ja", "zh", "hi"]);
 
 export async function POST(request: Request) {
   try {

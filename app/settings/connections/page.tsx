@@ -101,17 +101,18 @@ export default async function ConnectionsPage() {
           testEndpoint="/api/settings/test-supabase"
         />
         <ConnectionCard
-          title="Kokoro voz"
-          meta="Base URL, API key e voz padrão"
+          title={status.tts?.provider === "deepinfra" ? "Chatterbox voz" : "Kokoro voz"}
+          meta={status.tts?.provider === "deepinfra" ? `DeepInfra (${status.tts.model})` : "VPS (Base URL, API key e voz padrão)"}
           Icon={Mic}
           tone="warning"
-          connected={status.kokoro.configured}
+          connected={status.tts?.configured ?? status.kokoro.configured}
           lines={[
-            { label: "API key", value: status.kokoro.apiKeyMasked ?? "não configurada" },
-            { label: "Voz", value: status.kokoro.defaultVoice },
-            { label: "Formato", value: status.kokoro.outputFormat }
+            { label: "Provedor", value: status.tts?.provider === "deepinfra" ? "DeepInfra (Chatterbox)" : "Kokoro (VPS)" },
+            { label: "API key", value: (status.tts?.apiKeyMasked ?? status.kokoro.apiKeyMasked) ?? "não configurada" },
+            { label: "Voz", value: status.tts?.defaultVoice || status.kokoro.defaultVoice },
+            { label: "Formato", value: status.tts?.outputFormat || status.kokoro.outputFormat }
           ]}
-          testEndpoint="/api/settings/test-kokoro"
+          testEndpoint="/api/settings/test-tts"
         />
       </section>
     </AppShell>

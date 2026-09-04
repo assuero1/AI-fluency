@@ -1,6 +1,6 @@
 import type { AnswerMatch, Flashcard } from "./flashcard-contracts";
 
-const peripheralPunctuation = /^[\s.,;:!?¿¡()[\]{}"“”«»…-]+|[\s.,;:!?¿¡()[\]{}"“”«»…-]+$/gu;
+const peripheralPunctuation = /^[\s.,;:!?¿¡()[\]{}"“”«»…\-~。、！？।॥]+|[\s.,;:!?¿¡()[\]{}"“”«»…\-~。、！？।॥]+$/gu;
 const apostrophes = /[’‘`´]/g;
 const articles = new Set(["a", "an", "the", "o", "a", "os", "as", "um", "uma", "unos", "unas", "el", "la", "los", "las", "un", "una"]);
 
@@ -35,7 +35,7 @@ export function isAutomaticCorrect(match: AnswerMatch): boolean {
 }
 
 function stripDiacritics(value: string) {
-  return value.normalize("NFD").replace(/\p{M}/gu, "");
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/gu, "").normalize("NFC");
 }
 
 function withoutLeadingArticle(value: string) {

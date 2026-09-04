@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { AiConfigError, AiRequestError } from "@/lib/ai/client";
 import { KokoroConfigError, KokoroRequestError } from "@/lib/kokoro/client";
+import { TTSConfigError, TTSRequestError } from "@/lib/tts/types";
 import { AccountValidationError } from "@/lib/learning/account";
 import { LearningStateError } from "@/lib/learning/access";
 import { TranslationValidationError } from "@/lib/learning/translation";
@@ -62,12 +63,17 @@ export function handleApiError(error: unknown) {
     return jsonError(error.message, error.status, process.env.NODE_ENV === "production" ? undefined : error.detail);
   }
 
-  if (error instanceof AiConfigError || error instanceof KokoroConfigError) {
+  if (error instanceof AiConfigError || error instanceof TTSConfigError) {
     return jsonError(error.message, error.status);
   }
 
-  if (error instanceof AiRequestError || error instanceof KokoroRequestError) {
-    console.error(JSON.stringify({ event: error instanceof AiRequestError ? "ai_request_failed" : "kokoro_request_failed", status: error.status, timestamp: new Date().toISOString() }));
+  if (error instanceof AiRequestError || error instanceof TTSRequestError) {
+    const event = error instanceof AiRequestError
+      ? "ai_request_failed"
+      : error instanceof KokoroRequestError
+      ? "kokoro_request_failed"
+      : "tts_request_failed";
+    console.error(JSON.stringify({ event, status: error.status, timestamp: new Date().toISOString() }));
     return jsonError(error.message, error.status);
   }
 

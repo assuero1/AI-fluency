@@ -118,7 +118,10 @@ export const languages = [
   { code: "EN", title: "Inglês", meta: "Conversação, trabalho e viagem" },
   { code: "ES", title: "Espanhol", meta: "Situações reais do dia a dia" },
   { code: "FR", title: "Francês", meta: "Vocabulário e pronúncia" },
-  { code: "IT", title: "Italiano", meta: "Conversas leves e cultura" }
+  { code: "IT", title: "Italiano", meta: "Conversas leves e cultura" },
+  { code: "JA", title: "Japonês", meta: "Conversação, escrita e dia a dia" },
+  { code: "ZH", title: "Mandarim", meta: "Pronúncia, tons e conversação" },
+  { code: "HI", title: "Hindi", meta: "Conversação, cultura e viagem" }
 ];
 
 export const summaryWords = [

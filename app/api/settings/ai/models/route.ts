@@ -1,11 +1,18 @@
 import { jsonError, jsonOk } from "@/lib/api/responses";
-import { getEnv } from "@/lib/env";
+import { getAiConfig } from "@/lib/ai/config";
 
 // A lista reflete a configuração do servidor e o provedor em tempo real.
 export const dynamic = "force-dynamic";
 
 const FALLBACK_MODELS: Record<string, string[]> = {
   deepseek: ["deepseek-chat", "deepseek-reasoner"],
+  deepinfra: [
+    "deepseek-ai/DeepSeek-V3",
+    "deepseek-ai/DeepSeek-R1",
+    "meta-llama/Llama-3.3-70B-Instruct",
+    "Qwen/Qwen2.5-72B-Instruct",
+    "mistralai/Mistral-Small-24B-Instruct-2501"
+  ],
   openai: ["gpt-4o", "gpt-4o-mini"],
   anthropic: ["claude-sonnet-4-5", "claude-haiku-4-5"],
   google: ["gemini-2.5-pro", "gemini-2.5-flash"],
@@ -14,9 +21,8 @@ const FALLBACK_MODELS: Record<string, string[]> = {
 };
 
 export async function GET() {
-  const baseUrl = getEnv("AI_BASE_URL");
-  const apiKey = getEnv("AI_API_KEY");
-  const provider = getEnv("AI_PROVIDER") ?? "openai";
+  const config = await getAiConfig();
+  const { baseUrl, apiKey, provider } = config;
 
   if (!baseUrl || !apiKey) {
     return jsonError("Configure a IA no servidor primeiro.", 503);

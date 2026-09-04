@@ -35,9 +35,9 @@ export async function getActiveModelOverride(): Promise<ModelOverride> {
     const records = await client.listRecords<AiProviderSettingsFields>("aiProviderSettings", 100);
     const active = pickActiveRow(records);
     const rowProvider = active?.fields.provider?.trim();
-    const envProvider = getEnv("AI_PROVIDER") ?? "openai";
+    const envProvider = (getEnv("AI_PROVIDER") ?? "openai").toLowerCase();
     // Linhas sem provider (legadas) continuam valendo; provider divergente do env é ignorado.
-    const providerMatches = !rowProvider || rowProvider === envProvider;
+    const providerMatches = !rowProvider || rowProvider.toLowerCase() === envProvider;
     const chatModel = providerMatches ? active?.fields.chat_model?.trim() : undefined;
     if (chatModel) value = { chatModel, source: "teable" };
   } catch {
@@ -49,6 +49,7 @@ export async function getActiveModelOverride(): Promise<ModelOverride> {
 }
 
 export async function saveModelOverride(chatModel: string) {
+  const envProvider = (getEnv("AI_PROVIDER") ?? "openai").toLowerCase();
   const client = getTeableClient();
   const records = await client.listRecords<AiProviderSettingsFields>("aiProviderSettings", 100);
   const active = pickActiveRow(records);
@@ -56,11 +57,11 @@ export async function saveModelOverride(chatModel: string) {
   if (active) {
     await client.updateRecord<AiProviderSettingsFields>("aiProviderSettings", active.id, {
       chat_model: chatModel,
-      provider: getEnv("AI_PROVIDER") ?? "openai"
+      provider: envProvider
     });
   } else {
     await client.createRecord<AiProviderSettingsFields>("aiProviderSettings", {
-      provider: getEnv("AI_PROVIDER") ?? "openai",
+      provider: envProvider,
       chat_model: chatModel,
       is_active: true
     });

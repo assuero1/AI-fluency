@@ -40,7 +40,10 @@ function languageCode(label: string) {
     EN: "en",
     ES: "es",
     FR: "fr",
-    IT: "it"
+    IT: "it",
+    JA: "ja",
+    ZH: "zh",
+    HI: "hi"
   };
   return map[label] ?? label.toLowerCase();
 }

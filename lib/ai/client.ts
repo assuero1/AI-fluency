@@ -38,6 +38,26 @@ type ChatCompletionResponse = {
   };
 };
 
+type ChatCompletionPayload = {
+  model: string;
+  messages: AiMessage[];
+  temperature: number;
+  max_tokens: number;
+  response_format?: { type: "json_object" };
+  thinking?: { type: "disabled" };
+  reasoning_effort?: string;
+  [key: string]: unknown;
+};
+
+export function buildThinkingParams(provider: string, disableThinking?: boolean): Record<string, unknown> {
+  if (!disableThinking) return {};
+  const normalized = provider.toLowerCase();
+  if (normalized === "deepinfra") {
+    return { reasoning_effort: "none" };
+  }
+  return { thinking: { type: "disabled" as const } };
+}
+
 export async function createChatCompletion(
   messages: AiMessage[],
   options?: { temperature?: number; maxTokens?: number; timeoutMs?: number; responseFormat?: "json"; disableThinking?: boolean }
@@ -48,13 +68,15 @@ export async function createChatCompletion(
   if (!config.apiKey) throw new AiConfigError("AI_API_KEY is not configured.");
   if (!config.chatModel) throw new AiConfigError("AI_CHAT_MODEL is not configured.");
 
-  const payload = {
+  const thinkingParams = buildThinkingParams(config.provider, options?.disableThinking);
+
+  const payload: ChatCompletionPayload = {
     model: config.chatModel,
     messages,
     temperature: options?.temperature ?? config.temperature,
     max_tokens: options?.maxTokens ?? config.maxTokens,
     ...(options?.responseFormat === "json" ? { response_format: { type: "json_object" as const } } : {}),
-    ...(options?.disableThinking ? { thinking: { type: "disabled" as const } } : {})
+    ...thinkingParams
   };
 
   const body = await requestChatCompletion(config.baseUrl, config.apiKey, payload, requestSignal(options?.timeoutMs));
@@ -66,7 +88,7 @@ export async function createChatCompletion(
       messages,
       temperature: 0.2,
       max_tokens: Math.max(options?.maxTokens ?? config.maxTokens, 600),
-      ...(payload.thinking ? { thinking: payload.thinking } : {})
+      ...thinkingParams
     }, requestSignal(options?.timeoutMs));
     const retryContent = extractCompletionContent(retryBody);
     if (!retryContent) throw new AiRequestError("AI provider returned an empty response.", 502, retryBody);
@@ -90,14 +112,7 @@ export async function createChatCompletion(
 async function requestChatCompletion(
   baseUrl: string,
   apiKey: string,
-  payload: {
-    model: string;
-    messages: AiMessage[];
-    temperature: number;
-    max_tokens: number;
-    response_format?: { type: "json_object" };
-    thinking?: { type: "disabled" };
-  },
+  payload: ChatCompletionPayload,
   signal?: AbortSignal
 ) {
   const response = await fetch(`${trimSlash(baseUrl)}/chat/completions`, {

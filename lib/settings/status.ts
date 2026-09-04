@@ -1,12 +1,14 @@
 import { getAiStatus } from "@/lib/ai/config";
 import { getKokoroStatus } from "@/lib/kokoro/config";
+import { getTTSStatus } from "@/lib/tts/factory";
 import { getSupabaseStatus } from "@/lib/supabase/config";
 
 export async function getConnectionStatus() {
   return {
     ai: await getAiStatus(),
     supabase: getSupabaseStatus(),
-    kokoro: getKokoroStatus()
+    kokoro: getKokoroStatus(),
+    tts: getTTSStatus()
   };
 }
 

@@ -1,13 +1,26 @@
-import { getEnv, maskSecret } from "@/lib/env";
+import { getEnv, getFirstEnv, maskSecret } from "@/lib/env";
 import { getActiveModelOverride } from "./model-settings";
+
+export const DEEPINFRA_DEFAULT_AI_BASE_URL = "https://api.deepinfra.com/v1/openai";
+export const DEEPINFRA_DEFAULT_AI_MODEL = "deepseek-ai/DeepSeek-V3";
 
 export async function getAiConfig() {
   const override = await getActiveModelOverride();
+  const provider = (getEnv("AI_PROVIDER") ?? "openai").toLowerCase();
+  const isDeepInfra = provider === "deepinfra";
+
+  const baseUrl = getEnv("AI_BASE_URL") ?? (isDeepInfra ? DEEPINFRA_DEFAULT_AI_BASE_URL : undefined);
+  const apiKey = getEnv("AI_API_KEY") ?? (isDeepInfra ? getFirstEnv(["DEEPINFRA_API_KEY", "DEEPINFRA_TOKEN"]) : undefined);
+  const chatModel =
+    override.chatModel ??
+    getEnv("AI_CHAT_MODEL") ??
+    (isDeepInfra ? (getEnv("DEEPINFRA_AI_MODEL") ?? DEEPINFRA_DEFAULT_AI_MODEL) : undefined);
+
   return {
-    provider: getEnv("AI_PROVIDER") ?? "openai",
-    baseUrl: getEnv("AI_BASE_URL"),
-    apiKey: getEnv("AI_API_KEY"),
-    chatModel: override.chatModel ?? getEnv("AI_CHAT_MODEL"),
+    provider,
+    baseUrl,
+    apiKey,
+    chatModel,
     modelSource: override.chatModel ? ("teable" as const) : ("env" as const),
     temperature: Number(getEnv("AI_TEMPERATURE") ?? 0.4),
     maxTokens: Number(getEnv("AI_MAX_TOKENS") ?? 1200)

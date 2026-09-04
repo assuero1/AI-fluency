@@ -2,14 +2,20 @@ export const speechLocales: Record<string, string> = {
   en: "en-US",
   es: "es-ES",
   fr: "fr-FR",
-  it: "it-IT"
+  it: "it-IT",
+  ja: "ja-JP",
+  zh: "zh-CN",
+  hi: "hi-IN"
 };
 
 const speechLanguageNames: Record<string, string> = {
   en: "inglês (Estados Unidos)",
   es: "espanhol (Espanha)",
   fr: "francês (França)",
-  it: "italiano (Itália)"
+  it: "italiano (Itália)",
+  ja: "japonês (Japão)",
+  zh: "chinês mandarim (China)",
+  hi: "hindi (Índia)"
 };
 
 export function speechLocale(languageCode: string | undefined) {
@@ -31,18 +37,24 @@ export function speechRecognitionErrorMessage(error: string | undefined) {
   return "Não foi possível transcrever sua fala. Tente novamente ou use a digitação.";
 }
 
+function isNoSpaceLanguage(languageCode: string | undefined) {
+  const code = languageCode?.toLowerCase().split(/[-_]/)[0];
+  return code === "ja" || code === "zh";
+}
+
 export function joinSpeechSegments(segments: string[], languageCode: string | undefined) {
   const cleanSegments = segments.map((segment) => normalizeSpeechSpacing(segment)).filter(Boolean);
   if (cleanSegments.length === 0) return "";
 
+  const noSpace = isNoSpaceLanguage(languageCode);
   const joined = cleanSegments
     .map((segment, index) => {
       if (index === 0) return segment;
       const previous = cleanSegments[index - 1];
-      if (/[.!?…]$/.test(previous)) return segment;
-      return lowercaseFirstLetter(segment);
+      if (/[.!?…~。！？।]$/.test(previous)) return segment;
+      return noSpace ? segment : lowercaseFirstLetter(segment);
     })
-    .join(" ");
+    .join(noSpace ? "" : " ");
 
   return punctuateSpeechSentence(joined, languageCode);
 }
@@ -56,7 +68,7 @@ function lowercaseFirstLetter(value: string) {
 
 export function punctuateSpeechSentence(value: string, languageCode: string | undefined) {
   const clean = normalizeSpeechSpacing(value);
-  if (!clean || /[.!?…]$/.test(clean)) return clean;
+  if (!clean || /[.!?…~。！？।]$/.test(clean)) return clean;
   return `${clean}${looksLikeQuestion(clean, languageCode) ? "?" : "."}`;
 }
 
@@ -74,7 +86,10 @@ function looksLikeQuestion(value: string, languageCode: string | undefined) {
     en: /^(who|what|where|when|why|how|which|do|does|did|can|could|would|will|is|are|was|were|have|has)\b/,
     es: /^(quien|que|donde|cuando|por que|como|cual|cuanto|puedes|podrias|quieres|es|son|tienes|has)\b/,
     fr: /^(qui|que|quoi|ou|quand|pourquoi|comment|quel|quelle|combien|est-ce|peux|pourrais|veux|as-tu)\b/,
-    it: /^(chi|che|cosa|dove|quando|perche|come|quale|quanto|puoi|potresti|vuoi|hai|sei)\b/
+    it: /^(chi|che|cosa|dove|quando|perche|come|quale|quanto|puoi|potresti|vuoi|hai|sei)\b/,
+    ja: /(か|かい|ですか|ますか|でしょうか)$|^(何|どこ|いつ|どう|だれ|誰|なぜ|いくら|どんな)/,
+    zh: /(吗|呢|吧)$|^(什么|哪里|哪儿|怎么|谁|为什么|几|多少)/,
+    hi: /(?:^|\s)(क्या|कहाँ|कब|क्यों|कैसे|कौन|किस|कितना|कितने|कितनी)(?:$|\s)/
   };
   return (starters[languageCode?.toLowerCase() ?? ""] ?? starters.en).test(normalized);
 }

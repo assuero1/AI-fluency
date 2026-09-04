@@ -47,4 +47,19 @@ describe("splitIntoSentences", () => {
       "just one long fragment without stops"
     ]);
   });
+
+  it("splits Japanese and Chinese sentences with full-width punctuation", () => {
+    expect(splitIntoSentences("こんにちは。お元気ですか？今日も練習しましょう。")).toEqual([
+      "こんにちは。",
+      "お元気ですか？",
+      "今日も練習しましょう。"
+    ]);
+  });
+
+  it("splits Hindi sentences with Devanagari danda", () => {
+    expect(splitIntoSentences("नमस्ते। आप कैसे हैं?")).toEqual([
+      "नमस्ते।",
+      "आप कैसे हैं?"
+    ]);
+  });
 });

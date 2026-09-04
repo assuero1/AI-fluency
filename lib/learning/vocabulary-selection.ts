@@ -93,7 +93,13 @@ type VocabularyAnalysisCacheEntry = {
 const vocabularyAnalysisCache = new Map<string, VocabularyAnalysisCacheEntry>();
 
 export function normalizeVocabularyToken(value: string) {
-  return value.normalize("NFKC").trim().toLowerCase().normalize("NFD").replace(/\p{M}/gu, "");
+  return value
+    .normalize("NFKC")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/gu, "")
+    .normalize("NFC");
 }
 
 // Common function words per language, stored pre-normalized (lowercase, no
@@ -112,7 +118,7 @@ const VOCABULARY_STOPWORDS: Record<string, ReadonlySet<string>> = {
   es: new Set([
     "el", "la", "los", "las", "un", "una", "unos", "unas", "al", "de", "del", "en", "a", "ante", "con", "contra",
     "desde", "entre", "hacia", "hasta", "para", "por", "segun", "sin", "sobre", "tras", "y", "o", "ni", "que",
-    "porque", "como", "cuando", "donde", "quien", "cual", "cuales", "este", "esta", "esto", "estos", "estas", "ese",
+    "porque", "como", "quando", "donde", "quien", "cual", "cuales", "este", "esta", "esto", "estos", "estas", "ese",
     "esa", "eso", "esos", "esas", "aquel", "aquella", "aquello", "aquellos", "aquellas", "yo", "tu", "ella", "usted",
     "nosotros", "vosotros", "ellos", "ellas", "me", "te", "se", "lo", "le", "nos", "mi", "mis", "su", "sus", "es",
     "son", "soy", "eres", "somos", "sois", "estoy", "estan", "fue", "fui", "ser", "hay", "habia", "he", "has", "han",
@@ -167,6 +173,25 @@ const VOCABULARY_STOPWORDS: Record<string, ReadonlySet<string>> = {
     "mag", "nicht", "kein", "keine", "auch", "noch", "schon", "nur", "sehr", "mehr", "viel", "viele", "wenig",
     "alle", "alles", "jeder", "jede", "manche", "hier", "da", "dort", "jetzt", "heute", "gestern", "morgen",
     "immer", "nie", "oft", "dann", "so", "ja", "nein", "doch"
+  ]),
+  ja: new Set([
+    "の", "に", "は", "を", "た", "が", "で", "て", "と", "し", "れ", "さ", "ある", "いる", "も", "する", "から", "な", "こと", "として",
+    "い", "や", "れる", "など", "なっ", "ない", "この", "ため", "その", "あっ", "よう", "また", "もの", "という", "あり", "まで", "られ", "なる",
+    "へ", "か", "だ", "これ", "によって", "により", "おり", "より", "による", "ず", "なり", "られる", "において", "ば", "なかっ", "なく",
+    "しかし", "について", "せ", "だっ", "その後", "できる", "それ", "う", "ので", "なお", "のみ", "でき", "き", "つ", "における", "および",
+    "のも", "どう", "これら", "でした", "ます", "です", "私", "あなた", "彼", "彼女"
+  ]),
+  zh: new Set([
+    "的", "一", "是", "在", "不", "了", "有", "和", "人", "这", "中", "大", "为", "上", "个", "国", "我", "以", "要", "他", "时", "来",
+    "用", "们", "生", "到", "作", "地", "于", "出", "就", "分", "对", "成", "会", "可", "主", "发", "年", "动", "同", "工", "也", "能",
+    "下", "过", "子", "说", "产", "种", "面", "而", "方", "后", "多", "定", "行", "学", "法", "所", "民", "得", "经", "十", "三", "之",
+    "进", "着", "等", "部", "度", "家", "电", "力", "里", "如", "水", "化", "高", "自", "二", "理", "起", "小", "物", "现", "实", "加",
+    "量", "都", "两", "体", "制", "机", "当", "使", "点", "从", "业", "本", "去", "把", "那", "你", "她", "很", "吗", "吧", "呢"
+  ]),
+  hi: new Set([
+    "के", "का", "एक", "में", "की", "है", "यह", "और", "से", "हैं", "को", "पर", "इस", "होता", "कि", "जो", "कर", "मे", "गया", "करने",
+    "किया", "लिया", "थे", "थी", "था", "मुझे", "हमें", "आप", "तुम", "वह", "वे", "नहीं", "भी", "तो", "ही", "रहा", "रही", "रहे", "हो",
+    "सकता", "सकती", "सकते", "हुआ", "हुई", "हुए", "अपना", "अपनी", "अपने", "या", "लेकिन", "क्योंकि", "जब", "तब", "यहाँ", "वहाँ"
   ])
 };
 
@@ -188,8 +213,19 @@ function vocabularyCandidateId(source: VocabularyCandidate["source"], normalized
   return `${source}:${normalized}`;
 }
 
+const CJK_REGEX = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+
 function tokenize(value: string) {
-  return [...value.matchAll(/[\p{L}À-ÿ]+(?:['’][\p{L}À-ÿ]+)*/gu)].map((match) => normalizeVocabularyToken(match[0]));
+  if (CJK_REGEX.test(value) && typeof Intl !== "undefined" && typeof Intl.Segmenter === "function") {
+    const segmenter = new Intl.Segmenter("ja-JP", { granularity: "word" });
+    return [...segmenter.segment(value)]
+      .filter((item) => item.isWordLike)
+      .map((item) => normalizeVocabularyToken(item.segment))
+      .filter(Boolean);
+  }
+  return [...value.matchAll(/[\p{L}À-ÿ]+(?:['’][\p{L}À-ÿ]+)*/gu)]
+    .map((match) => normalizeVocabularyToken(match[0]))
+    .filter(Boolean);
 }
 
 export function findChangedOriginalTokens(originalText: string, correctedText: string) {

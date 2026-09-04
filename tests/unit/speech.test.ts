@@ -16,6 +16,9 @@ describe("native speech recognition locale", () => {
     expect(speechLocale("es")).toBe("es-ES");
     expect(speechLocale("fr")).toBe("fr-FR");
     expect(speechLocale("it")).toBe("it-IT");
+    expect(speechLocale("ja")).toBe("ja-JP");
+    expect(speechLocale("zh")).toBe("zh-CN");
+    expect(speechLocale("hi")).toBe("hi-IN");
   });
 
   it("keeps a stable English fallback for an unsupported code", () => {
@@ -34,12 +37,18 @@ describe("native speech recognition locale", () => {
     expect(punctuateSpeechSentence("cómo fue tu viaje", "es")).toBe("cómo fue tu viaje?");
     expect(punctuateSpeechSentence("pourquoi tu apprends le français", "fr")).toBe("pourquoi tu apprends le français?");
     expect(punctuateSpeechSentence("come è stato il viaggio", "it")).toBe("come è stato il viaggio?");
+    expect(punctuateSpeechSentence("元気ですか", "ja")).toBe("元気ですか?");
+    expect(punctuateSpeechSentence("你好吗", "zh")).toBe("你好吗?");
+    expect(punctuateSpeechSentence("क्या आप ठीक हैं", "hi")).toBe("क्या आप ठीक हैं?");
   });
 
   it("joins recognition pauses without inserting commas", () => {
     expect(joinSpeechSegments(["I went to the market", "then I met Ana"], "en")).toBe(
       "I went to the market then I met Ana."
     );
+    expect(joinSpeechSegments(["こんにちは", "元気ですか"], "ja")).toBe("こんにちは元気ですか?");
+    expect(joinSpeechSegments(["你好", "我想学习"], "zh")).toBe("你好我想学习.");
+    expect(joinSpeechSegments(["नमस्ते", "आप कैसे हैं"], "hi")).toBe("नमस्ते आप कैसे हैं?");
   });
 
   it("lowercases spurious capitals after a pause inside a sentence", () => {

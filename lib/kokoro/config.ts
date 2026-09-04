@@ -9,7 +9,10 @@ export function getKokoroConfig() {
     es: getEnv("KOKORO_VOICE_ES") ?? DEFAULT_KOKORO_VOICES.es,
     fr: getEnv("KOKORO_VOICE_FR") ?? DEFAULT_KOKORO_VOICES.fr,
     it: getEnv("KOKORO_VOICE_IT") ?? DEFAULT_KOKORO_VOICES.it,
-    pt: getEnv("KOKORO_VOICE_PT") ?? DEFAULT_KOKORO_VOICES.pt
+    pt: getEnv("KOKORO_VOICE_PT") ?? DEFAULT_KOKORO_VOICES.pt,
+    ja: getEnv("KOKORO_VOICE_JA") ?? DEFAULT_KOKORO_VOICES.ja,
+    zh: getEnv("KOKORO_VOICE_ZH") ?? DEFAULT_KOKORO_VOICES.zh,
+    hi: getEnv("KOKORO_VOICE_HI") ?? DEFAULT_KOKORO_VOICES.hi
   };
   return {
     baseUrl: getEnv("KOKORO_BASE_URL"),

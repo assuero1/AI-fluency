@@ -32,3 +32,8 @@ test-results/
 # Artefatos regeneráveis dos projetos hyperframes (fonte em assets/loading-anim)
 assets/loading-anim/*/renders/
 assets/loading-anim/*/snapshots/
+
+# Local agents and scratch assets
+.video_agent/
+*.skill
+logo/

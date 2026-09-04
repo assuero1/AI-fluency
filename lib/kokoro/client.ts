@@ -5,19 +5,12 @@ import { Readable } from "node:stream";
 import { getKokoroConfig } from "./config";
 import { resolveSynthesisRequest, SynthesisValidationError } from "./validation";
 
-export class KokoroConfigError extends Error {
-  status = 503;
-}
+import { TTSConfigError, TTSRequestError } from "@/lib/tts/types";
 
-export class KokoroRequestError extends Error {
-  constructor(
-    message: string,
-    public status: number,
-    public detail?: unknown
-  ) {
-    super(message);
-  }
-}
+export class KokoroConfigError extends TTSConfigError {}
+
+export class KokoroRequestError extends TTSRequestError {}
+
 
 function trimSlash(value: string) {
   return value.replace(/\/+$/, "");

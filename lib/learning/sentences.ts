@@ -9,6 +9,6 @@ export function splitIntoSentences(text: string): string[] {
   const normalized = text.replace(/\s+/g, " ").trim();
   if (!normalized) return [];
 
-  const sentences = normalized.match(/[^.!?…]+[.!?…]+["'”’)\]]*|[^.!?…]+$/g);
+  const sentences = normalized.match(/[^.!?…~。！？।]+[.!?…~。！？।]+["'”’)\]」』]*|[^.!?…~。！？।]+$/g);
   return (sentences ?? [normalized]).map((sentence) => sentence.trim()).filter(Boolean);
 }

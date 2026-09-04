@@ -3,7 +3,10 @@ export const DEFAULT_KOKORO_VOICES = {
   es: "ef_dora",
   fr: "ff_siwis",
   it: "if_sara",
-  pt: "pf_dora"
+  pt: "pf_dora",
+  ja: "jf_alpha",
+  zh: "zf_xiaobei",
+  hi: "hf_alpha"
 } as const;
 
 export type KokoroVoiceMap = Record<string, string>;

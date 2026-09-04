@@ -746,6 +746,20 @@ function buildInteractionInstructions(mode: InteractionMode) {
       ];
 }
 
+function scriptGuidance(languageName: string) {
+  const lowered = languageName.toLowerCase();
+  if (lowered.includes("japon") || lowered.includes("japan")) {
+    return "Como o idioma alvo é Japonês, ao explicar correções em português inclua a leitura em romaji entre parênteses para ajudar o aluno.";
+  }
+  if (lowered.includes("mandarim") || lowered.includes("chin") || lowered.includes("chinese")) {
+    return "Como o idioma alvo é Mandarim, ao explicar correções em português inclua o pinyin com tons entre parênteses para ajudar o aluno.";
+  }
+  if (lowered.includes("hindi")) {
+    return "Como o idioma alvo é Hindi, ao explicar correções em português inclua a pronúncia/transliteração latina entre parênteses para ajudar o aluno.";
+  }
+  return "";
+}
+
 export function buildTutorSystemPrompt(
   profile: TeableRecord<LanguageProfileFields> | null,
   topicTitle: string,
@@ -757,6 +771,7 @@ export function buildTutorSystemPrompt(
   const level = profile?.fields.level ?? "Intermediário (B1)";
   const goal = profile?.fields.learning_goal ?? "Falar com mais naturalidade em situações reais.";
   const correctionStyle = profile?.fields.correction_style ?? "Corrigir sempre";
+  const extraGuidance = scriptGuidance(language);
 
   return [
     `Você é a IA tutora de um app pessoal de aprendizado de línguas.`,
@@ -766,6 +781,7 @@ export function buildTutorSystemPrompt(
     topicReason ? `Instrução pedagógica deste tema: ${topicReason}.` : "",
     `Objetivo do usuário: ${goal}.`,
     `Estilo de correção: ${correctionStyle}.`,
+    extraGuidance,
     tutorContext ? formatTutorContext(tutorContext) : "",
     "Converse principalmente no idioma alvo, com frases naturais e adequadas ao nível.",
     ...buildInteractionInstructions(interactionMode),
@@ -775,7 +791,7 @@ export function buildTutorSystemPrompt(
     "Mantenha o diálogo conectado ao tema proposto e retome detalhes que o aluno acabou de mencionar.",
     "Quando o usuário errar, nesta fase dê no máximo uma correção curta e explique em português de forma amigável.",
     "Não devolva JSON. Responda como mensagem de chat."
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 export function buildStructuredTutorPrompt(
@@ -789,6 +805,7 @@ export function buildStructuredTutorPrompt(
   const level = profile?.fields.level ?? "Intermediário (B1)";
   const goal = profile?.fields.learning_goal ?? "Falar com mais naturalidade em situações reais.";
   const correctionStyle = profile?.fields.correction_style ?? "Corrigir sempre";
+  const extraGuidance = scriptGuidance(language);
 
   return [
     "Você é a IA tutora de um app pessoal de aprendizado de línguas.",
@@ -798,6 +815,7 @@ export function buildStructuredTutorPrompt(
     topicReason ? `Instrução pedagógica deste tema: ${topicReason}.` : "",
     `Objetivo: ${goal}.`,
     `Estilo de correção: ${correctionStyle}.`,
+    extraGuidance,
     tutorContext ? formatTutorContext(tutorContext) : "",
     "Analise a última mensagem do usuário e continue a conversa com ritmo natural.",
     ...buildInteractionInstructions(interactionMode),
@@ -834,7 +852,7 @@ export function buildStructuredTutorPrompt(
     "Não selecione nem salve vocabulário durante a conversa: use sempre words: []. O usuário escolherá as palavras somente ao finalizar.",
     "error_type deve ser um de: grammar, vocabulary, pronunciation, tense, preposition, word_order, naturalness, spelling.",
     "severity deve ser um de: low, medium, high."
-  ].join("\n");
+  ].filter(Boolean).join("\n");
 }
 
 export function parseLearningAnalysis(content: string): LearningAnalysis {
