@@ -450,7 +450,7 @@ export function createAudioId(text: string, voice: string, outputFormat: string,
   const normLang = normalizeSpeechLanguage(languageCode);
   const payload = provider === "kokoro"
     ? { version: 2, text: text.normalize("NFC"), voice, outputFormat, speed }
-    : { version: 2, provider, language: normLang, text: text.normalize("NFC"), voice, outputFormat, speed };
+    : { version: 3, provider, language: normLang, text: text.normalize("NFC"), voice, outputFormat, speed };
   return createHash("sha256")
     .update(JSON.stringify(payload))
     .digest("hex");

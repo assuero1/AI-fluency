@@ -22,8 +22,9 @@ export function getDeepInfraConfig() {
     voicesByLanguage,
     outputFormat,
     speed: clampNumber(getEnv("DEEPINFRA_CHATTERBOX_SPEED"), 1.0, 0.25, 4),
-    exaggeration: parseOptionalNumber(getEnv("DEEPINFRA_CHATTERBOX_EXAGGERATION")),
-    cfgWeight: parseOptionalNumber(getEnv("DEEPINFRA_CHATTERBOX_CFG_WEIGHT")),
+    temperature: clampNumber(getEnv("DEEPINFRA_CHATTERBOX_TEMPERATURE"), 0.65, 0.1, 2.0),
+    exaggeration: clampNumber(getEnv("DEEPINFRA_CHATTERBOX_EXAGGERATION"), 0.35, 0.0, 1.0),
+    cfgWeight: clampNumber(getEnv("DEEPINFRA_CHATTERBOX_CFG_WEIGHT"), 0.45, 0.0, 1.0),
     cacheDir: getEnv("AUDIO_CACHE_DIR") ?? ".audio-cache",
     cacheMaxMb: parsePositiveNumber(getEnv("AUDIO_CACHE_MAX_MB"), 200),
     cacheMaxAgeDays: parsePositiveNumber(getEnv("AUDIO_CACHE_MAX_AGE_DAYS"), 30)
@@ -41,6 +42,10 @@ export function getDeepInfraStatus() {
     defaultVoice: config.defaultVoice || "default",
     voicesByLanguage: config.voicesByLanguage,
     outputFormat: config.outputFormat,
+    speed: config.speed,
+    temperature: config.temperature,
+    exaggeration: config.exaggeration,
+    cfgWeight: config.cfgWeight,
     audioCacheEnabled: Boolean(config.cacheDir)
   };
 }

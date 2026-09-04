@@ -4,6 +4,7 @@ import {
   decodeBase64Audio,
   DeepInfraConfigError,
   DeepInfraRequestError,
+  sanitizeTextForChatterbox,
   synthesizeDeepInfraSpeech,
   testDeepInfraConnection
 } from "@/lib/tts/deepinfra/client";
@@ -191,6 +192,55 @@ describe("DeepInfra Chatterbox client", () => {
     expect(result.contentType).toBe("audio/opus");
     expect(capturedBody).toMatchObject({
       response_format: "opus"
+    });
+  });
+
+  describe("sanitizeTextForChatterbox", () => {
+    it("strips markdown formatting to preserve clean phonemes", () => {
+      expect(sanitizeTextForChatterbox("You did a **great** job with `this` word!")).toBe("You did a great job with this word!");
+      expect(sanitizeTextForChatterbox("*Excellent* work with ~~old~~ text.")).toBe("Excellent work with old text.");
+    });
+
+    it("strips emojis that confuse Chatterbox tokenizers", () => {
+      expect(sanitizeTextForChatterbox("Parabéns pelo progresso! 👏🎉")).toBe("Parabéns pelo progresso!");
+      expect(sanitizeTextForChatterbox("Let's practice! 😊🚀")).toBe("Let's practice!");
+    });
+
+    it("converts trailing ellipses to a period to prevent suspended/unfinished intonation", () => {
+      expect(sanitizeTextForChatterbox("Vamos continuar...")).toBe("Vamos continuar.");
+      expect(sanitizeTextForChatterbox("I see…")).toBe("I see.");
+    });
+
+    it("ensures terminal punctuation when text ends abruptly or without punctuation", () => {
+      expect(sanitizeTextForChatterbox("That sounds like a good idea")).toBe("That sounds like a good idea.");
+      expect(sanitizeTextForChatterbox("How are you doing today", "en")).toBe("How are you doing today?");
+      expect(sanitizeTextForChatterbox("Como você está", "pt")).toBe("Como você está?");
+    });
+
+    it("removes dangling intermediate punctuation at the end of sentences", () => {
+      expect(sanitizeTextForChatterbox("Yes, absolutely, ")).toBe("Yes, absolutely.");
+      expect(sanitizeTextForChatterbox("Of course - ")).toBe("Of course.");
+    });
+  });
+
+  it("synthesizeDeepInfraSpeech applies calibrated natural defaults (temperature, exaggeration, cfg)", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({ audio: SAMPLE_BASE64_AUDIO }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }));
+
+    await synthesizeDeepInfraSpeech("Good morning, let's learn something new today", { languageCode: "en" });
+
+    expect(capturedBody).toMatchObject({
+      text: "Good morning, let's learn something new today.",
+      temperature: 0.65,
+      exaggeration: 0.35,
+      cfg: 0.45,
+      cfg_weight: 0.45
     });
   });
 });

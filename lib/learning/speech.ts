@@ -76,7 +76,7 @@ function normalizeSpeechSpacing(value: string) {
   return value.trim().replace(/\s+([,.;!?])/g, "$1").replace(/\s+/g, " ");
 }
 
-function looksLikeQuestion(value: string, languageCode: string | undefined) {
+export function looksLikeQuestion(value: string, languageCode: string | undefined) {
   const normalized = value
     .toLocaleLowerCase()
     .normalize("NFD")
@@ -84,7 +84,8 @@ function looksLikeQuestion(value: string, languageCode: string | undefined) {
     .replace(/^[¿¡]\s*/, "");
   const starters: Record<string, RegExp> = {
     en: /^(who|what|where|when|why|how|which|do|does|did|can|could|would|will|is|are|was|were|have|has)\b/,
-    es: /^(quien|que|donde|cuando|por que|como|cual|cuanto|puedes|podrias|quieres|es|son|tienes|has)\b/,
+    es: /^(quien|que|donde|quando|por que|como|cual|cuanto|puedes|podrias|quieres|es|son|tienes|has)\b/,
+    pt: /^(quem|que|o que|onde|aonde|quando|por que|porque|como|qual|quais|quanto|quantos|quantas|pode|poderia|voce pode|voce|sera)\b/,
     fr: /^(qui|que|quoi|ou|quand|pourquoi|comment|quel|quelle|combien|est-ce|peux|pourrais|veux|as-tu)\b/,
     it: /^(chi|che|cosa|dove|quando|perche|come|quale|quanto|puoi|potresti|vuoi|hai|sei)\b/,
     ja: /(か|かい|ですか|ますか|でしょうか)$|^(何|どこ|いつ|どう|だれ|誰|なぜ|いくら|どんな)/,

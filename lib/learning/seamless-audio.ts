@@ -38,12 +38,20 @@ export async function buildSeamlessTrack(urls: string[]): Promise<SeamlessTrack>
   }));
 
   const sampleRate = buffers[0]?.sampleRate ?? 44100;
+  // Pausa sutil entre frases (~180ms) e respiro final (~200ms) para não cortar a seco
+  const interGapSamples = buffers.length > 1 ? Math.round(sampleRate * 0.18) : 0;
+  const tailSilenceSamples = Math.round(sampleRate * 0.2);
+
   const partOffsets: number[] = [];
   let totalLength = 0;
-  buffers.forEach((part) => {
-    partOffsets.push(totalLength / part.sampleRate);
+  buffers.forEach((part, index) => {
+    partOffsets.push(totalLength / sampleRate);
     totalLength += part.length;
+    if (index < buffers.length - 1) {
+      totalLength += interGapSamples;
+    }
   });
+  totalLength += tailSilenceSamples;
 
   const channelCount = Math.max(...buffers.map((part) => part.numberOfChannels));
   const merged: Float32Array[] = [];
@@ -51,12 +59,15 @@ export async function buildSeamlessTrack(urls: string[]): Promise<SeamlessTrack>
     merged.push(new Float32Array(totalLength));
   }
   let writeOffset = 0;
-  buffers.forEach((part) => {
+  buffers.forEach((part, index) => {
     for (let channel = 0; channel < channelCount; channel += 1) {
       const source = part.getChannelData(Math.min(channel, part.numberOfChannels - 1));
       merged[channel].set(source, writeOffset);
     }
     writeOffset += part.length;
+    if (index < buffers.length - 1) {
+      writeOffset += interGapSamples;
+    }
   });
 
   const wavBytes = encodeWav(merged, sampleRate);

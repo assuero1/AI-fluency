@@ -257,4 +257,23 @@ describe("player resilience wiring", () => {
     const seamlessSource = read("lib/learning/seamless-audio.ts");
     expect(seamlessSource).toContain("decodeAudioData failed for");
   });
+
+  it("has optimistic UI without loading spinner during background preload", () => {
+    const word = read("components/MessageWordPlayer.tsx");
+    expect(word).toContain("const loadCaptionedTask = useCallback(async (userInitiated = false)");
+    expect(word).toContain("void loadCaptioned(false).catch(() => undefined)");
+    expect(word).toContain("await loadCaptioned(true)");
+  });
+
+  it("pre-buffers audio silently on track resolution for zero-delay play", () => {
+    const word = read("components/MessageWordPlayer.tsx");
+    expect(word).toMatch(/audio\.src = audioUrl;[\s\S]*?audio\.load\(\);[\s\S]*?fetch\(audioUrl/);
+  });
+
+  it("conversations.ts wires Early TTS Trigger in parallel with database persistence", () => {
+    const conv = read("lib/learning/conversations.ts");
+    expect(conv).toContain("import { warmCaptionedMessage } from \"@/lib/kokoro/cache\";");
+    expect(conv).toMatch(/assistantReply = safeTutorReply[\s\S]*?void warmCaptionedMessage\(assistantReply, profile\?\.fields\.language_code\)\.catch/);
+    expect(conv).toMatch(/quickActionReply = safeTutorReply[\s\S]*?void warmCaptionedMessage\(quickActionReply, context\.profile\?\.fields\.language_code\)\.catch/);
+  });
 });

@@ -8,11 +8,62 @@ import {
   type WordTimestamp
 } from "@/lib/tts/types";
 import { normalizeSpeechLanguage } from "@/lib/kokoro/voices";
+import { looksLikeQuestion } from "@/lib/learning/speech";
 import { getDeepInfraConfig } from "./config";
 
 export class DeepInfraConfigError extends TTSConfigError {}
 
 export class DeepInfraRequestError extends TTSRequestError {}
+
+/**
+ * Sanitiza e normaliza o texto antes de enviar ao Chatterbox.
+ * 1. Remove emojis e símbolos pictográficos que quebram a fonetização do modelo.
+ * 2. Remove marcações de markdown (asteriscos, crases, etc).
+ * 3. Normaliza reticências (... ou …) no final para ponto final para evitar tom suspenso.
+ * 4. Remove pontuação aberta (vírgula, travessão, dois-pontos) no fim da frase.
+ * 5. Garante pontuação terminal (. ou ? se soar como pergunta) para forçar
+ *    a cadência conclusiva natural do modelo autorregressivo.
+ */
+export function sanitizeTextForChatterbox(input: string, languageCode?: string): string {
+  let text = input.trim();
+  if (!text) return "";
+
+  // 1. Remove marcações markdown
+  text = text
+    .replace(/(\*\*|__)(.*?)\1/g, "$2")
+    .replace(/(\*|_)(.*?)\1/g, "$2")
+    .replace(/`([^`]+)`/g, "$1")
+    .replace(/^#+\s+/gm, "")
+    .replace(/^>\s+/gm, "")
+    .replace(/~~(.*?)~~/g, "$1");
+
+  // 2. Remove emojis e caracteres pictográficos
+  text = text.replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}\u200d\ufe0f]/gu, "");
+
+  // 3. Normaliza espaços múltiplos
+  text = text.replace(/\s+/g, " ").trim();
+
+  // 4. Substitui reticências no final da frase por ponto final (evita o "tom suspenso de hesitação" do Chatterbox)
+  text = text.replace(/[.!?…~。！？।]*[.…]+\s*$/, ".");
+
+  // Substitui reticências internas por vírgula para manter fluidez sem suspensão extrema
+  text = text.replace(/[.…]{2,}/g, ",");
+
+  // 5. Remove pontuações intermediárias penduradas no final (ex: "Hello, " ou "Yes - ")
+  text = text.replace(/[,;:\-—–~]+\s*$/, "");
+
+  text = text.trim();
+  if (!text) return "";
+
+  // 6. Garante pontuação terminal se terminou sem nenhuma
+  const hasTerminal = /[.!?。！？।]["'”’)\]」』]*$/.test(text);
+  if (!hasTerminal) {
+    const isQuestion = looksLikeQuestion(text, languageCode);
+    text = `${text}${isQuestion ? "?" : "."}`;
+  }
+
+  return text;
+}
 
 function trimSlash(value: string) {
   return value.replace(/\/+$/, "");
@@ -152,8 +203,10 @@ export async function synthesizeDeepInfraSpeech(
   const voice = options?.voice || config.voicesByLanguage[lang] || config.defaultVoice || "";
   const outputFormat = (options?.format || config.outputFormat).toLowerCase();
 
+  const sanitizedText = sanitizeTextForChatterbox(text, lang);
+
   const payload: Record<string, unknown> = {
-    text,
+    text: sanitizedText,
     language_id: lang,
     language: lang,
     response_format: outputFormat
@@ -164,6 +217,9 @@ export async function synthesizeDeepInfraSpeech(
   }
   if (options?.speed && Number.isFinite(options.speed)) {
     payload.speed = options.speed;
+  }
+  if (config.temperature !== undefined) {
+    payload.temperature = config.temperature;
   }
   if (config.exaggeration !== undefined) {
     payload.exaggeration = config.exaggeration;

@@ -199,9 +199,11 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     rafRef.current = requestAnimationFrame(step);
   }, [giveUpStalledPlayback, setActiveWord]);
 
-  const loadCaptionedTask = useCallback(async () => {
+  const loadCaptionedTask = useCallback(async (userInitiated = false) => {
     if (captionedFailedRef.current) return;
-    setStatusTracked("loading");
+    if (userInitiated) {
+      setStatusTracked("loading");
+    }
     const generation = ++generationRef.current;
     try {
       const texts = segmentMessage(text);
@@ -230,7 +232,7 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
 
       let audioUrl: string;
       if (segments.length === 1) {
-        // Caso comum (mensagens até 1200 chars): o MP3 único toca direto no
+        // Caso comum (mensagens até 1200 chars): o áudio único toca direto no
         // <audio>, sem decodificar/reempacotar WAV — o primeiro som sai antes.
         audioUrl = segments[0].audioUrl;
       } else {
@@ -258,11 +260,23 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
 
       const audio = ensureAudioElement();
       audio.src = audioUrl;
+      // Pre-buffering silencioso: carrega o áudio na memória do browser
+      // para o play disparar em 0ms quando o usuário clicar.
+      try {
+        audio.load();
+      } catch {
+        // Ignora restrições estritas de certos navegadores
+      }
+      if (typeof window !== "undefined" && audioUrl.startsWith("/")) {
+        void fetch(audioUrl, { cache: "force-cache" }).catch(() => undefined);
+      }
 
       setTrack({ segments, aligned: buildTrackAlignment(segments) });
       setSelectedIndex(0);
       setActiveWord(-1);
-      setStatusTracked("idle");
+      if (statusRef.current === "loading" || statusRef.current === "idle") {
+        setStatusTracked("idle");
+      }
     } catch (err) {
       if (generationRef.current !== generation) return;
       reportVoiceFailure(text, languageCode, `loadCaptionedTask failed: ${err instanceof Error ? err.message : String(err)}`);
@@ -273,15 +287,18 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
   // Preload e o primeiro play podem disparar juntos; sem a promise
   // compartilhada cada um montaria a faixa (downloads + decode) em duplicidade.
   const loadPromiseRef = useRef<Promise<void> | null>(null);
-  const loadCaptioned = useCallback(() => {
+  const loadCaptioned = useCallback((userInitiated = false) => {
+    if (userInitiated && statusRef.current === "idle") {
+      setStatusTracked("loading");
+    }
     const existing = loadPromiseRef.current;
     if (existing) return existing;
-    const task = loadCaptionedTask().finally(() => {
+    const task = loadCaptionedTask(userInitiated).finally(() => {
       if (loadPromiseRef.current === task) loadPromiseRef.current = null;
     });
     loadPromiseRef.current = task;
     return task;
-  }, [loadCaptionedTask]);
+  }, [loadCaptionedTask, setStatusTracked]);
 
   /** Toca a faixa a partir de `time` segundos (posição absoluta no WAV). */
   const playAt = useCallback(async (time: number, generation: number) => {
@@ -350,7 +367,7 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
     unlockInGesture();
 
     if (!trackRef.current) {
-      await loadCaptioned();
+      await loadCaptioned(true);
       if (captionedFailedRef.current || !trackRef.current) return;
     }
 
@@ -417,7 +434,7 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
   useEffect(() => {
     if (!preload || mode !== "word" || trackRef.current) return;
     if (!text.trim()) return;
-    void loadCaptioned().catch(() => undefined);
+    void loadCaptioned(false).catch(() => undefined);
   }, [loadCaptioned, mode, preload, text]);
 
   useEffect(() => () => {

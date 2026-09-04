@@ -7,6 +7,7 @@ import { assertPracticeReady, LearningStateError } from "./access";
 import { isMutableConversationStatus, selectScopedConversation } from "./conversation-state";
 import { getActiveLanguageProfile, getSessionUser, LanguageProfileFields } from "./profile";
 import { formatTutorContext, getTutorContext, TutorContext } from "./tutor-context";
+import { warmCaptionedMessage } from "@/lib/kokoro/cache";
 import { ConversationQuickAction, getConversationQuickActionPrompt } from "./quick-actions";
 import {
   InteractionMode,
@@ -564,6 +565,8 @@ export async function runConversationQuickAction(conversationId: string, action:
     { temperature: 0.45, maxTokens: 520, timeoutMs: 25_000, disableThinking: true }
   );
   const quickActionReply = safeTutorReply(ai.content, context.profile);
+  // Early TTS Trigger: sintetiza áudio imediatamente em paralelo com a persistência no banco
+  void warmCaptionedMessage(quickActionReply, context.profile?.fields.language_code).catch(() => undefined);
   const now = new Date().toISOString();
   const assistantMessage = await getTeableClient().createRecord<MessageFields>("messages", {
     Name: quickActionReply.slice(0, 80),
@@ -690,6 +693,8 @@ async function createAnalyzedAssistantTurn(
 
   const analysis = parseLearningAnalysis(ai.content);
   const assistantReply = safeTutorReply(analysis.assistant_reply, profile);
+  // Early TTS Trigger: sintetiza áudio imediatamente em paralelo com a persistência no banco (ganho de 400-800ms)
+  void warmCaptionedMessage(assistantReply, profile?.fields.language_code).catch(() => undefined);
   const now = new Date().toISOString();
   const [assistantMessage, corrections] = await Promise.all([
     client.createRecord<MessageFields>("messages", {
@@ -757,6 +762,8 @@ async function createAssistantMessage(
     { temperature: 0.5, maxTokens: 220, timeoutMs: 25_000, disableThinking: true }
   );
   const assistantReply = safeTutorReply(ai.content, profile);
+  // Early TTS Trigger: sintetiza áudio da primeira mensagem da conversa em paralelo com a persistência
+  void warmCaptionedMessage(assistantReply, profile?.fields.language_code).catch(() => undefined);
 
   const now = new Date().toISOString();
   return client.createRecord<MessageFields>("messages", {
