@@ -1,5 +1,6 @@
 import { BarChart3, Check, CircleAlert, MessageCircle, Target, TrendingUp } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
+import { plura } from "@/lib/plural";
 import { FocusPracticeButton } from "@/components/FocusPracticeButton";
 import { IconBubble } from "@/components/IconBubble";
 import { ListRow } from "@/components/ListRow";
@@ -17,7 +18,7 @@ export default async function ProgressPage() {
     {
       value: progress.metrics.correctionScore ? `${progress.metrics.correctionScore}/10` : "—",
       label: "Correções aplicadas",
-      foot: `${progress.profile.monthlyConversations} sessão(ões) neste mês`,
+      foot: plura(progress.profile.monthlyConversations, "sessão neste mês", "sessões neste mês"),
       icon: Check,
       tone: "primary" as const
     },
@@ -139,7 +140,7 @@ export default async function ProgressPage() {
                 <div className="row-copy">
                   <div className="row-title">{formatErrorLabel(error.type)}</div>
                   <div className="row-meta">
-                    {error.count} ocorrência(s) recente(s)
+                    {plura(error.count, "ocorrência recente", "ocorrências recentes")}
                     {error.example ? ` · “${error.example.original}” → “${error.example.corrected}”` : ""}
                   </div>
                 </div>

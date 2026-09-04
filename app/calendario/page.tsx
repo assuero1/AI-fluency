@@ -1,6 +1,7 @@
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, MessageCircle, Target } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
+import { plura } from "@/lib/plural";
 import { CalendarPracticeButton, CalendarTopicButton } from "@/components/CalendarPracticeButton";
 import { EmptyState } from "@/components/EmptyState";
 import { IconBubble } from "@/components/IconBubble";
@@ -35,7 +36,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
           <div>
             <div className="calendar-month-title">{capitalize(calendar.monthLabel)}</div>
             <div className="calendar-month-meta">
-              {calendar.feedbackCount} feedback(s) · {calendar.conversationCount} conversa(s)
+              {plura(calendar.feedbackCount, "feedback")} · {plura(calendar.conversationCount, "conversa")}
               {calendar.streak > 0 ? ` · sequência de ${calendar.streak} ${calendar.streak === 1 ? "dia" : "dias"}` : null}
             </div>
           </div>

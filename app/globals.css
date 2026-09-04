@@ -2899,6 +2899,30 @@ textarea:focus-visible,
   box-shadow: var(--shadow-card);
 }
 
+/* §2.7 — cena de carregamento de rota só aparece se a espera passar de 250ms:
+   loads rápidos não "piscam" a cena (backwards mantém opacidade 0 no delay). */
+@media (prefers-reduced-motion: no-preference) {
+  .loading-scene.screen {
+    animation: scene-appear 160ms var(--ease-out) 250ms backwards;
+  }
+}
+
+@keyframes scene-appear {
+  from { opacity: 0; }
+}
+
+/* prefers-reduced-motion: transições/animações ficam instantâneas
+   (compreensão mantida por opacidade/cor, sem movimento). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 /* Conquistas v2: destaque da próxima + anéis de progresso */
 .achievement-featured {
   margin-top: var(--space-4);

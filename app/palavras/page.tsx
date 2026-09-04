@@ -57,15 +57,17 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
           <span style={{ width: `${progress}%` }} />
         </div>
         <div className="row-meta">Meta semanal: {data.summary.weeklyNew}/{data.summary.weeklyGoal} novas palavras</div>
-        <div aria-label={distributionLabel(data.summary)} className="word-distribution" role="img">
-          {data.summary.learningWords > 0 ? <span className="wd-learning" style={{ flexGrow: data.summary.learningWords }} /> : null}
-          {data.summary.reviewWords > 0 ? <span className="wd-consolidating" style={{ flexGrow: data.summary.reviewWords }} /> : null}
-          {data.summary.strongWords > 0 ? <span className="wd-strong" style={{ flexGrow: data.summary.strongWords }} /> : null}
-          {data.summary.unusedWords > 0 ? <span className="wd-unused" style={{ flexGrow: data.summary.unusedWords }} /> : null}
-        </div>
-        <div className="word-distribution-caption">
-          {data.summary.strongWords} fortes · {data.summary.learningWords} aprendendo · {data.summary.reviewWords} consolidando · {data.summary.unusedWords} sem uso
-        </div>
+        {data.summary.totalWords > 0 ? <>
+          <div aria-label={distributionLabel(data.summary)} className="word-distribution" role="img">
+            {data.summary.learningWords > 0 ? <span className="wd-learning" style={{ flexGrow: data.summary.learningWords }} /> : null}
+            {data.summary.reviewWords > 0 ? <span className="wd-consolidating" style={{ flexGrow: data.summary.reviewWords }} /> : null}
+            {data.summary.strongWords > 0 ? <span className="wd-strong" style={{ flexGrow: data.summary.strongWords }} /> : null}
+            {data.summary.unusedWords > 0 ? <span className="wd-unused" style={{ flexGrow: data.summary.unusedWords }} /> : null}
+          </div>
+          <div className="word-distribution-caption">
+            {data.summary.strongWords} fortes · {data.summary.learningWords} aprendendo · {data.summary.reviewWords} consolidando · {data.summary.unusedWords} sem uso
+          </div>
+        </> : null}
       </section>
 
       <form className="word-search-form" action="/palavras" role="search">

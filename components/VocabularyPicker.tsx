@@ -1,6 +1,7 @@
 "use client";
 
 import { BookOpen, Check } from "lucide-react";
+import { plura } from "@/lib/plural";
 import { LoadingScene } from "./LoadingScene";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -96,7 +97,7 @@ export function VocabularyPicker({ conversationId }: {
       </div>;
     })()}
     <button className="green-button full-button" disabled={candidateGroups === null || saving || selected.size === 0} onClick={save} type="button">
-      <BookOpen /> Salvar {selected.size} selecionada(s)
+      <BookOpen /> Salvar {plura(selected.size, "selecionada", "selecionadas")}
     </button>
     {saving ? <LoadingScene variant="overlay" moment="save" palette="palavras" title="Salvando palavras..." /> : null}
     {message ? <p className="row-meta" aria-live="polite">{message}</p> : null}
@@ -110,7 +111,7 @@ function formatRelatedForms(group: VocabularyCandidateGroup) {
 
 function getCandidateStatus(candidate: VocabularyCandidateGroup) {
   if (!candidate.eligible) return "Uso corrigido — não será salvo";
-  if (candidate.incorrectOccurrenceCount > 0) return `${candidate.correctOccurrenceCount} uso(s) correto(s); usos corrigidos ignorados`;
+  if (candidate.incorrectOccurrenceCount > 0) return `${plura(candidate.correctOccurrenceCount, "uso correto", "usos corretos")}; usos corrigidos ignorados`;
   return "Novo uso do seu vocabulário";
 }
 
@@ -123,10 +124,10 @@ export function formatVocabularySaveResult(result: {
   const saved = result.savedCount ?? 0;
   if (saved === 0) return result.rejectedCount ? "Nenhum uso correto foi salvo; os usos corrigidos foram ignorados." : "Nenhuma alteração necessária.";
   const parts = [
-    result.newWordCount ? `${result.newWordCount} nova(s)` : "",
-    result.updatedWordCount ? `${result.updatedWordCount} atualizada(s)` : "",
-    `${saved} uso(s) registrado(s)`,
-    result.rejectedCount ? `${result.rejectedCount} uso(s) corrigido(s) ignorado(s)` : ""
+    result.newWordCount ? plura(result.newWordCount, "nova", "novas") : "",
+    result.updatedWordCount ? plura(result.updatedWordCount, "atualizada", "atualizadas") : "",
+    plura(saved, "uso registrado", "usos registrados"),
+    result.rejectedCount ? `${plura(result.rejectedCount, "uso corrigido ignorado", "usos corrigidos ignorados")}` : ""
   ].filter(Boolean);
   return parts.join(" · ");
 }
