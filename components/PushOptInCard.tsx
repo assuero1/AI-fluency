@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Bell } from "lucide-react";
 import { IconBubble } from "./IconBubble";
-import { TalkitoIcon } from "./TalkitoIcon";
 
 function urlBase64ToUint8Array(base64String: string) {
   const padding = "=".repeat((4 - base64String.length % 4) % 4);
@@ -52,7 +52,7 @@ export function PushOptInCard({ show, onDone }: PushOptInCardProps) {
 
   return <section className="section home-today" aria-label="Lembretes de prática">
     <div className="card-heading">
-      <IconBubble talkitoIcon="bell" tone="warning" />
+      <IconBubble Icon={Bell} tone="warning" />
       <div className="row-copy">
         <h2 className="row-title">Aviso para manter a sequência?</h2>
         <p className="row-meta">1x por dia, só quando você ainda não praticou.</p>
@@ -64,7 +64,7 @@ export function PushOptInCard({ show, onDone }: PushOptInCardProps) {
       <p className="row-meta">Sem problema — você pode ativar depois no Perfil.</p>
     ) : (
       <button className="green-button full-button" disabled={state === "busy"} onClick={() => void enable()} type="button">
-        <TalkitoIcon name="bell" size={20} /> Quero o lembrete
+        <Bell aria-hidden="true" size={20} /> Quero o lembrete
       </button>
     )}
   </section>;

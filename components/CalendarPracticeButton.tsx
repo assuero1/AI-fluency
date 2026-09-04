@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ArrowRight } from "lucide-react";
 import { SpiralSpinner } from "./SpiralSpinner";
-import { TalkitoIcon } from "./TalkitoIcon";
 
 type CalendarPracticeButtonProps = {
   date: string;
@@ -70,7 +70,7 @@ function PracticeRequestButton({
         {loading ? (
           <SpiralSpinner label="Carregando prática..." size={compact ? 16 : 20} />
         ) : compact ? null : (
-          <TalkitoIcon name="arrow-right" size={20} />
+          <ArrowRight aria-hidden="true" size={20} />
         )}
         {loading ? "Carregando..." : label}
       </button>

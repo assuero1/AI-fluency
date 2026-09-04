@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { TalkitoIcon } from "./TalkitoIcon";
+import { ArrowRight } from "lucide-react";
 
 type SectionHeaderProps = {
   title: string;
@@ -15,7 +15,7 @@ export function SectionHeader({ title, actionLabel, actionHref }: SectionHeaderP
       {actionLabel && actionHref ? (
         <Link className="link-action" href={actionHref}>
           {actionLabel}
-          <TalkitoIcon name="arrow-right" size={16} />
+          <ArrowRight aria-hidden="true" size={16} strokeWidth={2.4} />
         </Link>
       ) : null}
     </header>

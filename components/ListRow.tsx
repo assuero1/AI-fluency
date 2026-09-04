@@ -1,7 +1,7 @@
 import { IconBubble } from "./IconBubble";
 import { Pill } from "./Pill";
-import type { LucideIcon } from "lucide-react";
-import { TalkitoIcon, type TalkitoIconName } from "./TalkitoIcon";
+import { ChevronRight, type LucideIcon } from "lucide-react";
+import type { TalkitoIconName } from "./TalkitoIcon";
 
 export function ListRow({
   title,
@@ -33,7 +33,7 @@ export function ListRow({
         </div>
         {meta ? <div className="row-meta">{meta}</div> : null}
       </div>
-      {button ? <button className="outline-button">{button}</button> : <TalkitoIcon name="chevron-right" size={20} />}
+      {button ? <button className="outline-button">{button}</button> : <ChevronRight aria-hidden="true" size={20} strokeWidth={2.1} />}
     </div>
   );
 }

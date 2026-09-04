@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Send, X } from "lucide-react";
 import { TalkitoIcon } from "./TalkitoIcon";
 import { SpiralSpinner } from "./SpiralSpinner";
 import { IconBubble } from "./IconBubble";
@@ -175,7 +176,7 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
           onClick={onClose}
           type="button"
         >
-          <TalkitoIcon name="close-x" size={20} />
+          <X aria-hidden="true" size={20} />
         </button>
       </div>
 
@@ -242,7 +243,7 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
         }}
       >
         <button className="send-button" disabled={busy || !text.trim() || loadState.status !== "ready"} type="submit" aria-label="Enviar pergunta ao professor">
-          <TalkitoIcon name="send" size={20} />
+          <Send aria-hidden="true" size={20} />
         </button>
         <textarea
           aria-label="Pergunta para o professor"

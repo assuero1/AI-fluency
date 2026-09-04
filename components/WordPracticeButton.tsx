@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Play } from "lucide-react";
 import { SpiralSpinner } from "./SpiralSpinner";
-import { TalkitoIcon } from "./TalkitoIcon";
 
 type WordPracticeButtonProps = {
   wordId?: string;
@@ -37,7 +37,7 @@ export function WordPracticeButton({ wordId, compact = false }: WordPracticeButt
         {loading ? (
           <SpiralSpinner label="Carregando treino..." size={compact ? 16 : 20} />
         ) : (
-          <TalkitoIcon name="play" size={compact ? 16 : 20} />
+          <Play aria-hidden="true" size={compact ? 16 : 20} />
         )}
         {compact ? (
           <span className="sr-only">Praticar esta palavra</span>

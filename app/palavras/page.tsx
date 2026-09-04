@@ -1,5 +1,6 @@
 import { plura } from "@/lib/plural";
 import Link from "next/link";
+import { ChevronRight, Search } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
 import { IconBubble } from "@/components/IconBubble";
@@ -35,7 +36,7 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
     <AppShell activeNav="palavras" section="palavras">
       <ScreenHeader title="Suas palavras" subtitle={`${data.summary.totalWords} palavras salvas`} />
       <Link className="flashcard-entry" href="/palavras/treino">
-        <div className="flashcard-entry-icon"><TalkitoIcon name="brain" size={28} /></div><div className="row-copy"><div className="eyebrow"><TalkitoIcon name="sparkles" size={16} /> Revisão inteligente</div><div className="row-title">Treinar com cards</div><div className="row-meta">{data.dailyQueue && data.dailyQueue.dueCount + data.dailyQueue.newCount > 0 ? `Hoje: ${data.dailyQueue.dueCount} revisões + ${data.dailyQueue.newCount} novas` : "Palavras e frases do seu vocabulário"}</div></div><TalkitoIcon name="chevron-right" size={20} />
+        <div className="flashcard-entry-icon"><TalkitoIcon name="brain" size={28} /></div><div className="row-copy"><div className="eyebrow"><TalkitoIcon name="sparkles" size={16} /> Revisão inteligente</div><div className="row-title">Treinar com cards</div><div className="row-meta">{data.dailyQueue && data.dailyQueue.dueCount + data.dailyQueue.newCount > 0 ? `Hoje: ${data.dailyQueue.dueCount} revisões + ${data.dailyQueue.newCount} novas` : "Palavras e frases do seu vocabulário"}</div></div><ChevronRight aria-hidden="true" size={20} />
       </Link>
       <section className="section">
         <div className="word-summary-card">
@@ -76,7 +77,7 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
       </section>
 
       <form className="word-search-form" action="/palavras" role="search">
-        <TalkitoIcon name="search" size={20} />
+        <Search aria-hidden="true" size={20} />
         <input aria-label="Buscar palavra ou tradução" maxLength={80} name="q" defaultValue={data.query} placeholder="Buscar palavra ou tradução" />
         <input name="filter" type="hidden" value={filter} />
         <button type="submit">Buscar</button>

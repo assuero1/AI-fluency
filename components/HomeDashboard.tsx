@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ChevronDown, PenLine } from "lucide-react";
 import { MilestoneModal } from "./MilestoneModal";
 import { HomeTodayCard } from "./HomeTodayCard";
 import { DailyTrailCard } from "./DailyTrailCard";
@@ -180,7 +181,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           <span className="selector-item">
             <span className="flag">{languageCode}</span>
             <span className="language-selector-label">{profile?.languageName ?? "Inglês"}</span>
-            <TalkitoIcon name="chevron-down" size={20} />
+            <ChevronDown aria-hidden="true" size={20} />
           </span>
         </Link>
         <div aria-hidden="true" className="selector-divider" />
@@ -225,7 +226,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
               placeholder="Ex.: viagens, entrevistas, rotina, tecnologia..."
               value={topic}
             />
-            <TalkitoIcon name="edit" size={18} />
+            <PenLine aria-hidden="true" size={18} />
           </label>
           <div className="topic-card-footer">
             <button className="outline-button" disabled={pendingAction === "suggest"} onClick={suggestTopic} type="button">

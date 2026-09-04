@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronRight } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { LogoutButton } from "@/components/LogoutButton";
 import { ProfilePreferences } from "@/components/ProfilePreferences";
@@ -21,11 +22,11 @@ export default async function ProfilePage() {
         <div className="settings-list">
           <Link className="settings-row" href="/calendario">
             <span className="selector-item"><TalkitoIcon name="calendar-desk" size={20} /> Calendário de prática</span>
-            <TalkitoIcon name="chevron-right" size={18} />
+            <ChevronRight aria-hidden="true" size={18} />
           </Link>
           <Link className="settings-row" href="/perfil/conquistas">
             <span className="selector-item"><TalkitoIcon name="trophy" size={20} /> Conquistas</span>
-            <TalkitoIcon name="chevron-right" size={18} />
+            <ChevronRight aria-hidden="true" size={18} />
           </Link>
         </div>
         <div className="mt-4">

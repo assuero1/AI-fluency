@@ -1,6 +1,6 @@
 "use client";
 
-import { TalkitoIcon } from "./TalkitoIcon";
+import { Check, Target } from "lucide-react";
 
 type QuestView = {
   key: string;
@@ -16,12 +16,12 @@ export function QuestList({ quests }: { quests: QuestView[] }) {
     <h2 className="section-title">Missões de hoje</h2>
     <div className="row-list">
       {quests.map((quest) => <div className={`list-row${quest.complete ? " quest-complete" : ""}`} key={quest.key}>
-        <span className={`icon-circle ${quest.complete ? "green" : ""}`}><TalkitoIcon name="check-stamp" size={24} /></span>
+        <span className={`icon-circle ${quest.complete ? "green" : ""}`}><Check aria-hidden="true" size={24} /></span>
         <div className="row-copy">
           <div className="row-title">{quest.title}</div>
           <div className="row-meta">{quest.target > 1 ? `${quest.progress}/${quest.target}` : quest.complete ? "Concluída" : "Pendente"}</div>
         </div>
-        <TalkitoIcon name="target" size={20} className="filter-icon" />
+        <Target aria-hidden="true" className="filter-icon" size={20} />
       </div>)}
     </div>
   </section>;

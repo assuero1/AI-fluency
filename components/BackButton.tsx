@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { TalkitoIcon } from "./TalkitoIcon";
+import { ChevronLeft } from "lucide-react";
 
 type BackButtonProps = {
   label: string;
@@ -11,7 +11,7 @@ type BackButtonProps = {
 export function BackButton({ label, href, onClick }: BackButtonProps) {
   const content = (
     <>
-      <TalkitoIcon name="chevron-left" size={20} />
+      <ChevronLeft aria-hidden="true" size={20} strokeWidth={2.4} />
       {label}
     </>
   );

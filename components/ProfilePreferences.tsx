@@ -2,10 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { Check, Download, Loader2, ShieldAlert, Trash2 } from "lucide-react";
 import { IconBubble } from "./IconBubble";
 import { LevelPills } from "./LevelPills";
 import { ModalDialog } from "./ModalDialog";
-import { TalkitoIcon } from "./TalkitoIcon";
 import { isHapticsEnabled, setHapticsEnabled } from "@/lib/client/haptics";
 import { isSoundEnabled, setSoundEnabled } from "@/lib/client/ui-sound";
 import { DEFAULT_LANGUAGE_LEVEL } from "@/lib/learning/levels";
@@ -288,7 +288,7 @@ export function ProfilePreferences({ initial }: ProfilePreferencesProps) {
               onClick={() => savePreference({ correctionStyle: option.value })}
               type="button"
             >
-              {preferences.correctionStyle === option.value ? <TalkitoIcon name="check-stamp" size={16} /> : <span aria-hidden="true" className="choice-placeholder" />}
+              {preferences.correctionStyle === option.value ? <Check aria-hidden="true" size={16} /> : <span aria-hidden="true" className="choice-placeholder" />}
               <span className="row-copy">
                 <span className="row-title">{option.value}</span>
                 <span className="row-meta">{option.meta}</span>
@@ -318,12 +318,12 @@ export function ProfilePreferences({ initial }: ProfilePreferencesProps) {
         <h2 className="section-title">Seus dados</h2>
         <div className="settings-list">
           <a className="settings-row" href="/api/export">
-            <span className="selector-item"><TalkitoIcon name="download" size={20} /> Exportar dados</span>
+            <span className="selector-item"><Download aria-hidden="true" size={20} /> Exportar dados</span>
             <span className="link-action">JSON</span>
           </a>
           <button className="settings-row destructive-row" disabled={pending === "delete-challenge"} onClick={openDeleteConfirmation} type="button">
-            <span className="selector-item"><TalkitoIcon name="trash" size={20} /> Limpar histórico deste idioma</span>
-            {pending === "delete-challenge" ? <TalkitoIcon name="loader" size={20} /> : <TalkitoIcon name="shield-alert" size={20} />}
+            <span className="selector-item"><Trash2 aria-hidden="true" size={20} /> Limpar histórico deste idioma</span>
+            {pending === "delete-challenge" ? <Loader2 aria-hidden="true" className="animate-spin" size={20} /> : <ShieldAlert aria-hidden="true" size={20} />}
           </button>
         </div>
       </section>
@@ -338,7 +338,7 @@ export function ProfilePreferences({ initial }: ProfilePreferencesProps) {
           onClose={() => setDeleteChallenge(null)}
           titleId="delete-title"
         >
-            <TalkitoIcon name="shield-alert" size={28} />
+            <ShieldAlert aria-hidden="true" size={28} />
             <h2 id="delete-title" className="section-title">Limpar histórico de {activeLanguage?.languageName ?? "este idioma"}?</h2>
             <p className="row-meta" id="delete-description">Conversas, correções, palavras, feedbacks e práticas deste idioma serão removidos. Seu perfil, preferências e os outros idiomas serão preservados.</p>
             <label className="field-label" htmlFor="delete-phrase">Digite {deleteChallenge.phrase} para confirmar</label>
@@ -346,7 +346,7 @@ export function ProfilePreferences({ initial }: ProfilePreferencesProps) {
             <div className="modal-actions">
               <button className="outline-button" disabled={pending === "delete-history"} onClick={() => setDeleteChallenge(null)} type="button">Cancelar</button>
               <button className="danger-button" disabled={pending === "delete-history" || deletePhrase.trim().length === 0} onClick={deleteHistory} type="button">
-                {pending === "delete-history" ? <TalkitoIcon name="loader" size={20} /> : <TalkitoIcon name="trash" size={20} />}
+                {pending === "delete-history" ? <Loader2 aria-hidden="true" className="animate-spin" size={20} /> : <Trash2 aria-hidden="true" size={20} />}
                 Limpar histórico
               </button>
             </div>

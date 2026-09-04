@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Check, ChevronRight } from "lucide-react";
 import { Pill } from "./Pill";
 import { TalkitoIcon, type TalkitoIconName } from "./TalkitoIcon";
 
@@ -116,7 +117,7 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
             <>
               <span className={`trail-step-bubble ${step.tone}${step.done ? " done" : ""}`}>
                 {step.done ? (
-                  <TalkitoIcon name="check-stamp" size={20} />
+                  <Check aria-hidden="true" size={20} />
                 ) : (
                   <TalkitoIcon name={step.talkitoIcon} size={20} />
                 )}
@@ -132,10 +133,10 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
               </div>
               {step.done ? (
                 <span className="trail-step-done-pill" title="Concluído">
-                  <TalkitoIcon name="check-stamp" size={13} /> Concluído
+                  <Check aria-hidden="true" size={13} /> Concluído
                 </span>
               ) : (
-                <TalkitoIcon name="chevron-right" size={18} className="trail-step-arrow" />
+                <ChevronRight aria-hidden="true" size={18} className="trail-step-arrow" />
               )}
             </>
           );

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Check, Languages, LogOut, Mic, MicOff, Send, Shuffle } from "lucide-react";
 import { TalkitoIcon } from "./TalkitoIcon";
 import { Bubble } from "./Bubble";
 import { IconBubble } from "./IconBubble";
@@ -666,7 +667,7 @@ export function ChatConversation({
         <ScreenHeader title="Conversa" subtitle="com a IA" centered />
         {!readOnly ? (
           <button aria-label="Sair da conversa" className="ghost-icon-button" disabled={isSending} onClick={() => setIsExitDialogOpen(true)} type="button">
-            <TalkitoIcon name="log-out" size={24} />
+            <LogOut aria-hidden="true" size={24} />
           </button>
         ) : (
           <Link aria-label="Abrir calendário" className="ghost-icon-button" href="/calendario">
@@ -701,7 +702,7 @@ export function ChatConversation({
             }}
             type="button"
           >
-            <TalkitoIcon name="shuffle" size={16} /> Mudar
+            <Shuffle aria-hidden="true" size={16} /> Mudar
           </button>
         </div>
       </div>
@@ -732,7 +733,7 @@ export function ChatConversation({
           onClose={() => setIsTopicDialogOpen(false)}
           titleId="change-topic-title"
         >
-            <TalkitoIcon name="shuffle" size={28} />
+            <Shuffle aria-hidden="true" size={28} />
             <h2 id="change-topic-title" className="section-title">Mudar o tema da conversa?</h2>
             <p className="row-meta" id="change-topic-description">O histórico será preservado. A IA passa a conduzir a conversa pelo novo tema a partir da próxima mensagem.</p>
             <label className="field-label" htmlFor="next-topic">Novo tema</label>
@@ -896,7 +897,7 @@ export function ChatConversation({
 
         {selectedText ? <div className="selection-explainer" ref={selectionExplainerRef}>
           <div><span className="eyebrow">Trecho selecionado</span><strong>{selectedText}</strong></div>
-          <button className="outline-button" disabled={isExplaining} onClick={explainSelectedText} type="button"><TalkitoIcon name="languages" size={16} /> {isExplaining ? "Explicando..." : "Explicar seleção"}</button>
+          <button className="outline-button" disabled={isExplaining} onClick={explainSelectedText} type="button"><Languages aria-hidden="true" size={16} /> {isExplaining ? "Explicando..." : "Explicar seleção"}</button>
           {selectionExplanation ? <div className="selection-explanation" aria-live="polite">
             <p><strong>Tradução:</strong> {selectionExplanation.translation}</p>
             <p><strong>Gramática:</strong> {selectionExplanation.grammar}</p>
@@ -906,7 +907,7 @@ export function ChatConversation({
         </div> : null}
 
         {!readOnly ? <button className="outline-button full-button finalize-bar" disabled={isSending} onClick={requestFinalize} type="button">
-          <TalkitoIcon name="check-stamp" size={20} /> Finalizar conversa
+          <Check aria-hidden="true" size={20} /> Finalizar conversa
         </button> : <div className="empty-state">Esta conversa foi finalizada e está disponível apenas para consulta.</div>}
 
         <ConversationGoalProgress progress={messageGoal} readOnly={readOnly} />
@@ -927,7 +928,7 @@ export function ChatConversation({
             aria-label={isListening ? "Parar transcrição" : "Falar mensagem"}
             title={isListening ? "Parar transcrição" : `Falar em ${speechLanguageName(speechLanguage)}`}
           >
-            {speechSupport === "unsupported" ? <TalkitoIcon name="mic-off" size={20} /> : <TalkitoIcon name="microphone" size={20} />}
+            {speechSupport === "unsupported" ? <MicOff aria-hidden="true" size={20} /> : <Mic aria-hidden="true" size={20} />}
           </button>
           <textarea
             aria-label="Mensagem para a IA"
@@ -947,7 +948,7 @@ export function ChatConversation({
             value={text}
           />
           <button className="send-button" disabled={isSending || !text.trim()} type="submit" aria-label="Enviar mensagem">
-            <TalkitoIcon name="send" size={20} />
+            <Send aria-hidden="true" size={20} />
           </button>
         </form> : null}
         {!readOnly ? (

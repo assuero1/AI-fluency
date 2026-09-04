@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { TalkitoIcon } from "./TalkitoIcon";
+import { Loader2, Plus } from "lucide-react";
 
 type AddSenseFormProps = {
   wordId: string;
@@ -54,7 +54,7 @@ export function AddSenseForm({ wordId }: AddSenseFormProps) {
   if (!open) {
     return (
       <button className="outline-button full-button" onClick={() => setOpen(true)} type="button">
-        <TalkitoIcon name="plus" size={18} /> Adicionar significado
+        <Plus aria-hidden="true" size={18} /> Adicionar significado
       </button>
     );
   }
@@ -103,7 +103,7 @@ export function AddSenseForm({ wordId }: AddSenseFormProps) {
       <div className="modal-actions">
         <button className="outline-button" disabled={busy} onClick={() => { setOpen(false); setError(""); }} type="button">Cancelar</button>
         <button className="green-button" disabled={busy || !translation.trim()} type="submit">
-          {busy ? <TalkitoIcon name="loader" size={18} /> : <TalkitoIcon name="plus" size={18} />} Salvar significado
+          {busy ? <Loader2 aria-hidden="true" className="animate-spin" size={18} /> : <Plus aria-hidden="true" size={18} />} Salvar significado
         </button>
       </div>
     </form>

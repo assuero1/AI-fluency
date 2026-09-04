@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { plura } from "@/lib/plural";
 import { CalendarPracticeButton, CalendarTopicButton } from "@/components/CalendarPracticeButton";
@@ -31,7 +32,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
       <section className="section">
         <div className="calendar-month-nav">
           <Link aria-label="Mês anterior" className="calendar-month-button" href={`/calendario?month=${calendar.previousMonth}`}>
-            <TalkitoIcon name="chevron-left" size={18} />
+            <ChevronLeft aria-hidden="true" size={18} />
           </Link>
           <div>
             <div className="calendar-month-title">{capitalize(calendar.monthLabel)}</div>
@@ -41,7 +42,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             </div>
           </div>
           <Link aria-label="Próximo mês" className="calendar-month-button" href={`/calendario?month=${calendar.nextMonth}`}>
-            <TalkitoIcon name="chevron-right" size={18} />
+            <ChevronRight aria-hidden="true" size={18} />
           </Link>
         </div>
         <div className="calendar-grid calendar-grid-interactive mt-5">
@@ -99,7 +100,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
                 <div className="row-title">Última prática registrada</div>
                 <div className="row-meta">{latestDate}</div>
               </div>
-              <TalkitoIcon name="chevron-right" size={18} />
+              <ChevronRight aria-hidden="true" size={18} />
             </Link>
             <CalendarPracticeButton date={latestDate} />
           </div>

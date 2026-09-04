@@ -2,8 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { ArrowRight } from "lucide-react";
 import { SpiralSpinner } from "./SpiralSpinner";
-import { TalkitoIcon } from "./TalkitoIcon";
 
 export function FocusPracticeButton() {
   const router = useRouter();
@@ -28,7 +28,7 @@ export function FocusPracticeButton() {
   return (
     <div className="focus-practice-wrap">
       <button className="green-button full-button" disabled={loading} onClick={start} type="button">
-        {loading ? <SpiralSpinner label="Preparando o treino..." size={20} /> : <TalkitoIcon name="arrow-right" size={20} />}
+        {loading ? <SpiralSpinner label="Preparando o treino..." size={20} /> : <ArrowRight aria-hidden="true" size={20} />}
         {loading ? "Preparando o treino..." : "Treinar foco da semana"}
       </button>
       {error ? <p className="practice-error" role="alert">{error}</p> : null}

@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Loader2, Pause, Play, RotateCcw, Volume2 } from "lucide-react";
 import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
-import { TalkitoIcon, type TalkitoIconName } from "./TalkitoIcon";
 import {
   claimActiveVoice,
   releaseActiveVoice,
@@ -238,28 +238,30 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
   }
 
   const accessibleLabel = voiceLabel(status, label);
-  const iconName: TalkitoIconName =
-    status === "loading"
-      ? "loader"
-      : status === "playing"
-        ? "pause"
-        : status === "ended"
-          ? "rotate-ccw"
-          : compact
-            ? "volume"
-            : "play";
+  const icon =
+    status === "loading" ? (
+      <Loader2 aria-hidden="true" className="animate-spin" size={18} />
+    ) : status === "playing" ? (
+      <Pause aria-hidden="true" size={18} />
+    ) : status === "ended" ? (
+      <RotateCcw aria-hidden="true" size={18} />
+    ) : compact ? (
+      <Volume2 aria-hidden="true" size={18} />
+    ) : (
+      <Play aria-hidden="true" size={18} />
+    );
 
   if (compact) {
     return (
       <button className="voice-icon-button" onClick={togglePlayback} type="button" aria-label={accessibleLabel} title={accessibleLabel}>
-        <TalkitoIcon name={iconName} size={18} />
+        {icon}
       </button>
     );
   }
 
   return (
     <button aria-label={accessibleLabel} className={status === "error" ? "audio-pill audio-error" : "audio-pill"} onClick={togglePlayback} type="button">
-      <TalkitoIcon name={iconName} size={18} />
+      {icon}
       <Wave playing={status === "playing"} />
       <span aria-live="polite">{voiceStatusText(status, label)}</span>
     </button>

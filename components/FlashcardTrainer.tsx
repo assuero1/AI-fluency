@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { Check, Layers, Mic, MicOff, RotateCcw } from "lucide-react";
 import { TalkitoIcon } from "./TalkitoIcon";
 import { compareAnswerForCard } from "@/lib/learning/flashcard-answer";
 import { advanceFlashcardQueue, createFlashcardQueue, selectNextQueueItem, rebuildFlashcardQueue } from "@/lib/learning/flashcard-queue";
@@ -319,7 +320,7 @@ export function FlashcardTrainer() {
         <strong>Praticar novamente</strong>
         <div><button className="outline-button" disabled={busy} onClick={() => void startRetraining("wrong")} type="button">Somente erradas</button><button className="outline-button" disabled={busy} onClick={() => void startRetraining("difficult")} type="button">Somente difíceis</button></div>
       </section>
-      <button className="green-button full-button" onClick={() => { setCards([]); setResult(null); void loadOverview(); }} type="button"><TalkitoIcon name="rotate-ccw" size={18} /> Novo treino</button>
+      <button className="green-button full-button" onClick={() => { setCards([]); setResult(null); void loadOverview(); }} type="button"><RotateCcw aria-hidden="true" size={18} /> Novo treino</button>
       <Link
         className="link-action plain-button"
         href={`/chat?flashcardSession=${encodeURIComponent(sessionId)}`}
@@ -371,7 +372,7 @@ export function FlashcardTrainer() {
       </section>
       {!revealed ? <form className="flashcard-attempt" onSubmit={submitAttempt}>
         <label htmlFor="flashcard-answer">Resposta esperada em {card.type === "target_to_native" || card.type === "listening" ? "português" : languageName}</label>
-        <div className="flashcard-input-row"><input autoComplete="off" id="flashcard-answer" maxLength={300} onChange={(event) => setInput(event.target.value)} placeholder="Digite sua resposta" ref={inputRef} value={input} /><button aria-label={listening ? "Parar transcrição" : "Falar resposta"} className={listening ? "voice-icon-button listening" : "voice-icon-button"} disabled={!speechSupported} onClick={toggleSpeech} type="button">{listening ? <TalkitoIcon name="mic-off" size={20} /> : <TalkitoIcon name="microphone" size={20} />}</button></div>
+        <div className="flashcard-input-row"><input autoComplete="off" id="flashcard-answer" maxLength={300} onChange={(event) => setInput(event.target.value)} placeholder="Digite sua resposta" ref={inputRef} value={input} /><button aria-label={listening ? "Parar transcrição" : "Falar resposta"} className={listening ? "voice-icon-button listening" : "voice-icon-button"} disabled={!speechSupported} onClick={toggleSpeech} type="button">{listening ? <MicOff aria-hidden="true" size={20} /> : <Mic aria-hidden="true" size={20} />}</button></div>
         {usedSpeech ? <p className="speech-status">Transcrição pronta para revisar e editar.</p> : null}
         <div className="flashcard-attempt-actions"><button className="outline-button" onClick={(event) => void submitAttempt(event, true)} type="button">Não lembro</button><button className="green-button" disabled={!input.trim()} type="submit">Responder</button></div>
       </form> : <section className="flashcard-reveal" aria-live="polite">
@@ -380,10 +381,10 @@ export function FlashcardTrainer() {
         <p className={`answer-match ${revealed.match}`}>{matchLabel(revealed.match)}</p>
         {isAutoForgot(revealed) ? <>
           <p>Sem problema — este card volta ainda nesta sessão.</p>
-          <div className="recall-rating-grid"><button className="suggested" disabled={busy} onClick={() => void grade(null)} type="button"><TalkitoIcon name="check-stamp" size={16} /> Continuar</button></div>
+          <div className="recall-rating-grid"><button className="suggested" disabled={busy} onClick={() => void grade(null)} type="button"><Check aria-hidden="true" size={16} /> Continuar</button></div>
         </> : <div className="recall-rating-grid">
           <button disabled={busy} onClick={() => void grade("hard")} type="button">Difícil{revealed.hardDays ? <span className="interval-hint">→ {formatIntervalDays(revealed.hardDays)}</span> : null}</button>
-          <button className="suggested" disabled={busy} onClick={() => void grade("easy")} type="button"><TalkitoIcon name="check-stamp" size={16} /> Fácil{revealed.easyDays ? <span className="interval-hint">→ {formatIntervalDays(revealed.easyDays)}</span> : null}</button>
+          <button className="suggested" disabled={busy} onClick={() => void grade("easy")} type="button"><Check aria-hidden="true" size={16} /> Fácil{revealed.easyDays ? <span className="interval-hint">→ {formatIntervalDays(revealed.easyDays)}</span> : null}</button>
         </div>}
       </section>}
       {undoState ? <p className="speech-status">Avaliação registrada. <button className="outline-button" disabled={busy} onClick={() => void undoLast()} type="button">Desfazer</button></p> : null}
@@ -406,7 +407,7 @@ export function FlashcardTrainer() {
     <section className="flashcard-intro"><div className="flashcard-brand"><TalkitoIcon name="brain" size={36} /></div><div><div className="eyebrow">Revisão inteligente</div><h1 className="title">Treino de cards</h1><p className="subtitle">Recupere a palavra da memória antes de conferir a resposta.</p></div></section>
     {resumable?.currentItem ? (
       <ModalDialog busy={busy} onClose={continueSession} titleId="resume-training-title">
-        <TalkitoIcon name="rotate-ccw" size={28} />
+        <RotateCcw aria-hidden="true" size={28} />
         <h2 className="section-title" id="resume-training-title">Treino em andamento</h2>
         <p className="row-meta">Você já concluiu {resumable.attempts.length} apresentações. Escolha como seguir.</p>
         <div className="flashcard-resume-actions">
@@ -435,7 +436,7 @@ export function FlashcardTrainer() {
     {dailyQueue && dailyQueue.difficultCount > 0 ? <button className="outline-button full-button" disabled={busy} onClick={() => void start("difficult")} type="button">Só difíceis ({dailyQueue.difficultCount})</button> : null}
     <button className="outline-button full-button" onClick={() => setCustomOpen((open) => !open)} type="button">Sessão custom</button>
     {customOpen ? <>
-      <section className="section"><h2 className="section-title">Quais palavras priorizar?</h2><p className="row-meta">Palavras com revisão vencida sempre entram primeiro; o critério ordena o restante.</p><div className="flashcard-choice-grid"><button className={criterion === "least_used" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("least_used")} type="button"><TalkitoIcon name="layers" size={20} /><div><strong>Menos usadas</strong><span>Reforça palavras com pouca prática</span></div></button><button className={criterion === "oldest" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("oldest")} type="button"><TalkitoIcon name="clock-timer" size={20} /><div><strong>Há mais tempo sem usar</strong><span>Recupera vocabulário esquecido</span></div></button></div></section>
+      <section className="section"><h2 className="section-title">Quais palavras priorizar?</h2><p className="row-meta">Palavras com revisão vencida sempre entram primeiro; o critério ordena o restante.</p><div className="flashcard-choice-grid"><button className={criterion === "least_used" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("least_used")} type="button"><Layers aria-hidden="true" size={20} /><div><strong>Menos usadas</strong><span>Reforça palavras com pouca prática</span></div></button><button className={criterion === "oldest" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("oldest")} type="button"><TalkitoIcon name="clock-timer" size={20} /><div><strong>Há mais tempo sem usar</strong><span>Recupera vocabulário esquecido</span></div></button></div></section>
       <section className="section"><div className="top-row"><h2 className="section-title">Quantidade de palavras</h2><strong>{count}</strong></div><input aria-label="Quantidade de palavras" className="flashcard-range" min="2" max="30" onChange={(event) => setCount(Number(event.target.value))} step="1" type="range" value={count} /><div className="top-row row-meta"><span>2</span><span>30</span></div></section>
       <div className="soft-card"><TalkitoIcon name="sparkles" size={24} /><div><strong>Como funciona</strong><p className="row-meta">Tente lembrar antes de ver a resposta — o treino agenda a próxima revisão pelo seu acerto.</p></div></div>
       <button className="green-button full-button" disabled={busy} onClick={() => void start("custom")} type="button"><TalkitoIcon name="brain" size={20} className="inline-block mr-2" /> Montar treino com {count} palavras</button>

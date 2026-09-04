@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Languages, Loader2, RotateCcw } from "lucide-react";
 import { requestTranslation } from "@/lib/learning/translation-request";
-import { TalkitoIcon, type TalkitoIconName } from "./TalkitoIcon";
 
 type TranslationStatus = "idle" | "loading" | "ready" | "error";
 
@@ -32,12 +32,17 @@ export function TranslationButton({ text, sourceLanguage }: { text: string; sour
   const label = translation
     ? expanded ? "Ocultar tradução" : "Mostrar tradução"
     : status === "loading" ? "Traduzindo" : status === "error" ? "Tentar traduzir novamente" : "Traduzir";
-  const iconName: TalkitoIconName = status === "loading" ? "loader" : status === "error" ? "rotate-ccw" : "languages";
 
   return (
     <div className="translation-control">
       <button aria-busy={status === "loading"} aria-expanded={translation ? expanded : undefined} className="translate-button" disabled={status === "loading"} onClick={toggleTranslation} type="button">
-        <TalkitoIcon name={iconName} size={16} />
+        {status === "loading" ? (
+          <Loader2 aria-hidden="true" className="animate-spin" size={16} />
+        ) : status === "error" ? (
+          <RotateCcw aria-hidden="true" size={16} />
+        ) : (
+          <Languages aria-hidden="true" size={16} />
+        )}
         {label}
       </button>
       {expanded && translation ? (

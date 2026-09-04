@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { TalkitoIcon, type TalkitoIconName } from "./TalkitoIcon";
+import { Loader2, Pause, Play, RotateCcw, SkipBack, SkipForward } from "lucide-react";
 import {
   activeIndexAtTime,
   alignWords,
@@ -433,14 +433,16 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
   }
 
   const showWords = showTranscript && track !== null && track.aligned.length > 0;
-  const playIconName: TalkitoIconName =
-    status === "loading"
-      ? "loader"
-      : status === "playing"
-        ? "pause"
-        : status === "ended"
-          ? "rotate-ccw"
-          : "play";
+  const playIcon =
+    status === "loading" ? (
+      <Loader2 aria-hidden="true" className="animate-spin" size={20} />
+    ) : status === "playing" ? (
+      <Pause aria-hidden="true" size={20} />
+    ) : status === "ended" ? (
+      <RotateCcw aria-hidden="true" size={20} />
+    ) : (
+      <Play aria-hidden="true" size={20} />
+    );
   const playLabel =
     status === "loading" ? "Preparando áudio" :
     status === "playing" ? "Pausar áudio" :
@@ -486,7 +488,7 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
           onClick={() => skipWords(-1)}
           type="button"
         >
-          <TalkitoIcon name="skip-back" size={20} />
+          <SkipBack aria-hidden="true" size={20} />
         </button>
         <button
           aria-label={playLabel}
@@ -495,7 +497,7 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
           title={playLabel}
           type="button"
         >
-          <TalkitoIcon name={playIconName} size={20} />
+          {playIcon}
         </button>
         <button
           aria-label="Avançar 5 palavras"
@@ -504,7 +506,7 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
           onClick={() => skipWords(1)}
           type="button"
         >
-          <TalkitoIcon name="skip-forward" size={20} />
+          <SkipForward aria-hidden="true" size={20} />
         </button>
       </div>
     </div>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Check } from "lucide-react";
 import { TalkitoIcon } from "./TalkitoIcon";
 import { languages } from "@/data/mock";
 import { DEFAULT_LANGUAGE_LEVEL, LANGUAGE_LEVELS, LanguageLevel } from "@/lib/learning/levels";
@@ -71,7 +72,7 @@ function LanguageChoices({ languageIndex, onSelect }: { languageIndex: number; o
             <span className="row-title">{language.title}</span>
             <span className="row-meta">{language.meta}</span>
           </span>
-          {index === languageIndex ? <TalkitoIcon name="check-stamp" size={20} /> : null}
+          {index === languageIndex ? <Check aria-hidden="true" size={20} /> : null}
         </button>
       ))}
     </div>
@@ -292,7 +293,7 @@ export function OnboardingForm({
                   <span className="row-copy">
                     <span className="row-title">{option}</span>
                   </span>
-                  {option === goal ? <TalkitoIcon name="check-stamp" size={20} /> : null}
+                  {option === goal ? <Check aria-hidden="true" size={20} /> : null}
                 </button>
               ))}
             </div>
@@ -312,7 +313,7 @@ export function OnboardingForm({
                   <span className="row-copy">
                     <span className="row-title">{option}</span>
                   </span>
-                  {option === correctionStyle ? <TalkitoIcon name="check-stamp" size={20} /> : null}
+                  {option === correctionStyle ? <Check aria-hidden="true" size={20} /> : null}
                 </button>
               ))}
             </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { TalkitoIcon, type TalkitoIconName } from "./TalkitoIcon";
+import { Loader2, Pause, Play, RotateCcw, SkipBack, SkipForward } from "lucide-react";
 import { buildSeamlessTrack, type SeamlessTrack } from "@/lib/learning/seamless-audio";
 import { splitIntoSentences } from "@/lib/learning/sentences";
 import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
@@ -308,14 +308,16 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
     releaseActiveVoice(ownerRef.current);
   }, [releaseAudio]);
 
-  const playIconName: TalkitoIconName =
-    status === "loading"
-      ? "loader"
-      : status === "playing"
-        ? "pause"
-        : status === "ended"
-          ? "rotate-ccw"
-          : "play";
+  const playIcon =
+    status === "loading" ? (
+      <Loader2 aria-hidden="true" className="animate-spin" size={20} />
+    ) : status === "playing" ? (
+      <Pause aria-hidden="true" size={20} />
+    ) : status === "ended" ? (
+      <RotateCcw aria-hidden="true" size={20} />
+    ) : (
+      <Play aria-hidden="true" size={20} />
+    );
   const playLabel =
     status === "loading" ? "Preparando áudio" :
     status === "playing" ? "Pausar áudio" :
@@ -351,7 +353,7 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
           onClick={() => skipLine(-1)}
           type="button"
         >
-          <TalkitoIcon name="skip-back" size={20} />
+          <SkipBack aria-hidden="true" size={20} />
         </button>
         <button
           aria-label={playLabel}
@@ -360,7 +362,7 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
           title={playLabel}
           type="button"
         >
-          <TalkitoIcon name={playIconName} size={20} />
+          {playIcon}
         </button>
         <button
           aria-label="Avançar uma frase"
@@ -369,7 +371,7 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
           onClick={() => skipLine(1)}
           type="button"
         >
-          <TalkitoIcon name="skip-forward" size={20} />
+          <SkipForward aria-hidden="true" size={20} />
         </button>
       </div>
     </div>

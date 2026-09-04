@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
+import { Mic, MicOff } from "lucide-react";
 import {
   newWordsSessionSizes,
   SENTENCES_PER_WORD,
@@ -621,7 +622,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
         <label htmlFor="new-words-translation">Sua tradução em português</label>
         <div className="flashcard-input-row">
           <input autoComplete="off" id="new-words-translation" maxLength={300} onChange={(event) => setInput(event.target.value)} placeholder="Digite sua tradução" ref={inputRef} value={input} />
-          <button aria-label={listening ? "Parar transcrição" : "Falar tradução"} className={listening ? "voice-icon-button listening" : "voice-icon-button"} disabled={!speechSupported} onClick={toggleSpeech} type="button">{listening ? <TalkitoIcon name="mic-off" size={20} /> : <TalkitoIcon name="microphone" size={20} />}</button>
+          <button aria-label={listening ? "Parar transcrição" : "Falar tradução"} className={listening ? "voice-icon-button listening" : "voice-icon-button"} disabled={!speechSupported} onClick={toggleSpeech} type="button">{listening ? <MicOff aria-hidden="true" size={20} /> : <Mic aria-hidden="true" size={20} />}</button>
         </div>
         <div className="flashcard-attempt-actions">
           <button className="green-button" disabled={!input.trim() || busy} type="submit">
