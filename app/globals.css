@@ -66,7 +66,7 @@
   --space-8: 32px;
   --space-10: 40px;
   --space-section: var(--space-8);
-  --card-pad: var(--space-5);
+  --card-pad: var(--space-6);
 
   /* Raios — os únicos valores permitidos no app */
   --radius-xs: 8px;
@@ -442,9 +442,9 @@ a {
   gap: 8px;
   min-height: 38px;
   padding: 8px 14px;
-  border: 1px solid var(--line);
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: var(--surface);
+  background: var(--surface-2);
   color: var(--text);
   font-size: 16px;
   font-weight: 600;
@@ -515,16 +515,27 @@ a {
   font-size: 17px;
   font-weight: 800;
   letter-spacing: -0.01em;
+  transition:
+    transform var(--motion-press) var(--ease-out),
+    box-shadow var(--motion-press) var(--ease-out),
+    filter var(--motion-fast) ease;
+}
+
+.outline-button {
+  border-color: transparent;
+  background: var(--section-soft);
+  color: var(--section-text);
 }
 
 .dark-button {
-  border-color: var(--dark-cta);
+  border-color: transparent;
   background: var(--dark-cta);
   color: #fff;
+  box-shadow: 0 2px 0 var(--neutral-deep), inset 0 1px 0 rgba(255, 255, 255, .18);
 }
 
 .green-button {
-  border-color: var(--primary);
+  border-color: transparent;
   background: var(--primary);
   color: #fff;
 }
@@ -1227,10 +1238,10 @@ a {
 .card {
   min-width: 0;
   padding: var(--card-pad);
-  border: 2px solid var(--line);
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-lg);
   background: #fff;
-  box-shadow: 0 3px 0 rgba(31, 25, 16, 0.05);
+  box-shadow: var(--shadow-card);
 }
 
 .card.card-soft {
@@ -1325,7 +1336,6 @@ a {
 .green-button:disabled,
 .outline-button:disabled {
   cursor: not-allowed;
-  opacity: 0.68;
 }
 
 .spin {
@@ -2361,6 +2371,7 @@ a {
   padding: var(--card-pad);
   border-radius: var(--radius-lg);
   background: #fff;
+  box-shadow: var(--shadow-card);
 }
 
 .confirmation-modal .section-title {
@@ -2483,11 +2494,12 @@ a {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  border: 1px solid var(--danger);
+  border: 1px solid transparent;
   border-radius: var(--radius-md);
   background: var(--danger);
   color: #fff;
   font-weight: 800;
+  box-shadow: 0 2px 0 var(--danger-deep), inset 0 1px 0 rgba(255, 255, 255, .25);
 }
 
 .danger-button:disabled {
@@ -2745,28 +2757,98 @@ textarea:focus-visible,
 }
 .dark-button { box-shadow: 0 4px 0 #000; }
 .green-button {
-  border-color: var(--section);
   background: var(--section);
-  box-shadow: 0 4px 0 var(--section-deep);
+  box-shadow: var(--shadow-cta), inset 0 1px 0 rgba(255, 255, 255, .25);
 }
 .section-progresso .green-button { color: #4a3c00; }
 .outline-button:hover:not(:disabled),
 .dark-button:hover:not(:disabled),
 .green-button:hover:not(:disabled) { filter: brightness(1.04); }
-.outline-button:active:not(:disabled),
+.outline-button:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
 .dark-button:active:not(:disabled),
 .green-button:active:not(:disabled) {
-  transform: translateY(4px);
-  box-shadow: 0 0 0 transparent;
+  transform: translateY(2px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25);
+}
+
+.dark-button:active:not(:disabled) {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18);
 }
 .dark-button:disabled,
 .green-button:disabled,
 .outline-button:disabled {
+  border-color: transparent;
+  background: var(--neutral-soft);
+  color: var(--subtle);
+  box-shadow: none;
   transform: none;
-  box-shadow: 0 2px 0 var(--line-deep);
 }
 
-/* === Camada chunky: cards com borda 2px e sombra sólida sutil === */
+/* === Motivos de marca v2 (§2.5): espiral da cauda e balão do mascote === */
+.spiral-spinner {
+  display: inline-grid;
+  place-items: center;
+  color: var(--section-text);
+}
+
+.spiral-spinner svg {
+  width: 100%;
+  height: 100%;
+  animation: spiral-rotate 1.1s linear infinite;
+}
+
+.spiral-spinner path {
+  stroke: currentColor;
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  stroke-dasharray: 30 22;
+}
+
+@keyframes spiral-rotate {
+  to { transform: rotate(1turn); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spiral-spinner svg { animation-duration: 2.4s; }
+}
+
+.bubble {
+  position: relative;
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-radius: var(--radius-lg);
+  border-bottom-left-radius: var(--radius-xs);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.bubble::after {
+  content: "";
+  position: absolute;
+  left: 16px;
+  bottom: -6px;
+  width: 12px;
+  height: 12px;
+  background: var(--surface);
+  border-left: 1px solid var(--line-soft);
+  border-bottom: 1px solid var(--line-soft);
+  transform: rotate(-45deg);
+}
+
+.empty-state-mascot {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+}
+
+/* === Camada de cards v2: hairline + elevação difusa (chunk 3D é só do CTA) === */
 .choice-card,
 .settings-card,
 .topic-card,
@@ -2774,12 +2856,12 @@ textarea:focus-visible,
 .progress-level-card,
 .progress-focus-card,
 .calendar-feedback-card {
-  border: 2px solid var(--line);
-  box-shadow: 0 3px 0 rgba(31, 25, 16, .05);
+  border: 1px solid var(--line-soft);
+  box-shadow: var(--shadow-card);
 }
-.choice-card { transition: transform .12s ease, box-shadow .12s ease; }
+.choice-card { transition: transform var(--motion-fast) var(--ease-out), box-shadow var(--motion-fast) var(--ease-out); }
 @media (hover: hover) and (pointer: fine) {
-  .choice-card:hover { transform: translateY(-2px); box-shadow: 0 5px 0 rgba(31, 25, 16, .07); }
+  .choice-card:hover { transform: translateY(-1px); }
 }
 .choice-card.active { border-color: var(--section); }
 
@@ -2790,7 +2872,12 @@ textarea:focus-visible,
 .audio-pill { color: var(--section-text); }
 .voice-icon-button { color: var(--section-text); }
 .mic-button { color: var(--section-text); }
-.nav-item.active { color: var(--section-text); }
+.nav-item.active {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--section-soft);
+  color: var(--section-text);
+}
 .nav-item.active svg { fill: var(--section-text); stroke: var(--section-text); }
 
 

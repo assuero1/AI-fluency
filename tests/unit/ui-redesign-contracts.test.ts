@@ -83,11 +83,12 @@ describe("chunky playful redesign contracts", () => {
     expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*\.spin\s*\{[\s\S]*animation-duration: 0\.9s !important;[\s\S]*animation-iteration-count: infinite !important;/);
   });
 
-  it("applies chunky 3D buttons and card borders", () => {
+  it("applies the v2 calm-surface contract (chunk only on primary CTA)", () => {
     const css = read("app/globals.css");
-    expect(css).toContain("box-shadow: 0 4px 0 var(--section-deep)");
-    expect(css).toContain("transform: translateY(4px)");
-    expect(css).toContain("box-shadow: 0 3px 0 rgba(31, 25, 16, .05)");
+    expect(css).toContain("box-shadow: var(--shadow-cta), inset 0 1px 0 rgba(255, 255, 255, .25)");
+    expect(css).toContain("transform: translateY(2px)");
+    expect(css).toContain("box-shadow: var(--shadow-card)");
+    expect(css).toContain("transition:\n    transform var(--motion-press) var(--ease-out)");
   });
 
   it("renders a mascot loading scene in the chat instead of static text", () => {
