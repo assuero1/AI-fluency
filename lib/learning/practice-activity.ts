@@ -32,8 +32,10 @@ export function getPracticeActivity(
   return {
     streak,
     practicedToday,
-    activityDays: Array.from({ length: 7 }, (_, index) => {
-      const date = shiftDate(today, index - 6);
+    // Semana-calendário (domingo → hoje), na mesma convenção D S T Q Q S S do
+    // calendário — antes era uma janela rolante que lia como semana embaralhada.
+    activityDays: Array.from({ length: weekdayIndex(today) + 1 }, (_, index) => {
+      const date = shiftDate(today, index - weekdayIndex(today));
       return {
         label: weekdayLabels[weekdayIndex(date)],
         date,

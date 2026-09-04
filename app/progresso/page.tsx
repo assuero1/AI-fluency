@@ -153,7 +153,7 @@ export default async function ProgressPage() {
 
       <section className="section">
         <h2 className="section-title">Sequência</h2>
-        <div className="level-pills" aria-label="Atividade dos últimos sete dias" role="list">
+        <div className="level-pills" aria-label="Atividade desta semana" role="list">
           {progress.activityDays.map((day) => (
             <Pill
               aria-label={`${formatActivityDate(day.date)}: ${day.active ? "prática concluída" : "sem prática"}`}
