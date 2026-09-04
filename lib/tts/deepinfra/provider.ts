@@ -66,7 +66,7 @@ export class DeepInfraTTSProvider implements TTSProvider {
       outputFormat: config.outputFormat,
       speed: config.speed,
       allowedVoices,
-      allowedFormats: ["mp3", "wav"]
+      allowedFormats: ["mp3", "wav", "opus"]
     };
   }
 

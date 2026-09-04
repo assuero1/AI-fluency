@@ -174,4 +174,23 @@ describe("DeepInfra Chatterbox client", () => {
       { word: "mundo", start_time: 0.48, end_time: 0.95 }
     ]);
   });
+
+  it("synthesizeDeepInfraSpeech supports opus output format", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({ audio: SAMPLE_BASE64_AUDIO }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }));
+
+    const result = await synthesizeDeepInfraSpeech("Opus test", { format: "opus", languageCode: "en" });
+    expect(result.ok).toBe(true);
+    expect(result.outputFormat).toBe("opus");
+    expect(result.contentType).toBe("audio/opus");
+    expect(capturedBody).toMatchObject({
+      response_format: "opus"
+    });
+  });
 });
