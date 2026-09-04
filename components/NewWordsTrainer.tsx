@@ -518,7 +518,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
         </div>
         <div className="flashcard-attempt-actions">
           <button className="green-button" disabled={!input.trim() || busy} type="submit">
-            {wait === "judge" ? <SpiralSpinner label="Avaliando tradução..." size={18} /> : null}
+            {wait === "judge" ? <SpiralSpinner label="Avaliando tradução..." size={20} /> : null}
             {wait === "judge" ? "Avaliando..." : "Traduzir"}
           </button>
         </div>

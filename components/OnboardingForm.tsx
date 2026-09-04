@@ -7,7 +7,7 @@ import { useState } from "react";
 import { languages } from "@/data/mock";
 import { DEFAULT_LANGUAGE_LEVEL, LANGUAGE_LEVELS, LanguageLevel } from "@/lib/learning/levels";
 import { BackButton } from "./BackButton";
-import { LoadingScene } from "./LoadingScene";
+import { SpiralSpinner } from "./SpiralSpinner";
 import { LevelPills } from "./LevelPills";
 import { Pill } from "./Pill";
 import { burstConfetti } from "@/lib/client/confetti";
@@ -199,10 +199,10 @@ export function OnboardingForm({
 
         <div className="section">
           <button className="green-button full-button" disabled={isSaving} onClick={submit} type="button">
+            {isSaving ? <SpiralSpinner label="Trocando idioma..." size={20} /> : null}
             {isSaving ? "Trocando idioma..." : `Usar ${selectedLanguage.title}`}
           </button>
         </div>
-        {isSaving ? <LoadingScene variant="overlay" moment="save" palette="neutral" title="Trocando idioma..." /> : null}
       </>
     );
   }
@@ -216,9 +216,9 @@ export function OnboardingForm({
         <h1 className="title">Perfil pronto, {firstName}!</h1>
         <p className="subtitle">Em 1 minuto você faz sua primeira conversa — a IA ajusta tudo ao seu nível.</p>
         <button className="green-button full-button" disabled={startingChat} onClick={() => void startFirstConversation()} type="button">
-          <Mic /> Fazer minha primeira conversa
+          {startingChat ? <SpiralSpinner label="Preparando conversa..." size={20} /> : <Mic />}
+          {startingChat ? "Preparando sua primeira conversa..." : "Fazer minha primeira conversa"}
         </button>
-        {startingChat ? <LoadingScene variant="overlay" moment="enter" palette="neutral" title="Preparando sua primeira conversa..." /> : null}
         <Link className="outline-button full-button" href="/">Explorar o app</Link>
       </section>
     );
@@ -365,11 +365,11 @@ export function OnboardingForm({
             </button>
           ) : (
             <button className="green-button full-button" disabled={isSaving || !name.trim()} onClick={submit} type="button">
+              {isSaving ? <SpiralSpinner label="Salvando perfil..." size={20} /> : null}
               {isSaving ? "Salvando perfil..." : "Salvar e continuar"}
             </button>
           )}
         </div>
-        {isSaving ? <LoadingScene variant="overlay" moment="save" palette="neutral" title="Salvando seu perfil..." /> : null}
       </div>
     </>
   );
