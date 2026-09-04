@@ -55,7 +55,17 @@ export function sanitizeTextForChatterbox(input: string, languageCode?: string):
   text = text.trim();
   if (!text) return "";
 
-  // 6. Garante pontuação terminal se terminou sem nenhuma
+  // 6. Normaliza capitalização para pronúncia natural (evita grito em ALL CAPS e ativa elocução formal)
+  const isAllCapsWord = text.length > 3 && text === text.toUpperCase() && /[A-ZÀ-ÖØ-ß]/.test(text);
+  if (isAllCapsWord) {
+    // Converte ALL CAPS (ex: "APPLE") para Title Case ("Apple") para evitar grito no Chatterbox
+    text = text.charAt(0).toUpperCase() + text.slice(1).toLowerCase();
+  } else if (text.length > 0 && text.charAt(0) === text.charAt(0).toLowerCase() && /[a-zà-öø-ÿ]/.test(text.charAt(0))) {
+    // Capitaliza a primeira letra de palavras isoladas para ativar a entonação de início de elocução formal
+    text = text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  // 7. Garante pontuação terminal se terminou sem nenhuma
   const hasTerminal = /[.!?。！？।]["'”’)\]」』]*$/.test(text);
   if (!hasTerminal) {
     const isQuestion = looksLikeQuestion(text, languageCode);
@@ -218,15 +228,30 @@ export async function synthesizeDeepInfraSpeech(
   if (options?.speed && Number.isFinite(options.speed)) {
     payload.speed = options.speed;
   }
-  if (config.temperature !== undefined) {
-    payload.temperature = config.temperature;
+  const wordTokens = sanitizedText.split(/\s+/).filter(Boolean);
+  const isShortUtterance = wordTokens.length <= 2;
+
+  const effectiveTemperature = config.hasCustomTemperature
+    ? config.temperature
+    : (isShortUtterance ? 0.50 : config.temperature);
+
+  const effectiveExaggeration = config.hasCustomExaggeration
+    ? config.exaggeration
+    : (isShortUtterance ? 0.22 : config.exaggeration);
+
+  const effectiveCfg = config.hasCustomCfgWeight
+    ? config.cfgWeight
+    : (isShortUtterance ? 0.50 : config.cfgWeight);
+
+  if (effectiveTemperature !== undefined) {
+    payload.temperature = effectiveTemperature;
   }
-  if (config.exaggeration !== undefined) {
-    payload.exaggeration = config.exaggeration;
+  if (effectiveExaggeration !== undefined) {
+    payload.exaggeration = effectiveExaggeration;
   }
-  if (config.cfgWeight !== undefined) {
-    payload.cfg = config.cfgWeight;
-    payload.cfg_weight = config.cfgWeight;
+  if (effectiveCfg !== undefined) {
+    payload.cfg = effectiveCfg;
+    payload.cfg_weight = effectiveCfg;
   }
 
   const endpoint = `${trimSlash(config.baseUrl)}/v1/inference/${config.model}`;

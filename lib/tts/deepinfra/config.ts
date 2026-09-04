@@ -14,6 +14,10 @@ export function getDeepInfraConfig() {
     hi: getEnv("DEEPINFRA_CHATTERBOX_VOICE_HI") ?? defaultVoice
   };
 
+  const rawTemp = getEnv("DEEPINFRA_CHATTERBOX_TEMPERATURE");
+  const rawExagg = getEnv("DEEPINFRA_CHATTERBOX_EXAGGERATION");
+  const rawCfg = getEnv("DEEPINFRA_CHATTERBOX_CFG_WEIGHT");
+
   return {
     apiKey: getFirstEnv(["DEEPINFRA_API_KEY", "DEEPINFRA_TOKEN"]),
     baseUrl: getEnv("DEEPINFRA_BASE_URL") ?? "https://api.deepinfra.com",
@@ -22,9 +26,12 @@ export function getDeepInfraConfig() {
     voicesByLanguage,
     outputFormat,
     speed: clampNumber(getEnv("DEEPINFRA_CHATTERBOX_SPEED"), 1.0, 0.25, 4),
-    temperature: clampNumber(getEnv("DEEPINFRA_CHATTERBOX_TEMPERATURE"), 0.65, 0.1, 2.0),
-    exaggeration: clampNumber(getEnv("DEEPINFRA_CHATTERBOX_EXAGGERATION"), 0.35, 0.0, 1.0),
-    cfgWeight: clampNumber(getEnv("DEEPINFRA_CHATTERBOX_CFG_WEIGHT"), 0.45, 0.0, 1.0),
+    temperature: clampNumber(rawTemp, 0.65, 0.1, 2.0),
+    exaggeration: clampNumber(rawExagg, 0.35, 0.0, 1.0),
+    cfgWeight: clampNumber(rawCfg, 0.45, 0.0, 1.0),
+    hasCustomTemperature: Boolean(rawTemp),
+    hasCustomExaggeration: Boolean(rawExagg),
+    hasCustomCfgWeight: Boolean(rawCfg),
     cacheDir: getEnv("AUDIO_CACHE_DIR") ?? ".audio-cache",
     cacheMaxMb: parsePositiveNumber(getEnv("AUDIO_CACHE_MAX_MB"), 200),
     cacheMaxAgeDays: parsePositiveNumber(getEnv("AUDIO_CACHE_MAX_AGE_DAYS"), 30)

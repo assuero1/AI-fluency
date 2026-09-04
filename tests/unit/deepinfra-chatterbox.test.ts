@@ -221,9 +221,17 @@ describe("DeepInfra Chatterbox client", () => {
       expect(sanitizeTextForChatterbox("Yes, absolutely, ")).toBe("Yes, absolutely.");
       expect(sanitizeTextForChatterbox("Of course - ")).toBe("Of course.");
     });
+
+    it("capitalizes single words and title-cases all-caps words while preserving acronyms", () => {
+      expect(sanitizeTextForChatterbox("apple")).toBe("Apple.");
+      expect(sanitizeTextForChatterbox("APPLE")).toBe("Apple.");
+      expect(sanitizeTextForChatterbox("USA")).toBe("USA.");
+      expect(sanitizeTextForChatterbox("bom dia", "pt")).toBe("Bom dia.");
+      expect(sanitizeTextForChatterbox("DELICIOUS")).toBe("Delicious.");
+    });
   });
 
-  it("synthesizeDeepInfraSpeech applies calibrated natural defaults (temperature, exaggeration, cfg)", async () => {
+  it("synthesizeDeepInfraSpeech applies calibrated natural defaults for full sentences", async () => {
     let capturedBody: Record<string, unknown> | null = null;
     vi.stubGlobal("fetch", vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
       capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
@@ -241,6 +249,27 @@ describe("DeepInfra Chatterbox client", () => {
       exaggeration: 0.35,
       cfg: 0.45,
       cfg_weight: 0.45
+    });
+  });
+
+  it("synthesizeDeepInfraSpeech tunes parameters for short utterances (1-2 words) for crisp dictionary enunciation", async () => {
+    let capturedBody: Record<string, unknown> | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+      return new Response(JSON.stringify({ audio: SAMPLE_BASE64_AUDIO }), {
+        status: 200,
+        headers: { "content-type": "application/json" }
+      });
+    }));
+
+    await synthesizeDeepInfraSpeech("apple", { languageCode: "en" });
+
+    expect(capturedBody).toMatchObject({
+      text: "Apple.",
+      temperature: 0.50,
+      exaggeration: 0.22,
+      cfg: 0.50,
+      cfg_weight: 0.50
     });
   });
 });
