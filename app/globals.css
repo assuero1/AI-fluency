@@ -670,9 +670,25 @@ a {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 18px;
-  padding: 18px 0;
-  border-bottom: 1px solid var(--line);
+  gap: 14px;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.list-row .row-copy { min-width: 0; }
+
+.list-row .row-title {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.list-row .row-meta {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .list-row:last-child {
@@ -723,7 +739,7 @@ a {
 
 .selector-bar {
   display: grid;
-  grid-template-columns: minmax(132px, 0.9fr) auto minmax(0, 1.2fr);
+  grid-template-columns: auto auto minmax(0, 1fr);
   gap: 10px;
   align-items: center;
   margin-top: var(--space-section);
@@ -732,10 +748,10 @@ a {
 .selector-item {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   min-width: 0;
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 16px;
+  font-weight: 700;
 }
 
 .language-selector {
@@ -751,9 +767,6 @@ a {
 
 .language-selector-label {
   min-width: 0;
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1166,6 +1179,17 @@ a {
   line-height: 1;
 }
 
+/* Barras de progresso v2: fill em scaleX (GPU) — o span é full-width */
+.progress-fill {
+  display: block;
+  width: 100%;
+  height: inherit;
+  border-radius: inherit;
+  background: inherit;
+  transform-origin: left;
+  transition: transform var(--motion-base) var(--ease-out);
+}
+
 .progress-line {
   overflow: hidden;
   height: 10px;
@@ -1176,7 +1200,7 @@ a {
 
 .progress-line span {
   display: block;
-  width: 68%;
+  width: 100%;
   height: 100%;
   border-radius: inherit;
   background: var(--primary);
@@ -1361,49 +1385,47 @@ a {
 .chat-topic {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 14px;
-  align-items: center;
+  gap: 12px;
+  align-items: start;
   margin-top: var(--space-section);
+}
+
+.chat-topic-bubble {
+  display: grid;
+  gap: 3px;
+  justify-items: start;
+  margin-bottom: 6px;
+}
+
+.chat-topic-title {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 
 .chat-topic-actions {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 8px;
 }
 
 .chat-topic-actions .outline-button {
+  min-height: 44px;
+  padding: 0 14px;
+  font-size: 14px;
   white-space: nowrap;
 }
 
-.chat-teacher-fab {
-  position: fixed;
-  top: 50%;
-  left: max(14px, calc((100vw - min(100vw, 430px)) / 2 + 14px));
-  transform: translateY(-50%);
-  z-index: 30;
-  display: grid;
-  place-items: center;
-  width: 58px;
-  height: 58px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: var(--chat);
-  color: #fff;
-  box-shadow: 0 4px 0 var(--chat-deep), 0 12px 26px rgba(20, 143, 214, 0.35);
-  cursor: pointer;
+.finalize-bar {
+  min-height: 46px;
+  gap: 8px;
+  font-size: 15px;
 }
 
-.chat-teacher-fab:disabled {
-  cursor: not-allowed;
-  opacity: 0.55;
-}
 
-.chat-teacher-fab:focus-visible {
-  outline: 3px solid color-mix(in srgb, var(--chat) 45%, transparent);
-  outline-offset: 3px;
-}
+
 
 .teacher-chat-modal {
   width: 100%;
@@ -1591,7 +1613,8 @@ a {
   height: 100%;
   border-radius: 999px;
   background: var(--primary);
-  transition: width 0.25s ease;
+  transform-origin: left;
+  transition: transform var(--motion-base) var(--ease-out);
 }
 
 .eyebrow {
@@ -2602,7 +2625,18 @@ textarea:focus-visible,
 .flashcard-audio-fallback { grid-column: 1 / -1; margin: 2px 0 0; padding: 10px 12px; border-radius: var(--radius-sm); background: #fff7dc; color: #6f5507; font-size: 14px; }
 .flashcard-resume-actions { display: grid; gap: 10px; }
 .flashcard-resume-actions button { min-height: 48px; }
-.flashcard-attempt, .flashcard-reveal { display: grid; gap: 14px; padding: 20px; border-radius: var(--radius-lg); background: #fff; border: 1px solid var(--border); }
+.flashcard-attempt, @media (prefers-reduced-motion: no-preference) {
+  .flashcard-reveal {
+    animation: reveal-rise 200ms var(--ease-out) both;
+  }
+}
+
+@keyframes reveal-rise {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.flashcard-reveal { display: grid; gap: 14px; padding: 20px; border-radius: var(--radius-lg); background: #fff; border: 1px solid var(--border); }
 .flashcard-attempt label { font-weight: 700; }
 .flashcard-input-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; }
 .flashcard-input-row input { width: 100%; min-height: 56px; padding: 0 17px; border: 1px solid #bdd3c3; border-radius: var(--radius-md); background: #fbfefb; color: var(--text); font: inherit; font-size: 18px; }
@@ -2633,7 +2667,7 @@ textarea:focus-visible,
 @media (prefers-reduced-motion: reduce) { .auto-advance-bar { animation-duration: 4s !important; animation-timing-function: linear !important; } }
 .flashcard-card { min-height: 350px; position: relative; perspective: 1200px; }
 .flashcard-card-toggle { border: 0; padding: 0; background: transparent; width: 100%; height: 350px; color: inherit; cursor: pointer; }
-.flashcard-card-inner { display: block; position: relative; width: 100%; height: 100%; transition: transform .5s cubic-bezier(.2,.7,.2,1); transform-style: preserve-3d; }
+.flashcard-card-inner { display: block; position: relative; width: 100%; height: 100%; transition: transform 280ms var(--ease-inout); transform-style: preserve-3d; }
 .flashcard-card.flipped .flashcard-card-inner { transform: rotateY(180deg); }
 .flashcard-face { position: absolute; inset: 0; border-radius: var(--radius-xl); backface-visibility: hidden; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; padding: 34px; box-shadow: 0 18px 45px rgba(20,55,35,.14); }
 .flashcard-face.front { background: linear-gradient(145deg, #fff, #eef8f0); border: 1px solid #d8eadc; }
@@ -2842,6 +2876,22 @@ textarea:focus-visible,
   transform: rotate(-45deg);
 }
 
+.overlay-cancel {
+  position: fixed;
+  bottom: calc(var(--space-10) + env(safe-area-inset-bottom));
+  left: 50%;
+  z-index: 96;
+  padding: 10px 22px;
+  transform: translateX(-50%);
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--subtle);
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: var(--shadow-card);
+}
+
 .empty-state-mascot {
   width: 72px;
   height: 72px;
@@ -2955,7 +3005,7 @@ textarea:focus-visible,
 .pop-in { animation: pop-in .38s cubic-bezier(.34, 1.4, .64, 1) both; }
 
 .pill svg.lucide-flame { transform-origin: center; animation: flame-pulse 1.8s ease-in-out infinite; }
-.flashcard-card-inner { transition: transform .55s cubic-bezier(.34, 1.3, .64, 1); }
+.flashcard-card-inner { transition: transform 280ms var(--ease-inout); }
 .list-row { transition: transform .12s ease, box-shadow .12s ease; }
 
 /* === QA visual (task 10): restos de verde fixo que ignoravam a seção === */
@@ -2966,7 +3016,7 @@ textarea:focus-visible,
 .calendar-day.has-note { background: var(--section-soft); color: var(--section-text); }
 .calendar-grid-interactive .calendar-day.today { border-color: var(--section-text); color: var(--section-text); }
 .calendar-feedback-date { color: var(--section-text); }
-.metric-foot { color: var(--section-text); }
+.metric-foot { color: var(--muted); font-weight: 500; }
 .back-link { color: var(--section-text); }
 
 /* Select do perfil: tom da seção e reticências em vez de texto cortado */

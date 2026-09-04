@@ -10,6 +10,7 @@ import { releaseMicForPlayback } from "@/lib/learning/speech";
 import { playSound } from "@/lib/client/ui-sound";
 import { vibrate } from "@/lib/client/haptics";
 import { BackButton } from "./BackButton";
+import { EmptyState } from "./EmptyState";
 import { LoadingScene } from "./LoadingScene";
 import { ModalDialog } from "./ModalDialog";
 import { Pill } from "./Pill";
@@ -59,6 +60,7 @@ export function FlashcardTrainer() {
   // Esperas com tela própria: "boot" = montando o treino (enter), "save" =
   // gravando tentativa/conclusão (save). Demais busy seguem sem cena.
   const [wait, setWait] = useState<"none" | "boot" | "save">("none");
+  const [bootCancellable, setBootCancellable] = useState(false);
   const [error, setError] = useState("");
   const [dailyQueue, setDailyQueue] = useState<DailyQueueSummary | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
@@ -119,6 +121,12 @@ export function FlashcardTrainer() {
     } catch { /* storage bloqueado: segue o fluxo normal */ }
     void loadOverview();
   }, []);
+
+  useEffect(() => {
+    if (wait !== "boot") { setBootCancellable(false); return; }
+    const timer = window.setTimeout(() => setBootCancellable(true), 4000);
+    return () => window.clearTimeout(timer);
+  }, [wait]);
 
   useEffect(() => {
     if (cards.length && !revealed) inputRef.current?.focus();
@@ -308,7 +316,10 @@ export function FlashcardTrainer() {
         <MessageCircle aria-hidden="true" size={16} /> Usar palavras em conversa
       </Link>
       <Link className="outline-button full-button" href="/palavras">Voltar às palavras</Link>
-      {wait === "boot" ? <LoadingScene variant="overlay" moment="enter" palette="palavras" title="Montando seu treino..." /> : null}
+      {wait === "boot" ? <>
+      <LoadingScene variant="overlay" moment="enter" palette="palavras" title="Montando seu treino..." />
+      {bootCancellable ? <button className="overlay-cancel" onClick={() => { setWait("none"); setBusy(false); }} type="button">Cancelar</button> : null}
+    </> : null}
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
     </section>
   </div>;
@@ -319,10 +330,10 @@ export function FlashcardTrainer() {
     const uniqueCompleted = new Set(answers.filter((answer) => answer.presentationNumber === 1).map((answer) => answer.cardId)).size;
     return <div className="flashcard-screen">
       <div className="top-row"><BackButton label="Sair" onClick={() => setExitConfirmationOpen(true)} /><Pill>{uniqueCompleted}/{cards.length} cards · apresentação {answers.length + 1}</Pill></div>
-      <div className="progress-line"><span style={{ width: `${((uniqueCompleted + (currentItem.presentationNumber === 1 && revealed ? 1 : 0)) / cards.length) * 100}%` }} /></div>
+      <div className="progress-line"><span className="progress-fill" style={{ transform: `scaleX(${(uniqueCompleted + (currentItem.presentationNumber === 1 && revealed ? 1 : 0)) / Math.max(1, cards.length)})` }} /></div>
       {adapted ? <p className="flashcard-adapted">Ajustamos algumas atividades do treino de hoje para manter o ritmo.</p> : null}
       <div className="flashcard-kind">
-        <Pill tone={card.type === "cloze" ? "info" : "primary"}>{cardTypeLabel(card.type)}</Pill>
+        <Pill tone={card.type === "cloze" ? "info" : "primary"}>{cardTypeLabel(card.type, languageName)}</Pill>
         {card.targetSenseId && card.senseOrder && card.senseCount && card.senseCount > 1 ? <Pill tone="info">significado {card.senseOrder} de {card.senseCount}</Pill> : null}
       </div>
       <section className="active-recall-card" aria-label={card.type === "listening" ? "Card de escuta" : "Card de recuperação ativa"}>
@@ -388,7 +399,7 @@ export function FlashcardTrainer() {
       {dailyQueue.sessionCardCount > 0 ? <>
         <p className="row-meta">{dailyQueue.dueCount} revisões + {dailyQueue.newCount} novas · ~{dailyQueue.estimatedMinutes} min{dailyQueue.remainingCount > 0 ? ` · +${dailyQueue.remainingCount} continuam depois` : ""}</p>
         <button className="green-button full-button" disabled={busy} onClick={() => void start("daily")} type="button"><Brain /> Começar revisão de hoje</button>
-      </> : <p className="row-meta">{dailyQueue.introducedToday > 0 ? "Fila de hoje concluída. Amanhã há mais — ou pratique abaixo." : "Nada na fila de hoje. Converse para salvar palavras novas ou monte uma sessão custom."}</p>}
+      </> : <EmptyState Icon={Brain} mascotSrc="/mascot.png" title={dailyQueue.introducedToday > 0 ? "Fila de hoje concluída" : "Nada na fila de hoje"} description={dailyQueue.introducedToday > 0 ? "Amanhã há mais — ou pratique abaixo." : "Converse para salvar palavras novas ou monte uma sessão custom."} />}
       <div className="top-row row-meta">
         <span>Novas por dia</span>
         <span className="quota-stepper">
@@ -407,16 +418,19 @@ export function FlashcardTrainer() {
       <div className="soft-card"><Sparkles aria-hidden="true" size={24} /><div><strong>Como funciona</strong><p className="row-meta">Tente lembrar antes de ver a resposta — o treino agenda a próxima revisão pelo seu acerto.</p></div></div>
       <button className="green-button full-button" disabled={busy} onClick={() => void start("custom")} type="button"><Brain /> Montar treino com {count} palavras</button>
     </> : null}
-    {wait === "boot" ? <LoadingScene variant="overlay" moment="enter" palette="palavras" title="Montando seu treino..." /> : null}
+    {wait === "boot" ? <>
+      <LoadingScene variant="overlay" moment="enter" palette="palavras" title="Montando seu treino..." />
+      {bootCancellable ? <button className="overlay-cancel" onClick={() => { setWait("none"); setBusy(false); }} type="button">Cancelar</button> : null}
+    </> : null}
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
   </div>;
 }
 
-function cardTypeLabel(type: Flashcard["type"]) {
-  if (type === "native_to_target") return "Português → idioma estudado";
+function cardTypeLabel(type: Flashcard["type"], languageName: string) {
+  if (type === "native_to_target") return `Português → ${languageName}`;
   if (type === "cloze") return "Frase com lacuna";
   if (type === "listening") return "Escuta";
-  return "Idioma estudado → português";
+  return `${languageName} → Português`;
 }
 
 function matchLabel(match: AnswerMatch) {

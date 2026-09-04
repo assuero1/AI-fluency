@@ -121,7 +121,7 @@ describe("chunky playful redesign contracts", () => {
     expect(css).toContain("lucide-flame");
     expect(css).toContain("animation: flame-pulse");
     expect(css).toContain(".flashcard-card-inner");
-    expect(css).toContain("cubic-bezier(.34, 1.3, .64, 1)");
+    expect(css).toContain("transition: transform 280ms var(--ease-inout)");
   });
 
   it("documents the new token system", () => {

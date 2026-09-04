@@ -490,7 +490,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
         <BackButton label="Sair" onClick={() => setExitOpen(true)} />
         <Pill>{answeredIds.size}/{sentences.length} frases{wordIndex >= 0 ? ` · palavra ${wordIndex + 1}/${words.length}` : ""}</Pill>
       </div>
-      <div className="progress-line"><span style={{ width: `${(answeredIds.size / Math.max(1, sentences.length)) * 100}%` }} /></div>
+      <div className="progress-line"><span className="progress-fill" style={{ transform: `scaleX(${answeredIds.size / Math.max(1, sentences.length)})` }} /></div>
       <section className="active-recall-card" aria-label="Frase para traduzir">
         <span>Traduza para o português</span>
         <strong>

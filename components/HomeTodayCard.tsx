@@ -25,7 +25,7 @@ export function HomeTodayCard(props: HomeTodayCardProps) {
     </div>
     <div className="word-big">{props.complete ? "Concluído! 🎉" : `${props.minutesToday} de ${props.goalMinutes} min`}</div>
     <div className="progress-line" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={props.percent} aria-label={`${props.percent}% da meta de hoje`}>
-      <span style={{ width: `${props.percent}%` }} />
+      <span className="progress-fill" style={{ transform: `scaleX(${props.percent / 100})` }} />
     </div>
     <p className="row-meta">
       {props.complete

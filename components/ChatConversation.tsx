@@ -1,9 +1,10 @@
 "use client";
 
-import { Bot, CalendarDays, Check, ChevronRight, Clock3, GraduationCap, Languages, LogOut, MessageCircle, Mic, MicOff, Send, Shuffle, Users, Volume2 } from "lucide-react";
+import { Bot, CalendarDays, Check, Clock3, GraduationCap, Languages, LogOut, MessageCircle, Mic, MicOff, Send, Shuffle, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Bubble } from "./Bubble";
 import { IconBubble } from "./IconBubble";
 import { CopyButton } from "./CopyButton";
 import { ConversationGoalProgress } from "./ConversationGoalProgress";
@@ -621,15 +622,21 @@ export function ChatConversation({
       </div>
 
       <div className="chat-topic">
-        <div className="topic-pill">
-          <IconBubble Icon={Volume2} tone="info" />
-          <div className="row-copy">
-            <div className="eyebrow">Tópico</div>
-            <div className="row-title">{activeTopicTitle}</div>
-          </div>
-          <ChevronRight aria-hidden="true" />
-        </div>
+        <Bubble className="chat-topic-bubble">
+          <span className="eyebrow">Tópico</span>
+          <span className="chat-topic-title">{activeTopicTitle}</span>
+        </Bubble>
         <div className="chat-topic-actions">
+          <button
+            aria-label="Chamar professor"
+            className="ghost-icon-button"
+            disabled={isSending}
+            onClick={() => setIsTeacherOpen(true)}
+            title="Chamar professor"
+            type="button"
+          >
+            <GraduationCap aria-hidden="true" size={20} />
+          </button>
           <button
             className="outline-button"
             disabled={readOnly || isSending}
@@ -643,18 +650,6 @@ export function ChatConversation({
           </button>
         </div>
       </div>
-
-      <button
-        aria-haspopup="dialog"
-        aria-label="Chamar professor"
-        className="chat-teacher-fab"
-        disabled={isSending}
-        onClick={() => setIsTeacherOpen(true)}
-        title="Chamar professor"
-        type="button"
-      >
-        <GraduationCap size={24} aria-hidden="true" />
-      </button>
 
       {isTeacherOpen ? (
         <TeacherChatPanel
@@ -845,8 +840,8 @@ export function ChatConversation({
           </div> : null}
         </div> : null}
 
-        {!readOnly ? <button className="green-button full-button" disabled={isSending} onClick={requestFinalize} type="button">
-          Finalizar conversa
+        {!readOnly ? <button className="outline-button full-button finalize-bar" disabled={isSending} onClick={requestFinalize} type="button">
+          <Check aria-hidden="true" size={20} /> Finalizar conversa
         </button> : <div className="empty-state">Esta conversa foi finalizada e está disponível apenas para consulta.</div>}
 
         <ConversationGoalProgress progress={messageGoal} readOnly={readOnly} />

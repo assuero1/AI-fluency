@@ -235,7 +235,7 @@ export function OnboardingForm({
         </Pill>
       </div>
       <div className="progress-line" role="progressbar" aria-valuemin={1} aria-valuemax={3} aria-valuenow={step} aria-label={`Passo ${step} de 3`}>
-        <span style={{ width: `${Math.round((step / 3) * 100)}%` }} />
+        <span className="progress-fill" style={{ transform: `scaleX(${Math.round((step / 3) * 100) / 100})` }} />
       </div>
 
       <section className="section">

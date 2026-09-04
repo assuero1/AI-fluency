@@ -33,7 +33,7 @@ export function WordPracticeButton({ wordId, compact = false }: WordPracticeButt
 
   return (
     <div className={compact ? "practice-button-wrap compact" : "practice-button-wrap"}>
-      <button className={compact ? "voice-icon-button" : "dark-button full-button"} disabled={loading} onClick={startPractice} type="button">
+      <button className={compact ? "voice-icon-button" : "green-button full-button"} disabled={loading} onClick={startPractice} type="button">
         <Play fill={compact ? "var(--section-text)" : "#fff"} />
         {compact ? <span className="sr-only">Praticar esta palavra</span> : "Praticar palavras fracas"}
       </button>

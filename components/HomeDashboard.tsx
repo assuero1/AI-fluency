@@ -89,21 +89,21 @@ export function HomeDashboard({ home }: { home: HomeData }) {
     {
       value: home.feedback.hasFeedback ? `${home.feedback.correctionScore}/10` : "—",
       label: "Correções aplicadas",
-      foot: home.feedback.hasFeedback ? "Feedback mais recente" : "Conclua uma conversa",
+      foot: home.feedback.hasFeedback ? "no último feedback" : "conclua uma conversa",
       icon: TrendingUp,
       tone: "primary" as const
     },
     {
       value: String(home.feedback.recurringErrors),
       label: "Erros recorrentes",
-      foot: home.feedback.hasFeedback ? "Ver detalhes" : "Sem feedback ainda",
+      foot: home.feedback.hasFeedback ? "ver detalhes no resumo" : "aparecem com a prática",
       icon: MessageCircle,
       tone: "warning" as const
     },
     {
       value: home.feedback.hasFeedback ? `+${home.feedback.newWords}` : "—",
       label: "Novas palavras",
-      foot: home.feedback.hasFeedback ? "No feedback mais recente" : "Aparecem após a prática",
+      foot: home.feedback.hasFeedback ? "no último feedback" : "aparecem com a prática",
       icon: Sparkles,
       tone: "info" as const
     }
@@ -206,7 +206,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           </label>
           <button className="outline-button" disabled={pendingAction === "suggest"} onClick={suggestTopic} type="button">
             <Sparkles />
-            Sugerir um tema para mim
+            Sugerir um tema
           </button>
         </div>
         <button

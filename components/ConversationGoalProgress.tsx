@@ -50,7 +50,7 @@ export function ConversationGoalProgress({ progress, readOnly = false }: Convers
         className="message-goal-track"
         role="progressbar"
       >
-        <span style={{ width: `${progress.percent}%` }} />
+        <span className="progress-fill" style={{ transform: `scaleX(${progress.percent / 100})` }} />
       </div>
     </section>
   );
