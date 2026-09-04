@@ -2856,7 +2856,7 @@ textarea:focus-visible,
   .spiral-spinner svg { animation-duration: 2.4s; }
 }
 
-.bubble {
+.brand-bubble {
   position: relative;
   padding: 14px 16px;
   border: 1px solid var(--line-soft);
@@ -2870,7 +2870,7 @@ textarea:focus-visible,
   line-height: 1.4;
 }
 
-.bubble::after {
+.brand-bubble::after {
   content: "";
   position: absolute;
   left: 16px;

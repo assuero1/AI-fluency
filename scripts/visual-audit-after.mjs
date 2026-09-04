@@ -6,7 +6,7 @@ import fs from "node:fs";
 //   node scripts/start-e2e-server.mjs   (em outro terminal)
 //   node scripts/visual-audit-after.mjs [pasta-destino]
 const outDir = process.argv[2] ?? ".playwright-mcp/audit-after";
-const base = "http://localhost:3015";
+const base = "http://localhost:3016";
 
 const env = Object.fromEntries(
   fs.readFileSync(".env.qa.local", "utf8").split(/\r?\n/)

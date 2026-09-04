@@ -10,5 +10,5 @@ type BubbleProps = {
 };
 
 export function Bubble({ children, className }: BubbleProps) {
-  return <div className={["bubble", className].filter(Boolean).join(" ")}>{children}</div>;
+  return <div className={["brand-bubble", className].filter(Boolean).join(" ")}>{children}</div>;
 }
