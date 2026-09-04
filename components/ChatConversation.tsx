@@ -1,9 +1,9 @@
 "use client";
 
-import { Bot, CalendarDays, Check, Clock3, GraduationCap, Languages, LogOut, MessageCircle, Mic, MicOff, Send, Shuffle, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TalkitoIcon } from "./TalkitoIcon";
 import { Bubble } from "./Bubble";
 import { IconBubble } from "./IconBubble";
 import { CopyButton } from "./CopyButton";
@@ -406,8 +406,8 @@ export function ChatConversation({
           vibrate("success");
           const wordNames = newlyFound.map((hw) => `"${hw.lemma}"`).join(", ");
           const toastMsg = newlyFound.length === 1
-            ? `🎯 Palavra caçada: ${wordNames}!`
-            : `🎯 Palavras caçadas: ${wordNames}!`;
+            ? `Palavra caçada: ${wordNames}!`
+            : `Palavras caçadas: ${wordNames}!`;
           setHuntToast(toastMsg);
           if (huntToastTimerRef.current) clearTimeout(huntToastTimerRef.current);
           huntToastTimerRef.current = setTimeout(() => setHuntToast(null), 3200);
@@ -666,11 +666,11 @@ export function ChatConversation({
         <ScreenHeader title="Conversa" subtitle="com a IA" centered />
         {!readOnly ? (
           <button aria-label="Sair da conversa" className="ghost-icon-button" disabled={isSending} onClick={() => setIsExitDialogOpen(true)} type="button">
-            <LogOut aria-hidden="true" size={24} />
+            <TalkitoIcon name="log-out" size={24} />
           </button>
         ) : (
           <Link aria-label="Abrir calendário" className="ghost-icon-button" href="/calendario">
-            <CalendarDays aria-hidden="true" size={24} />
+            <TalkitoIcon name="calendar-desk" size={24} />
           </Link>
         )}
         <ElapsedTimePill readOnly={readOnly} startedAt={conversation.fields.started_at} getPausedMs={currentPausedMs} />
@@ -690,7 +690,7 @@ export function ChatConversation({
             title="Chamar professor"
             type="button"
           >
-            <GraduationCap aria-hidden="true" size={20} />
+            <TalkitoIcon name="teacher-chameleon" size={20} />
           </button>
           <button
             className="outline-button"
@@ -701,7 +701,7 @@ export function ChatConversation({
             }}
             type="button"
           >
-            <Shuffle /> Mudar
+            <TalkitoIcon name="shuffle" size={16} /> Mudar
           </button>
         </div>
       </div>
@@ -712,6 +712,7 @@ export function ChatConversation({
 
       {huntToast ? (
         <div className="hunt-toast" role="status" aria-live="polite">
+          <TalkitoIcon name="target" size={18} className="inline-block mr-1.5 align-text-bottom" />
           {huntToast}
         </div>
       ) : null}
@@ -731,7 +732,7 @@ export function ChatConversation({
           onClose={() => setIsTopicDialogOpen(false)}
           titleId="change-topic-title"
         >
-            <Shuffle aria-hidden="true" size={28} />
+            <TalkitoIcon name="shuffle" size={28} />
             <h2 id="change-topic-title" className="section-title">Mudar o tema da conversa?</h2>
             <p className="row-meta" id="change-topic-description">O histórico será preservado. A IA passa a conduzir a conversa pelo novo tema a partir da próxima mensagem.</p>
             <label className="field-label" htmlFor="next-topic">Novo tema</label>
@@ -750,7 +751,7 @@ export function ChatConversation({
                     tabIndex={selected ? 0 : -1}
                     type="button"
                   >
-                    {mode === "conversation" ? <MessageCircle aria-hidden="true" /> : <Users aria-hidden="true" />}
+                    {mode === "conversation" ? <TalkitoIcon name="listening-bubble" size={20} /> : <TalkitoIcon name="users" size={20} />}
                     <span className="interaction-choice-title">{mode === "conversation" ? "Conversa" : "Simulação"}</span>
                     <span className="interaction-choice-help">
                       {mode === "conversation"
@@ -764,7 +765,7 @@ export function ChatConversation({
             <div className="modal-actions">
               <button className="outline-button" disabled={isSending} onClick={() => setIsTopicDialogOpen(false)} type="button">Cancelar</button>
               <button className="green-button" disabled={isSending || !nextTopicTitle.trim()} onClick={changeTopic} type="button">
-                <Shuffle /> Confirmar
+                <TalkitoIcon name="shuffle" size={16} /> Confirmar
               </button>
             </div>
         </ModalDialog>
@@ -777,7 +778,7 @@ export function ChatConversation({
           onClose={() => setIsExitDialogOpen(false)}
           titleId="exit-training-title"
         >
-          <LogOut color="var(--danger)" size={28} />
+          <TalkitoIcon name="log-out" size={28} />
           <h2 id="exit-training-title" className="section-title">Abandonar este treino?</h2>
           <p className="row-meta" id="exit-training-description">
             O treino será encerrado por completo e não poderá ser retomado. Os dados já salvos, como palavras e correções, serão preservados.
@@ -787,7 +788,7 @@ export function ChatConversation({
               Continuar treino
             </button>
             <button className="danger-button" disabled={isSending || closing === "abandon"} onClick={abandonConversation} type="button">
-              {closing === "abandon" ? <SpiralSpinner label="Abandonando..." size={16} /> : <LogOut />} Abandonar treino
+              {closing === "abandon" ? <SpiralSpinner label="Abandonando..." size={16} /> : <TalkitoIcon name="log-out" size={16} />} Abandonar treino
             </button>
           </div>
         </ModalDialog>
@@ -800,7 +801,7 @@ export function ChatConversation({
           onClose={() => setIsFinalizeDialogOpen(false)}
           titleId="finalize-conversation-title"
         >
-          <GraduationCap color="var(--primary)" size={28} />
+          <TalkitoIcon name="teacher-chameleon" size={32} />
           <h2 id="finalize-conversation-title" className="section-title">Finalizar e ver o resumo?</h2>
           <p className="row-meta" id="finalize-conversation-description">
             A conversa será encerrada e o resumo do treino será gerado. As palavras e correções já ficam valendo para a revisão.
@@ -810,7 +811,7 @@ export function ChatConversation({
               Continuar conversando
             </button>
             <button className="green-button" disabled={isSending} onClick={() => { setIsFinalizeDialogOpen(false); void finishConversation(); }} type="button">
-              <Check /> Finalizar
+              <TalkitoIcon name="check-stamp" size={16} /> Finalizar
             </button>
           </div>
         </ModalDialog>
@@ -824,7 +825,7 @@ export function ChatConversation({
 
           return message.fields.role === "assistant" ? (
             <div className="chat-row" key={message.id}>
-              <IconBubble Icon={Bot} />
+              <IconBubble talkitoIcon="bot-chameleon" />
               <div className="bubble ai">
                 {audioEnabled ? (
                   <MessageWordPlayer
@@ -875,7 +876,7 @@ export function ChatConversation({
 
         {isSending && closing === "none" ? (
           <div className="chat-row">
-            <IconBubble Icon={Bot} />
+            <IconBubble talkitoIcon="bot-chameleon" />
             <div className="bubble ai typing-bubble">
               <LoadingDots srText="A IA está respondendo..." />
             </div>
@@ -895,7 +896,7 @@ export function ChatConversation({
 
         {selectedText ? <div className="selection-explainer" ref={selectionExplainerRef}>
           <div><span className="eyebrow">Trecho selecionado</span><strong>{selectedText}</strong></div>
-          <button className="outline-button" disabled={isExplaining} onClick={explainSelectedText} type="button"><Languages /> {isExplaining ? "Explicando..." : "Explicar seleção"}</button>
+          <button className="outline-button" disabled={isExplaining} onClick={explainSelectedText} type="button"><TalkitoIcon name="languages" size={16} /> {isExplaining ? "Explicando..." : "Explicar seleção"}</button>
           {selectionExplanation ? <div className="selection-explanation" aria-live="polite">
             <p><strong>Tradução:</strong> {selectionExplanation.translation}</p>
             <p><strong>Gramática:</strong> {selectionExplanation.grammar}</p>
@@ -905,7 +906,7 @@ export function ChatConversation({
         </div> : null}
 
         {!readOnly ? <button className="outline-button full-button finalize-bar" disabled={isSending} onClick={requestFinalize} type="button">
-          <Check aria-hidden="true" size={20} /> Finalizar conversa
+          <TalkitoIcon name="check-stamp" size={20} /> Finalizar conversa
         </button> : <div className="empty-state">Esta conversa foi finalizada e está disponível apenas para consulta.</div>}
 
         <ConversationGoalProgress progress={messageGoal} readOnly={readOnly} />
@@ -926,7 +927,7 @@ export function ChatConversation({
             aria-label={isListening ? "Parar transcrição" : "Falar mensagem"}
             title={isListening ? "Parar transcrição" : `Falar em ${speechLanguageName(speechLanguage)}`}
           >
-            {speechSupport === "unsupported" ? <MicOff /> : <Mic />}
+            {speechSupport === "unsupported" ? <TalkitoIcon name="mic-off" size={20} /> : <TalkitoIcon name="microphone" size={20} />}
           </button>
           <textarea
             aria-label="Mensagem para a IA"
@@ -946,7 +947,7 @@ export function ChatConversation({
             value={text}
           />
           <button className="send-button" disabled={isSending || !text.trim()} type="submit" aria-label="Enviar mensagem">
-            <Send />
+            <TalkitoIcon name="send" size={20} />
           </button>
         </form> : null}
         {!readOnly ? (
@@ -975,7 +976,7 @@ function ElapsedTimePill({ startedAt, readOnly, getPausedMs }: { startedAt: stri
     return () => window.clearInterval(timer);
   }, [startedAt, readOnly, getPausedMs]);
 
-  return <Pill aria-label={`Tempo de conversa: ${formatElapsedTime(elapsedSeconds)}`}><Clock3 size={16} /> {formatElapsedTime(elapsedSeconds)}</Pill>;
+  return <Pill aria-label={`Tempo de conversa: ${formatElapsedTime(elapsedSeconds)}`}><TalkitoIcon name="clock-timer" size={16} /> {formatElapsedTime(elapsedSeconds)}</Pill>;
 }
 
 function createClientRequestId() {

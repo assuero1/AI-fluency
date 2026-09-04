@@ -1,4 +1,3 @@
-import { BookOpen, MessageSquareOff } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { IconBubble } from "@/components/IconBubble";
@@ -66,7 +65,7 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
     {
       value: String(data.unusedWordCount),
       label: "Nunca usadas",
-      icon: BookOpen,
+      talkitoIcon: "book-open" as const,
       tone: "info" as const
     }
   ];
@@ -131,7 +130,7 @@ function SummaryUnavailable({ message }: { message: string }) {
   return (
     <AppShell activeNav="chat" section="chat">
       <section className="section empty-state summary-unavailable">
-        <IconBubble Icon={MessageSquareOff} tone="info" />
+        <IconBubble talkitoIcon="alert-badge" tone="info" />
         <h1 className="title">Resumo indisponível</h1>
         <p className="row-meta">{message}</p>
         <div className="choice-list summary-unavailable-actions">

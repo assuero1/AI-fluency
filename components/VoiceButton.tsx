@@ -1,8 +1,8 @@
 "use client";
 
-import { Loader2, Pause, Play, RotateCcw, Volume2 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
+import { TalkitoIcon, type TalkitoIconName } from "./TalkitoIcon";
 import {
   claimActiveVoice,
   releaseActiveVoice,
@@ -238,19 +238,28 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
   }
 
   const accessibleLabel = voiceLabel(status, label);
-  const StatusIcon = status === "loading" ? Loader2 : status === "playing" ? Pause : status === "ended" ? RotateCcw : compact ? Volume2 : Play;
+  const iconName: TalkitoIconName =
+    status === "loading"
+      ? "loader"
+      : status === "playing"
+        ? "pause"
+        : status === "ended"
+          ? "rotate-ccw"
+          : compact
+            ? "volume"
+            : "play";
 
   if (compact) {
     return (
       <button className="voice-icon-button" onClick={togglePlayback} type="button" aria-label={accessibleLabel} title={accessibleLabel}>
-        <StatusIcon className={status === "loading" ? "spin" : undefined} />
+        <TalkitoIcon name={iconName} size={18} />
       </button>
     );
   }
 
   return (
     <button aria-label={accessibleLabel} className={status === "error" ? "audio-pill audio-error" : "audio-pill"} onClick={togglePlayback} type="button">
-      <StatusIcon className={status === "loading" ? "spin" : undefined} />
+      <TalkitoIcon name={iconName} size={18} />
       <Wave playing={status === "playing"} />
       <span aria-live="polite">{voiceStatusText(status, label)}</span>
     </button>

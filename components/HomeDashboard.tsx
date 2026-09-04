@@ -1,12 +1,5 @@
 "use client";
 
-import {
-  ChevronDown,
-  Edit3,
-  MessageCircle,
-  Sparkles,
-  TrendingUp
-} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -99,21 +92,21 @@ export function HomeDashboard({ home }: { home: HomeData }) {
       value: home.feedback.hasFeedback ? `${home.feedback.correctionScore}/10` : "—",
       label: "Correções aplicadas",
       foot: home.feedback.hasFeedback ? "no último feedback" : "conclua uma conversa",
-      icon: TrendingUp,
+      talkitoIcon: "growth-stairs" as const,
       tone: "primary" as const
     },
     {
       value: String(home.feedback.recurringErrors),
       label: "Erros recorrentes",
       foot: home.feedback.hasFeedback ? "ver detalhes no resumo" : "aparecem com a prática",
-      icon: MessageCircle,
+      talkitoIcon: "alert-badge" as const,
       tone: "warning" as const
     },
     {
       value: home.feedback.hasFeedback ? `+${home.feedback.newWords}` : "—",
       label: "Novas palavras",
       foot: home.feedback.hasFeedback ? "no último feedback" : "aparecem com a prática",
-      icon: Sparkles,
+      talkitoIcon: "sparkles" as const,
       tone: "info" as const
     }
   ];
@@ -187,7 +180,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           <span className="selector-item">
             <span className="flag">{languageCode}</span>
             <span className="language-selector-label">{profile?.languageName ?? "Inglês"}</span>
-            <ChevronDown size={20} aria-hidden="true" />
+            <TalkitoIcon name="chevron-down" size={20} />
           </span>
         </Link>
         <div aria-hidden="true" className="selector-divider" />
@@ -232,11 +225,11 @@ export function HomeDashboard({ home }: { home: HomeData }) {
               placeholder="Ex.: viagens, entrevistas, rotina, tecnologia..."
               value={topic}
             />
-            <Edit3 aria-hidden="true" size={18} />
+            <TalkitoIcon name="edit" size={18} />
           </label>
           <div className="topic-card-footer">
             <button className="outline-button" disabled={pendingAction === "suggest"} onClick={suggestTopic} type="button">
-              {pendingAction === "suggest" ? <SpiralSpinner label="Pensando em um tema..." size={16} /> : <Sparkles aria-hidden="true" size={18} />}
+              {pendingAction === "suggest" ? <SpiralSpinner label="Pensando em um tema..." size={16} /> : <TalkitoIcon name="sparkles" size={18} />}
               {pendingAction === "suggest" ? "Pensando..." : "Sugerir um tema"}
             </button>
             <button
@@ -286,14 +279,14 @@ export function HomeDashboard({ home }: { home: HomeData }) {
             );
           }) : (
             <EmptyState
-              Icon={MessageCircle}
+              talkitoIcon="listening-bubble"
               title="Sem sugestões ainda"
               description="Conclua uma conversa ou peça uma sugestão da IA para criar seus próximos temas."
             />
           )}
         </div>
         <button className="link-action plain-button mt-4" onClick={suggestTopic} type="button">
-          Ver mais temas <Sparkles aria-hidden="true" size={16} />
+          Ver mais temas <TalkitoIcon name="sparkles" size={16} />
         </button>
       </section>
 

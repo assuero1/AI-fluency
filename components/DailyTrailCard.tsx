@@ -1,9 +1,8 @@
 "use client";
 
-import { Check, ChevronRight, MessageCircle, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { Pill } from "./Pill";
-import { TalkitoIcon } from "./TalkitoIcon";
+import { TalkitoIcon, type TalkitoIconName } from "./TalkitoIcon";
 
 export type DailyTrailStatus = {
   newWordsDone: boolean;
@@ -24,14 +23,24 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
   const completedCount = [newWordsDone, conversationDone, reviewDone].filter(Boolean).length;
   const allComplete = completedCount === 3;
 
-  const steps = [
+  const steps: Array<{
+    id: string;
+    stepNumber: number;
+    title: string;
+    hint: string;
+    talkitoIcon: TalkitoIconName;
+    tone: "palavras" | "chat" | "brand";
+    done: boolean;
+    href: string | null;
+    action: (() => void) | null;
+  }> = [
     {
       id: "new-words",
       stepNumber: 1,
       title: "Palavras Novas",
       hint: "Unboxing & Adoção",
-      icon: Sparkles,
-      tone: "palavras" as const,
+      talkitoIcon: "sparkles",
+      tone: "palavras",
       done: newWordsDone,
       href: "/palavras/novas",
       action: null
@@ -41,8 +50,8 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
       stepNumber: 2,
       title: "Conversar com IA",
       hint: "Caça a Palavras",
-      icon: MessageCircle,
-      tone: "chat" as const,
+      talkitoIcon: "listening-bubble",
+      tone: "chat",
       done: conversationDone,
       href: null,
       action: onStartConversation
@@ -52,8 +61,8 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
       stepNumber: 3,
       title: "Revisão Inteligente",
       hint: "Combos em Chamas",
-      icon: () => <TalkitoIcon name="brain" size={20} />,
-      tone: "brand" as const,
+      talkitoIcon: "brain",
+      tone: "brand",
       done: reviewDone,
       href: "/palavras/treino",
       action: null
@@ -103,14 +112,13 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
 
       <ol className="trail-step-list">
         {steps.map((step) => {
-          const StepIcon = step.icon;
           const content = (
             <>
               <span className={`trail-step-bubble ${step.tone}${step.done ? " done" : ""}`}>
                 {step.done ? (
-                  <Check aria-hidden="true" size={20} strokeWidth={2.6} />
+                  <TalkitoIcon name="check-stamp" size={20} />
                 ) : (
-                  <StepIcon aria-hidden="true" size={20} strokeWidth={2.2} />
+                  <TalkitoIcon name={step.talkitoIcon} size={20} />
                 )}
               </span>
               <div className="trail-step-content">
@@ -124,10 +132,10 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
               </div>
               {step.done ? (
                 <span className="trail-step-done-pill" title="Concluído">
-                  <Check aria-hidden="true" size={13} strokeWidth={2.6} /> Concluído
+                  <TalkitoIcon name="check-stamp" size={13} /> Concluído
                 </span>
               ) : (
-                <ChevronRight aria-hidden="true" className="trail-step-arrow" size={18} />
+                <TalkitoIcon name="chevron-right" size={18} className="trail-step-arrow" />
               )}
             </>
           );

@@ -1,9 +1,9 @@
 "use client";
 
-import { Brain } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { SpiralSpinner } from "./SpiralSpinner";
+import { TalkitoIcon } from "./TalkitoIcon";
 
 type StartFlashcardsWithWordsProps = { wordIds: string[]; label: string; disabled?: boolean };
 
@@ -33,7 +33,7 @@ export function StartFlashcardsWithWords({ wordIds, label, disabled }: StartFlas
 
   return <>
     <button className="outline-button full-button" disabled={disabled || busy || !wordIds.length} onClick={() => void start()} type="button">
-      {busy ? <SpiralSpinner label="Montando seu treino..." size={20} /> : <Brain />}
+      {busy ? <SpiralSpinner label="Montando seu treino..." size={20} /> : <TalkitoIcon name="brain" size={20} className="inline-block mr-1.5" />}
       {busy ? "Montando seu treino..." : label}
     </button>
     {error ? <p className="inline-error" role="alert">{error}</p> : null}

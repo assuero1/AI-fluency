@@ -1,4 +1,3 @@
-import { CalendarDays, Clock3, MessageCircle, Target } from "lucide-react";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { BackButton } from "@/components/BackButton";
@@ -7,6 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { IconBubble } from "@/components/IconBubble";
 import { MetricGrid } from "@/components/MetricGrid";
 import { Pill } from "@/components/Pill";
+import { TalkitoIcon } from "@/components/TalkitoIcon";
 import { getDailyFeedback } from "@/lib/learning/feedback";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +27,7 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
     <AppShell activeNav="calendario" section="calendario">
       <BackButton href={`/calendario?month=${month}`} label="Voltar ao calendário" />
       <section className="calendar-detail-heading">
-        <IconBubble Icon={CalendarDays} tone="primary" />
+        <IconBubble talkitoIcon="calendar-desk" tone="primary" />
         <div>
           <h1 className="title">{formatLongDate(date)}</h1>
           <p className="subtitle">Memória da sua prática</p>
@@ -53,7 +53,7 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
               <p className="card-copy">{feedback.fields.strengths}</p>
               <p className="row-meta">{feedback.fields.weaknesses}</p>
               <div className="calendar-focus-line">
-                <Target aria-hidden="true" size={20} />
+                <TalkitoIcon name="target" size={20} />
                 <span>{feedback.fields.recommended_focus}</span>
               </div>
               <div className="level-pills">
@@ -72,7 +72,7 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
       ) : (
         <section className="section">
           <EmptyState
-            Icon={CalendarDays}
+            talkitoIcon="calendar-desk"
             title="Nenhum feedback salvo neste dia"
             description="As conversas finalizadas geram uma memória pedagógica no calendário."
           />
@@ -85,13 +85,13 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
           {completedConversations.length > 0 ? (
             completedConversations.map((conversation) => (
               <div className="list-row" key={conversation.id}>
-                <IconBubble Icon={MessageCircle} tone="info" />
+                <IconBubble talkitoIcon="listening-bubble" tone="info" />
                 <div className="row-copy">
                   <div className="row-title">{conversation.title}</div>
                   <div className="row-meta">{conversation.summary}</div>
                 </div>
                 <Pill>
-                  <Clock3 aria-hidden="true" size={16} /> {Math.max(1, Math.round(conversation.durationSeconds / 60))} min
+                  <TalkitoIcon name="clock-timer" size={16} /> {Math.max(1, Math.round(conversation.durationSeconds / 60))} min
                 </Pill>
               </div>
             ))
@@ -107,7 +107,7 @@ export default async function CalendarDetailPage({ params }: CalendarDetailPageP
           <div className="row-list">
             {suggestedTopics.slice(0, 3).map((item, index) => (
               <div className="list-row" key={`${item.title}-${index}`}>
-                <IconBubble Icon={index === 0 ? Target : MessageCircle} tone={index === 0 ? "primary" : "info"} />
+                <IconBubble talkitoIcon={index === 0 ? "target" : "listening-bubble"} tone={index === 0 ? "primary" : "info"} />
                 <div className="row-copy">
                   <div className="row-title">{item.title}</div>
                   <div className="row-meta">{item.reason}</div>

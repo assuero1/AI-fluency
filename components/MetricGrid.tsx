@@ -1,11 +1,13 @@
 import type { LucideIcon } from "lucide-react";
 import { IconBubble } from "./IconBubble";
+import type { TalkitoIconName } from "./TalkitoIcon";
 
 type Metric = {
   value: string;
   label: string;
   foot?: string;
   icon?: LucideIcon;
+  talkitoIcon?: TalkitoIconName;
   tone?: "primary" | "warning" | "info" | "danger";
 };
 
@@ -30,7 +32,11 @@ export function MetricGrid({ metrics, bordered = false }: { metrics: Metric[]; b
       {metrics.map((metric) => (
         <div className="metric" key={metric.label}>
           <div className="metric-value">
-            {metric.icon ? <IconBubble Icon={metric.icon} tone={metric.tone ?? "primary"} /> : null}
+            {metric.talkitoIcon ? (
+              <IconBubble talkitoIcon={metric.talkitoIcon} tone={metric.tone ?? "primary"} />
+            ) : metric.icon ? (
+              <IconBubble Icon={metric.icon} tone={metric.tone ?? "primary"} />
+            ) : null}
             <span className="metric-number">{metric.value}</span>
           </div>
           <div className="metric-label">{metric.label}</div>

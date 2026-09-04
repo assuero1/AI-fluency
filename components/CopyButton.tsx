@@ -1,7 +1,7 @@
 "use client";
 
-import { Check, Copy } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import { TalkitoIcon } from "./TalkitoIcon";
 
 export function CopyButton({ label, text, compact = false }: { label: string; text: string; compact?: boolean }) {
   const [status, setStatus] = useState<"idle" | "copied" | "error">("idle");
@@ -33,7 +33,7 @@ export function CopyButton({ label, text, compact = false }: { label: string; te
       title={accessibleLabel}
       type="button"
     >
-      {status === "copied" ? <Check aria-hidden="true" /> : <Copy aria-hidden="true" />}
+      {status === "copied" ? <TalkitoIcon name="check-stamp" size={16} /> : <TalkitoIcon name="copy" size={16} />}
       {!compact ? <span aria-live="polite">{status === "copied" ? "Copiado" : status === "error" ? "Tentar novamente" : "Copiar"}</span> : null}
       {compact ? <span aria-live="polite" className="sr-only">{accessibleLabel}</span> : null}
     </button>

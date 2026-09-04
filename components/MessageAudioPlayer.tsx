@@ -1,7 +1,7 @@
 "use client";
 
-import { Loader2, Pause, Play, RotateCcw, SkipBack, SkipForward } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { TalkitoIcon, type TalkitoIconName } from "./TalkitoIcon";
 import { buildSeamlessTrack, type SeamlessTrack } from "@/lib/learning/seamless-audio";
 import { splitIntoSentences } from "@/lib/learning/sentences";
 import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
@@ -298,7 +298,14 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
     releaseActiveVoice(ownerRef.current);
   }, [releaseAudio]);
 
-  const PlayIcon = status === "loading" ? Loader2 : status === "playing" ? Pause : status === "ended" ? RotateCcw : Play;
+  const playIconName: TalkitoIconName =
+    status === "loading"
+      ? "loader"
+      : status === "playing"
+        ? "pause"
+        : status === "ended"
+          ? "rotate-ccw"
+          : "play";
   const playLabel =
     status === "loading" ? "Preparando áudio" :
     status === "playing" ? "Pausar áudio" :
@@ -334,7 +341,7 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
           onClick={() => skipLine(-1)}
           type="button"
         >
-          <SkipBack />
+          <TalkitoIcon name="skip-back" size={20} />
         </button>
         <button
           aria-label={playLabel}
@@ -343,7 +350,7 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
           title={playLabel}
           type="button"
         >
-          <PlayIcon className={status === "loading" ? "spin" : undefined} />
+          <TalkitoIcon name={playIconName} size={20} />
         </button>
         <button
           aria-label="Avançar uma frase"
@@ -352,7 +359,7 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
           onClick={() => skipLine(1)}
           type="button"
         >
-          <SkipForward />
+          <TalkitoIcon name="skip-forward" size={20} />
         </button>
       </div>
     </div>

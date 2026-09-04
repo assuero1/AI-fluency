@@ -1,4 +1,3 @@
-import { CalendarDays, ChevronLeft, ChevronRight, Clock3, MessageCircle, Target } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { plura } from "@/lib/plural";
@@ -7,6 +6,7 @@ import { EmptyState } from "@/components/EmptyState";
 import { IconBubble } from "@/components/IconBubble";
 import { Pill } from "@/components/Pill";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { TalkitoIcon } from "@/components/TalkitoIcon";
 import { getCalendarData } from "@/lib/learning/feedback";
 
 export const dynamic = "force-dynamic";
@@ -31,7 +31,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
       <section className="section">
         <div className="calendar-month-nav">
           <Link aria-label="Mês anterior" className="calendar-month-button" href={`/calendario?month=${calendar.previousMonth}`}>
-            <ChevronLeft />
+            <TalkitoIcon name="chevron-left" size={18} />
           </Link>
           <div>
             <div className="calendar-month-title">{capitalize(calendar.monthLabel)}</div>
@@ -41,7 +41,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
             </div>
           </div>
           <Link aria-label="Próximo mês" className="calendar-month-button" href={`/calendario?month=${calendar.nextMonth}`}>
-            <ChevronRight />
+            <TalkitoIcon name="chevron-right" size={18} />
           </Link>
         </div>
         <div className="calendar-grid calendar-grid-interactive mt-5">
@@ -84,30 +84,28 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
 
       <section className="section">
         <div className="calendar-feedback-card">
-          <div className="top-row"><div><div className="eyebrow">Tempo de treino no mês</div><div className="title">{formatDuration(calendar.totalPracticeSeconds)}</div></div><Clock3 aria-hidden="true" size={28} /></div>
+          <div className="top-row"><div><div className="eyebrow">Tempo de treino no mês</div><div className="title">{formatDuration(calendar.totalPracticeSeconds)}</div></div><TalkitoIcon name="clock-timer" size={28} /></div>
           <div className="level-pills"><Pill tone="info">Últimos 7 dias: {formatDuration(calendar.weekPracticeSeconds)}</Pill></div>
           <p className="row-meta">Soma de conversas finalizadas e revisões de flashcards em {calendar.monthLabel}.</p>
         </div>
       </section>
 
       <section className="section">
-        <h2 className="section-title">Último feedback</h2>
-        {latest ? (
-          <div className="calendar-feedback-card">
-            <Link href={`/calendario/${latestDate}`}>
-              <div className="calendar-feedback-date">{formatDate(latestDate)}</div>
-              <div className="row-title">{latest.fields.strengths}</div>
-              <p className="row-meta">{latest.fields.recommended_focus}</p>
-              <div className="level-pills">
-                <Pill tone="primary">{latest.fields.correction_score}/10 correções</Pill>
-                <Pill tone="info">{latest.fields.new_words_count} palavras</Pill>
+        <h2 className="section-title">Memória de conversas</h2>
+        {latestDate ? (
+          <div className="card">
+            <Link className="settings-row" href={`/calendario/${latestDate}`}>
+              <div>
+                <div className="row-title">Última prática registrada</div>
+                <div className="row-meta">{latestDate}</div>
               </div>
+              <TalkitoIcon name="chevron-right" size={18} />
             </Link>
             <CalendarPracticeButton date={latestDate} />
           </div>
         ) : (
           <EmptyState
-            Icon={CalendarDays}
+            talkitoIcon="calendar-desk"
             title="Seu calendário começa com uma conversa"
             description="Ao finalizar uma prática, a IA salva um feedback deste dia aqui."
           />
@@ -120,7 +118,7 @@ export default async function CalendarPage({ searchParams }: CalendarPageProps) 
           {suggestions.length > 0 ? (
             suggestions.slice(0, 3).map((item, index) => (
               <div className="list-row" key={`${item.title}-${index}`}>
-                <IconBubble Icon={index === 0 ? Target : MessageCircle} tone={index === 0 ? "primary" : "info"} />
+                <IconBubble talkitoIcon={index === 0 ? "target" : "listening-bubble"} tone={index === 0 ? "primary" : "info"} />
                 <div className="row-copy">
                   <div className="row-title">{item.title}</div>
                   <div className="row-meta">{item.reason}</div>

@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { MessageCircle } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { ChatConversation } from "@/components/ChatConversation";
 import { EmptyState } from "@/components/EmptyState";
@@ -28,7 +27,7 @@ export default async function ChatPage({ searchParams }: ChatPageProps) {
       <AppShell activeNav="chat" section="chat">
         <section className="section">
           <EmptyState
-            Icon={MessageCircle}
+            talkitoIcon="listening-bubble"
             title="Nenhuma conversa em andamento"
             description="Escolha um tema ou inicie uma conversa livre para começar a praticar."
           >

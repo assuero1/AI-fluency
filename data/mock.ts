@@ -1,16 +1,4 @@
-import {
-  BarChart3,
-  BriefcaseBusiness,
-  CalendarDays,
-  Check,
-  CircleAlert,
-  Laptop,
-  MessageCircle,
-  Plane,
-  Star,
-  Target,
-  TrendingUp
-} from "lucide-react";
+import type { TalkitoIconName } from "@/components/TalkitoIcon";
 
 export const suggestions = [
   {
@@ -18,21 +6,21 @@ export const suggestions = [
     meta: "Praticado 2x esta semana",
     badge: "Recomendado",
     tone: "primary" as const,
-    icon: BriefcaseBusiness
+    talkitoIcon: "travel-suitcase" as TalkitoIconName
   },
   {
     title: "Expressar opiniões",
     meta: "Você errou verbos modais ontem",
     badge: "Recomendado",
     tone: "warning" as const,
-    icon: MessageCircle
+    talkitoIcon: "listening-bubble" as TalkitoIconName
   },
   {
     title: "Trabalho remoto",
     meta: "Novo vocabulário para reuniões",
     badge: "Recomendado",
     tone: "info" as const,
-    icon: Laptop
+    talkitoIcon: "remote-laptop" as TalkitoIconName
   }
 ];
 
@@ -41,21 +29,21 @@ export const feedbackMetrics = [
     value: "8/10",
     label: "Correções aplicadas",
     foot: "Muito bem!",
-    icon: Check,
+    talkitoIcon: "check-stamp" as TalkitoIconName,
     tone: "primary" as const
   },
   {
     value: "3",
     label: "Erros recorrentes",
     foot: "Ver detalhes",
-    icon: CircleAlert,
+    talkitoIcon: "alert-badge" as TalkitoIconName,
     tone: "warning" as const
   },
   {
     value: "+12",
     label: "Novas palavras",
     foot: "Ótimo progresso!",
-    icon: Star,
+    talkitoIcon: "sparkles" as TalkitoIconName,
     tone: "info" as const
   }
 ];
@@ -91,27 +79,27 @@ export const calendarSuggestions = [
   {
     title: "Projetos em andamento",
     meta: "treina work on e passado simples",
-    icon: Target,
+    talkitoIcon: "target" as TalkitoIconName,
     tone: "primary" as const
   },
   {
     title: "Perguntas de follow-up",
     meta: "melhora fluidez em conversas",
-    icon: MessageCircle,
+    talkitoIcon: "listening-bubble" as TalkitoIconName,
     tone: "info" as const
   }
 ];
 
 export const strengths = [
-  { title: "Responder perguntas simples", icon: Check, tone: "primary" as const },
-  { title: "Vocabulário de trabalho", icon: BriefcaseBusiness, tone: "info" as const },
-  { title: "Compreensão por áudio", icon: BarChart3, tone: "warning" as const }
+  { title: "Responder perguntas simples", talkitoIcon: "check-stamp" as TalkitoIconName, tone: "primary" as const },
+  { title: "Vocabulário de trabalho", talkitoIcon: "travel-suitcase" as TalkitoIconName, tone: "info" as const },
+  { title: "Compreensão por áudio", talkitoIcon: "growth-stairs" as TalkitoIconName, tone: "warning" as const }
 ];
 
 export const progressMetrics = [
-  { value: "8/10", label: "Correções aplicadas", icon: Check, tone: "primary" as const },
-  { value: "3", label: "Erros recorrentes", icon: CircleAlert, tone: "warning" as const },
-  { value: "+42", label: "Palavras este mês", icon: TrendingUp, tone: "info" as const }
+  { value: "8/10", label: "Correções aplicadas", talkitoIcon: "check-stamp" as TalkitoIconName, tone: "primary" as const },
+  { value: "3", label: "Erros recorrentes", talkitoIcon: "alert-badge" as TalkitoIconName, tone: "warning" as const },
+  { value: "+42", label: "Palavras este mês", talkitoIcon: "growth-stairs" as TalkitoIconName, tone: "info" as const }
 ];
 
 export const languages = [
@@ -125,7 +113,7 @@ export const languages = [
 ];
 
 export const summaryWords = [
-  { title: "breakfast", meta: "apareceu na pergunta inicial", icon: Plane },
-  { title: "toast", meta: "usada na resposta corrigida", icon: MessageCircle },
-  { title: "routine", meta: "tema central da conversa", icon: CalendarDays }
+  { title: "breakfast", meta: "apareceu na pergunta inicial", talkitoIcon: "travel-suitcase" as TalkitoIconName },
+  { title: "toast", meta: "usada na resposta corrigida", talkitoIcon: "listening-bubble" as TalkitoIconName },
+  { title: "routine", meta: "tema central da conversa", talkitoIcon: "calendar-desk" as TalkitoIconName }
 ];

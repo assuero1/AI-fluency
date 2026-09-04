@@ -126,6 +126,38 @@ const ASSETS = [
     source: `${BRAIN_DIR}/.user_uploaded/media_1788538547982.jpg`,
     name: "chameleon-standing.png",
     box: { left: 130, top: 140, width: 340, height: 280 }
+  },
+
+  // Sheet 6: Communication & Knowledge
+  {
+    source: `${BRAIN_DIR}/talkito_2d_comm_pack_1788546620954.jpg`,
+    name: "book-open.png",
+    box: { left: 50, top: 80, width: 280, height: 280 }
+  },
+  {
+    source: `${BRAIN_DIR}/talkito_2d_comm_pack_1788546620954.jpg`,
+    name: "speech-bubble.png",
+    box: { left: 360, top: 80, width: 280, height: 280 }
+  },
+  {
+    source: `${BRAIN_DIR}/talkito_2d_comm_pack_1788546620954.jpg`,
+    name: "bot-chameleon.png",
+    box: { left: 670, top: 80, width: 300, height: 280 }
+  },
+  {
+    source: `${BRAIN_DIR}/talkito_2d_comm_pack_1788546620954.jpg`,
+    name: "user-round.png",
+    box: { left: 50, top: 380, width: 280, height: 280 }
+  },
+  {
+    source: `${BRAIN_DIR}/talkito_2d_comm_pack_1788546620954.jpg`,
+    name: "users.png",
+    box: { left: 360, top: 380, width: 300, height: 280 }
+  },
+  {
+    source: `${BRAIN_DIR}/talkito_2d_comm_pack_1788546620954.jpg`,
+    name: "sparkles.png",
+    box: { left: 670, top: 380, width: 300, height: 280 }
   }
 ];
 

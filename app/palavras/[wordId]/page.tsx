@@ -1,4 +1,3 @@
-import { BookOpen, Target } from "lucide-react";
 import { notFound } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { BackButton } from "@/components/BackButton";
@@ -6,6 +5,7 @@ import { CopyButton } from "@/components/CopyButton";
 import { IconBubble } from "@/components/IconBubble";
 import { MetricGrid } from "@/components/MetricGrid";
 import { Pill } from "@/components/Pill";
+import { TalkitoIcon } from "@/components/TalkitoIcon";
 import { VoiceButton } from "@/components/VoiceButton";
 import { WordPracticeButton } from "@/components/WordPracticeButton";
 import { WordSensesSection } from "@/components/WordSensesSection";
@@ -29,7 +29,7 @@ export default async function WordDetailPage({ params }: WordDetailPageProps) {
       <BackButton href="/palavras" label="Voltar às palavras" />
 
       <section className="word-detail-hero">
-        <IconBubble Icon={BookOpen} tone={word.needsReview ? "warning" : "primary"} />
+        <IconBubble talkitoIcon="book-open" tone={word.needsReview ? "warning" : "primary"} />
         <div className="row-copy">
           <h1 className="title">{word.displayText}</h1>
           <p className="subtitle">{word.translation}</p>
@@ -61,7 +61,7 @@ export default async function WordDetailPage({ params }: WordDetailPageProps) {
 
       <section className="section">
         <div className="practice-tip">
-          <Target aria-hidden="true" size={24} />
+          <TalkitoIcon name="target" size={24} />
           <div>
             <div className="row-title">Use “{word.displayText}” numa conversa</div>
             <div className="row-meta">A IA cria situações para você aplicar a palavra naturalmente.</div>

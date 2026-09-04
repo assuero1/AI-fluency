@@ -1,9 +1,9 @@
 "use client";
 
-import { MessageCircle, Target, Users } from "lucide-react";
 import { useState } from "react";
 import { ModalDialog } from "./ModalDialog";
 import { SpiralSpinner } from "./SpiralSpinner";
+import { TalkitoIcon } from "./TalkitoIcon";
 
 export type ConversationStartDraft = {
   title?: string;
@@ -65,7 +65,7 @@ export function ConversationSetupDialog({ busy, draft, onCancel, onConfirm }: Co
       onClose={onCancel}
       titleId="conversation-setup-title"
     >
-      <MessageCircle size={28} aria-hidden="true" />
+      <TalkitoIcon name="listening-bubble" size={28} />
       <h2 id="conversation-setup-title" className="section-title">Configurar prática</h2>
       <p className="row-meta" id="conversation-setup-description">
         Tema: <strong>{draft.title?.trim() || "Conversa livre"}</strong>
@@ -92,7 +92,7 @@ export function ConversationSetupDialog({ busy, draft, onCancel, onConfirm }: Co
                 tabIndex={selected ? 0 : -1}
                 type="button"
               >
-                {mode === "conversation" ? <MessageCircle aria-hidden="true" /> : <Users aria-hidden="true" />}
+                {mode === "conversation" ? <TalkitoIcon name="listening-bubble" size={20} /> : <TalkitoIcon name="users" size={20} />}
                 <span className="interaction-choice-title">{mode === "conversation" ? "Conversa" : "Simulação"}</span>
                 <span className="interaction-choice-help">
                   {mode === "conversation"
@@ -115,7 +115,7 @@ export function ConversationSetupDialog({ busy, draft, onCancel, onConfirm }: Co
             type="checkbox"
           />
           <span>
-            <Target aria-hidden="true" size={18} />
+            <TalkitoIcon name="target" size={18} />
             Definir meta de mensagens
           </span>
         </label>

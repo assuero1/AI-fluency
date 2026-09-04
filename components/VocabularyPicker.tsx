@@ -1,6 +1,5 @@
 "use client";
 
-import { BookOpen, Check } from "lucide-react";
 import { plura } from "@/lib/plural";
 import { SpiralSpinner } from "./SpiralSpinner";
 import { useEffect, useMemo, useState } from "react";
@@ -8,6 +7,7 @@ import { useRouter } from "next/navigation";
 import type { VocabularyCandidateGroup } from "@/lib/learning/vocabulary-selection";
 import { getVocabularyGroupBadge, getVocabularyGroupSubtitle } from "@/lib/learning/vocabulary-picker-ui";
 import { Pill } from "./Pill";
+import { TalkitoIcon } from "./TalkitoIcon";
 
 export function VocabularyPicker({ conversationId }: {
   conversationId: string;
@@ -96,13 +96,13 @@ export function VocabularyPicker({ conversationId }: {
               {getVocabularyGroupBadge(item) ? <>{" "}<Pill tone="info">{getVocabularyGroupBadge(item)}</Pill></> : null}
               <small>{formatRelatedForms(item)}{getCandidateStatus(item)}</small>
               {getVocabularyGroupSubtitle(item) ? <small>{getVocabularyGroupSubtitle(item)}</small> : null}
-            </span>{selected.has(item.id) ? <Check size={16} /> : null}
+            </span>{selected.has(item.id) ? <TalkitoIcon name="check-stamp" size={16} /> : null}
           </label>)}
         </div>
       </div>;
     })()}
     <button className="green-button full-button" disabled={candidateGroups === null || saving || selected.size === 0} onClick={save} type="button">
-      {saving ? <SpiralSpinner label="Salvando palavras..." size={20} /> : <BookOpen />}
+      {saving ? <SpiralSpinner label="Salvando palavras..." size={20} /> : <TalkitoIcon name="book-open" size={20} />}
       {saving ? "Salvando palavras..." : `Salvar ${plura(selected.size, "selecionada", "selecionadas")}`}
     </button>
     {message ? <p className="row-meta" aria-live="polite">{message}</p> : null}

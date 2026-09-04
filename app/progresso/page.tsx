@@ -1,4 +1,3 @@
-import { BarChart3, Check, MessageCircle } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { plura } from "@/lib/plural";
 import { FocusPracticeButton } from "@/components/FocusPracticeButton";
@@ -106,7 +105,7 @@ export default async function ProgressPage() {
         <div className="row-list">
           {progress.strengths.map((item, index) => (
             <ListRow
-              Icon={index === 0 ? Check : index === 1 ? MessageCircle : BarChart3}
+              talkitoIcon={index === 0 ? "check-stamp" : index === 1 ? "listening-bubble" : "growth-stairs"}
               key={item.title}
               meta={item.meta}
               title={item.title}

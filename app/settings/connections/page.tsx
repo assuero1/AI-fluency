@@ -1,4 +1,3 @@
-import { KeyRound, Mic, Server } from "lucide-react";
 import { ReactNode } from "react";
 import { AiModelSelect } from "@/components/AiModelSelect";
 import { AppShell } from "@/components/AppShell";
@@ -7,6 +6,7 @@ import { ConnectionTestButton } from "@/components/ConnectionTestButton";
 import { IconBubble } from "@/components/IconBubble";
 import { Pill } from "@/components/Pill";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { TalkitoIconName } from "@/components/TalkitoIcon";
 import { getConnectionStatus } from "@/lib/settings/status";
 
 // Connection status depends on server-only environment variables. It must be
@@ -17,7 +17,7 @@ export const dynamic = "force-dynamic";
 function ConnectionCard({
   title,
   meta,
-  Icon,
+  talkitoIcon,
   tone,
   connected,
   lines,
@@ -26,7 +26,7 @@ function ConnectionCard({
 }: {
   title: string;
   meta: string;
-  Icon: typeof KeyRound;
+  talkitoIcon: TalkitoIconName;
   tone: "primary" | "warning" | "info";
   connected: boolean;
   lines: Array<{ label: string; value: string }>;
@@ -37,7 +37,7 @@ function ConnectionCard({
     <div className="card">
       <div className="top-row">
         <div className="selector-item">
-          <IconBubble Icon={Icon} tone={tone} />
+          <IconBubble talkitoIcon={talkitoIcon} tone={tone} />
           <div>
             <div className="row-title">{title}</div>
             <div className="row-meta">{meta}</div>
@@ -72,7 +72,7 @@ export default async function ConnectionsPage() {
         <ConnectionCard
           title="IA de conversa"
           meta="Provider, API key e modelo"
-          Icon={KeyRound}
+          talkitoIcon="key"
           tone="primary"
           connected={status.ai.configured}
           lines={[
@@ -91,7 +91,7 @@ export default async function ConnectionsPage() {
         <ConnectionCard
           title="Supabase"
           meta="URL e service role key"
-          Icon={Server}
+          talkitoIcon="server"
           tone="info"
           connected={status.supabase.configured}
           lines={[
@@ -103,7 +103,7 @@ export default async function ConnectionsPage() {
         <ConnectionCard
           title={status.tts?.provider === "deepinfra" ? "Chatterbox voz" : "Kokoro voz"}
           meta={status.tts?.provider === "deepinfra" ? `DeepInfra (${status.tts.model})` : "VPS (Base URL, API key e voz padrão)"}
-          Icon={Mic}
+          talkitoIcon="microphone"
           tone="warning"
           connected={status.tts?.configured ?? status.kokoro.configured}
           lines={[

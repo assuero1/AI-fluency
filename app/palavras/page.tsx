@@ -1,10 +1,10 @@
-import { BookOpen, Brain, ChevronRight, Search, Sparkles } from "lucide-react";
 import { plura } from "@/lib/plural";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
 import { IconBubble } from "@/components/IconBubble";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { TalkitoIcon } from "@/components/TalkitoIcon";
 import { VoiceButton } from "@/components/VoiceButton";
 import { getWordsData, normalizeWordFilter, wordFilters, wordStrengthLabels } from "@/lib/learning/words";
 
@@ -35,7 +35,7 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
     <AppShell activeNav="palavras" section="palavras">
       <ScreenHeader title="Suas palavras" subtitle={`${data.summary.totalWords} palavras salvas`} />
       <Link className="flashcard-entry" href="/palavras/treino">
-        <div className="flashcard-entry-icon"><Brain aria-hidden="true" /></div><div className="row-copy"><div className="eyebrow"><Sparkles aria-hidden="true" size={16} /> Revisão inteligente</div><div className="row-title">Treinar com cards</div><div className="row-meta">{data.dailyQueue && data.dailyQueue.dueCount + data.dailyQueue.newCount > 0 ? `Hoje: ${data.dailyQueue.dueCount} revisões + ${data.dailyQueue.newCount} novas` : "Palavras e frases do seu vocabulário"}</div></div><ChevronRight aria-hidden="true" />
+        <div className="flashcard-entry-icon"><TalkitoIcon name="brain" size={28} /></div><div className="row-copy"><div className="eyebrow"><TalkitoIcon name="sparkles" size={16} /> Revisão inteligente</div><div className="row-title">Treinar com cards</div><div className="row-meta">{data.dailyQueue && data.dailyQueue.dueCount + data.dailyQueue.newCount > 0 ? `Hoje: ${data.dailyQueue.dueCount} revisões + ${data.dailyQueue.newCount} novas` : "Palavras e frases do seu vocabulário"}</div></div><TalkitoIcon name="chevron-right" size={20} />
       </Link>
       <section className="section">
         <div className="word-summary-card">
@@ -76,7 +76,7 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
       </section>
 
       <form className="word-search-form" action="/palavras" role="search">
-        <Search size={20} />
+        <TalkitoIcon name="search" size={20} />
         <input aria-label="Buscar palavra ou tradução" maxLength={80} name="q" defaultValue={data.query} placeholder="Buscar palavra ou tradução" />
         <input name="filter" type="hidden" value={filter} />
         <button type="submit">Buscar</button>
@@ -99,7 +99,7 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
         {data.words.length > 0 ? (
           data.words.map((word) => (
             <div className="list-row word-row" key={word.id}>
-              <IconBubble Icon={BookOpen} tone={word.needsReview ? "warning" : "primary"} />
+              <IconBubble talkitoIcon="book-open" tone={word.needsReview ? "warning" : "primary"} />
               <Link className="row-copy word-row-link" href={`/palavras/${word.id}`}>
                 <div className="row-title">
                   {word.displayText} <span className="word-use-count">+{word.totalUses}</span> <span className={`word-strength ${word.strengthLevel}`}>{wordStrengthLabels[word.strengthLevel]}</span>
@@ -115,7 +115,7 @@ export default async function WordsPage({ searchParams }: WordsPageProps) {
           ))
         ) : (
           <EmptyState
-            Icon={BookOpen}
+            talkitoIcon="book-open"
             title="Nenhuma palavra encontrada"
             description="Use uma conversa para salvar vocabulário novo ou ajuste os filtros."
           />

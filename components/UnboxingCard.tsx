@@ -1,6 +1,5 @@
 "use client";
 
-import { Sparkles } from "lucide-react";
 import type { KeyboardEvent } from "react";
 import type { RarityMeta, WordRarity } from "@/lib/learning/word-rarity";
 import { playSound } from "@/lib/client/ui-sound";
@@ -60,7 +59,7 @@ export function UnboxingCard({
           tabIndex={flipped ? -1 : 0}
         >
           <div className="unboxing-front-icon" aria-hidden="true">
-            <Sparkles size={28} />
+            <TalkitoIcon name="sparkles" size={28} />
           </div>
           <span className="eyebrow">Carta {index + 1}</span>
           <strong className="row-title">Toque para descobrir</strong>

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Mic } from "lucide-react";
+import { TalkitoIcon } from "./TalkitoIcon";
 
 type HomeTodayCardProps = {
   streak: number;
@@ -23,7 +23,15 @@ export function HomeTodayCard(props: HomeTodayCardProps) {
       <div className="row-title">Hoje</div>
       <div className="row-meta">meta de {props.goalMinutes} min</div>
     </div>
-    <div className="word-big">{props.complete ? "Concluído! 🎉" : `${props.minutesToday} de ${props.goalMinutes} min`}</div>
+    <div className="word-big">
+      {props.complete ? (
+        <span className="inline-flex items-center gap-1.5">
+          Concluído! <TalkitoIcon name="party-popper" size={26} />
+        </span>
+      ) : (
+        `${props.minutesToday} de ${props.goalMinutes} min`
+      )}
+    </div>
     <div className="progress-line" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={props.percent} aria-label={`${props.percent}% da meta de hoje`}>
       <span className="progress-fill" style={{ transform: `scaleX(${props.percent / 100})` }} />
     </div>
@@ -35,9 +43,15 @@ export function HomeTodayCard(props: HomeTodayCardProps) {
           : "Reserve alguns minutos para começar o dia com o pé direito."}
     </p>
     {!props.complete ? (
-      <button className="green-button full-button" onClick={props.onStartPractice} type="button"><Mic /> Fazer minha prática</button>
+      <button className="green-button full-button" onClick={props.onStartPractice} type="button">
+        <TalkitoIcon name="microphone" size={20} className="inline-block mr-2" /> Fazer minha prática
+      </button>
     ) : null}
     <p className="row-meta">Conversas esta semana: {props.weekConversations}/{props.weekConversationGoal}</p>
-    {props.complete && !props.practicedToday ? <p className="row-meta text-accent"><Check aria-hidden="true" size={14} /> Sequência garantida pelo treino de hoje.</p> : null}
+    {props.complete && !props.practicedToday ? (
+      <p className="row-meta text-accent">
+        <TalkitoIcon name="check-stamp" size={14} className="inline-block mr-1" /> Sequência garantida pelo treino de hoje.
+      </p>
+    ) : null}
   </section>;
 }

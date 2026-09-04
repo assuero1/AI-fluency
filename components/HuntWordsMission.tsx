@@ -1,6 +1,5 @@
 "use client";
 
-import { Info } from "lucide-react";
 import { useState } from "react";
 import { TalkitoIcon } from "./TalkitoIcon";
 import type { HuntWord } from "@/lib/learning/word-hunting";
@@ -67,7 +66,7 @@ export function HuntWordsMission({ huntWords, foundWordIds }: HuntWordsMissionPr
               {isFound ? (
                 <TalkitoIcon name="check-stamp" size={14} />
               ) : (
-                <Info aria-hidden="true" size={14} />
+                <TalkitoIcon name="info" size={14} />
               )}
               <span>{word.lemma}</span>
             </button>

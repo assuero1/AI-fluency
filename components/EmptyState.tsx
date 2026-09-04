@@ -1,9 +1,11 @@
 import type { LucideIcon } from "lucide-react";
 import type { ReactNode } from "react";
 import { IconBubble } from "./IconBubble";
+import type { TalkitoIconName } from "./TalkitoIcon";
 
 type EmptyStateProps = {
-  Icon: LucideIcon;
+  Icon?: LucideIcon;
+  talkitoIcon?: TalkitoIconName;
   title: string;
   description?: ReactNode;
   tone?: "primary" | "warning" | "info" | "danger";
@@ -13,7 +15,7 @@ type EmptyStateProps = {
 };
 
 /** Composição padrão de estado vazio: mascote/ícone + título + descrição + CTA opcional. */
-export function EmptyState({ Icon, title, description, tone = "primary", mascotSrc, children }: EmptyStateProps) {
+export function EmptyState({ Icon, talkitoIcon, title, description, tone = "primary", mascotSrc, children }: EmptyStateProps) {
   return (
     <div className="empty-state">
       {mascotSrc ? (
@@ -21,7 +23,7 @@ export function EmptyState({ Icon, title, description, tone = "primary", mascotS
         // eslint-disable-next-line @next/next/no-img-element
         <img className="empty-state-mascot" src={mascotSrc} alt="" width={72} height={72} />
       ) : (
-        <IconBubble Icon={Icon} tone={tone} />
+        <IconBubble Icon={Icon} talkitoIcon={talkitoIcon} tone={tone} />
       )}
       <p className="row-title">{title}</p>
       {description ? <p className="row-meta">{description}</p> : null}

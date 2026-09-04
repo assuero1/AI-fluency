@@ -1,9 +1,9 @@
 "use client";
 
-import { Check, Mic, PartyPopper, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { TalkitoIcon } from "./TalkitoIcon";
 import { languages } from "@/data/mock";
 import { DEFAULT_LANGUAGE_LEVEL, LANGUAGE_LEVELS, LanguageLevel } from "@/lib/learning/levels";
 import { BackButton } from "./BackButton";
@@ -71,7 +71,7 @@ function LanguageChoices({ languageIndex, onSelect }: { languageIndex: number; o
             <span className="row-title">{language.title}</span>
             <span className="row-meta">{language.meta}</span>
           </span>
-          {index === languageIndex ? <Check aria-hidden="true" className="text-accent" /> : null}
+          {index === languageIndex ? <TalkitoIcon name="check-stamp" size={20} /> : null}
         </button>
       ))}
     </div>
@@ -215,11 +215,15 @@ export function OnboardingForm({
   if (done) {
     return (
       <section className="section onboarding-celebration">
-        <div className="flashcard-trophy celebrate"><PartyPopper aria-hidden="true" size={24} /></div>
+        <div className="flashcard-trophy celebrate"><TalkitoIcon name="party-popper" size={32} /></div>
         <h1 className="title">Perfil pronto, {firstName}!</h1>
         <p className="subtitle">Em 1 minuto você faz sua primeira conversa — a IA ajusta tudo ao seu nível.</p>
         <button className="green-button full-button" disabled={startingChat} onClick={() => void startFirstConversation()} type="button">
-          {startingChat ? <SpiralSpinner label="Preparando conversa..." size={20} /> : <Mic />}
+          {startingChat ? (
+            <SpiralSpinner label="Preparando conversa..." size={20} />
+          ) : (
+            <TalkitoIcon name="microphone" size={20} className="inline-block mr-2" />
+          )}
           {startingChat ? "Preparando sua primeira conversa..." : "Fazer minha primeira conversa"}
         </button>
         <Link className="outline-button full-button" href="/">Explorar o app</Link>
@@ -234,7 +238,7 @@ export function OnboardingForm({
       <div className="top-row">
         <Pill>Passo {step} de 3</Pill>
         <Pill tone="primary">
-          <Sparkles size={16} /> IA adaptativa
+          <TalkitoIcon name="sparkles" size={16} /> IA adaptativa
         </Pill>
       </div>
       <div className="progress-line" role="progressbar" aria-valuemin={1} aria-valuemax={3} aria-valuenow={step} aria-label={`Passo ${step} de 3`}>
@@ -288,7 +292,7 @@ export function OnboardingForm({
                   <span className="row-copy">
                     <span className="row-title">{option}</span>
                   </span>
-                  {option === goal ? <Check aria-hidden="true" className="text-accent" /> : null}
+                  {option === goal ? <TalkitoIcon name="check-stamp" size={20} /> : null}
                 </button>
               ))}
             </div>
@@ -308,7 +312,7 @@ export function OnboardingForm({
                   <span className="row-copy">
                     <span className="row-title">{option}</span>
                   </span>
-                  {option === correctionStyle ? <Check aria-hidden="true" className="text-accent" /> : null}
+                  {option === correctionStyle ? <TalkitoIcon name="check-stamp" size={20} /> : null}
                 </button>
               ))}
             </div>

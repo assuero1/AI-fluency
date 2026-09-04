@@ -1,6 +1,5 @@
 "use client";
 
-import { MessageCircle, Mic, MicOff, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -517,13 +516,13 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
           );
         })}
       </section>
-      <button className="green-button full-button" onClick={() => { setResult(null); setSentences([]); setWords([]); setAnsweredIds(new Set()); setRevealPhase(false); setRevealedWordIds(new Set()); }} type="button"><Sparkles /> Aprender mais palavras</button>
+      <button className="green-button full-button" onClick={() => { setResult(null); setSentences([]); setWords([]); setAnsweredIds(new Set()); setRevealPhase(false); setRevealedWordIds(new Set()); }} type="button"><TalkitoIcon name="sparkles" size={18} /> Aprender mais palavras</button>
       <StartFlashcardsWithWords label="Revisar em cards" wordIds={result.words.map((word) => word.wordId)} />
       <Link
         href={`/chat?huntWordIds=${result.words.map((w) => w.wordId).join(",")}`}
         className="outline-button full-button"
       >
-        <MessageCircle aria-hidden="true" size={18} /> Testar {result.wordCount} palavras em uma conversa
+        <TalkitoIcon name="listening-bubble" size={18} /> Testar {result.wordCount} palavras em uma conversa
       </Link>
       <Link className="outline-button full-button" href="/palavras">Voltar às palavras</Link>
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
@@ -622,7 +621,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
         <label htmlFor="new-words-translation">Sua tradução em português</label>
         <div className="flashcard-input-row">
           <input autoComplete="off" id="new-words-translation" maxLength={300} onChange={(event) => setInput(event.target.value)} placeholder="Digite sua tradução" ref={inputRef} value={input} />
-          <button aria-label={listening ? "Parar transcrição" : "Falar tradução"} className={listening ? "voice-icon-button listening" : "voice-icon-button"} disabled={!speechSupported} onClick={toggleSpeech} type="button">{listening ? <MicOff /> : <Mic />}</button>
+          <button aria-label={listening ? "Parar transcrição" : "Falar tradução"} className={listening ? "voice-icon-button listening" : "voice-icon-button"} disabled={!speechSupported} onClick={toggleSpeech} type="button">{listening ? <TalkitoIcon name="mic-off" size={20} /> : <TalkitoIcon name="microphone" size={20} />}</button>
         </div>
         <div className="flashcard-attempt-actions">
           <button className="green-button" disabled={!input.trim() || busy} type="submit">
@@ -661,7 +660,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
     {preparing ? <LoadingScene moment="enter" palette="palavras" title="Preparando suas frases..." note={`A IA está escolhendo palavras do seu nível e montando frases em ${languageName}. Costuma levar até 1 minuto.`} tips={PREPARING_TIPS} /> : <>
     <BackButton href="/palavras" label="Voltar às palavras" />
     <section className="flashcard-intro">
-      <div className="flashcard-brand"><Sparkles aria-hidden="true" /></div>
+      <div className="flashcard-brand"><TalkitoIcon name="sparkles" size={32} /></div>
       <div><div className="eyebrow">Vocabulário novo</div><h1 className="title">Palavras novas</h1><p className="subtitle">A IA monta frases com o seu nível e corrige suas traduções na hora.</p></div>
     </section>
     {resumable ? (
@@ -685,7 +684,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
         ))}
       </div>
       <button className="green-button full-button" disabled={busy || preparing} onClick={() => void start()} type="button">
-        {busy || preparing ? "Preparando suas frases..." : <><Sparkles /> Começar com {size} palavra{size === 1 ? "" : "s"}</>}
+        {busy || preparing ? "Preparando suas frases..." : <><TalkitoIcon name="sparkles" size={20} /> Começar com {size} palavra{size === 1 ? "" : "s"}</>}
       </button>
       <p className="row-meta">Cada palavra vem em {SENTENCES_PER_WORD} frases curtas. Ouça, traduza e a IA corrige na hora.</p>
     </section>

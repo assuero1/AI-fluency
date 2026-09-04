@@ -1,6 +1,5 @@
 "use client";
 
-import { Bot, Send, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TalkitoIcon } from "./TalkitoIcon";
 import { SpiralSpinner } from "./SpiralSpinner";
@@ -176,7 +175,7 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
           onClick={onClose}
           type="button"
         >
-          <X aria-hidden="true" />
+          <TalkitoIcon name="close-x" size={20} />
         </button>
       </div>
 
@@ -210,7 +209,7 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
             {readyMessages.map((message) =>
               message.fields.role === "assistant" ? (
                 <div className="chat-row" key={message.id}>
-                  <IconBubble Icon={Bot} tone="info" />
+                  <IconBubble talkitoIcon="teacher-chameleon" tone="info" />
                   <div className="bubble teacher-ai">{message.fields.text}</div>
                 </div>
               ) : (
@@ -243,7 +242,7 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
         }}
       >
         <button className="send-button" disabled={busy || !text.trim() || loadState.status !== "ready"} type="submit" aria-label="Enviar pergunta ao professor">
-          <Send />
+          <TalkitoIcon name="send" size={20} />
         </button>
         <textarea
           aria-label="Pergunta para o professor"

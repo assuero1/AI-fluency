@@ -1,9 +1,12 @@
+import type { TalkitoIconName } from "@/components/TalkitoIcon";
+
 export type WordRarity = "essential" | "native_expression" | "power_word";
 
 export type RarityMeta = {
   rarity: WordRarity;
   label: string;
   emoji: string;
+  talkitoIcon: TalkitoIconName;
   badgeClass: string;
   description: string;
 };
@@ -13,6 +16,7 @@ export const RARITY_DEFINITIONS: Record<WordRarity, RarityMeta> = {
     rarity: "essential",
     label: "Essencial",
     emoji: "🟢",
+    talkitoIcon: "badge-essential",
     badgeClass: "rarity-badge essential",
     description: "Vocabulário fundamental para conversação fluida."
   },
@@ -20,6 +24,7 @@ export const RARITY_DEFINITIONS: Record<WordRarity, RarityMeta> = {
     rarity: "native_expression",
     label: "Expressão Nativa",
     emoji: "🔵",
+    talkitoIcon: "badge-native",
     badgeClass: "rarity-badge native-expression",
     description: "Phrasal verbs, gírias e expressões do dia a dia nativo."
   },
@@ -27,6 +32,7 @@ export const RARITY_DEFINITIONS: Record<WordRarity, RarityMeta> = {
     rarity: "power_word",
     label: "Power Word",
     emoji: "🟣",
+    talkitoIcon: "badge-power",
     badgeClass: "rarity-badge power-word",
     description: "Vocabulário avançado para refinamento e precisão."
   }
