@@ -1,6 +1,6 @@
 "use client";
 
-import { Mic, MicOff, Sparkles } from "lucide-react";
+import { MessageCircle, Mic, MicOff, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -18,6 +18,7 @@ import { createAudioPrefetchQueue, type AudioPrefetchQueue } from "@/lib/learnin
 import { compareFlashcardAnswer } from "@/lib/learning/flashcard-answer";
 import { playSound } from "@/lib/client/ui-sound";
 import { vibrate } from "@/lib/client/haptics";
+import { classifyWordRarity } from "@/lib/learning/word-rarity";
 import { AppShell } from "./AppShell";
 import { BackButton } from "./BackButton";
 import { LoadingScene } from "./LoadingScene";
@@ -25,8 +26,10 @@ import { ModalDialog } from "./ModalDialog";
 import { Pill } from "./Pill";
 import { SpiralSpinner } from "./SpiralSpinner";
 import { SessionCelebration } from "./SessionCelebration";
+import { ScreenHeader } from "./ScreenHeader";
 import { StartFlashcardsWithWords } from "./StartFlashcardsWithWords";
 import { VoiceButton } from "./VoiceButton";
+import { UnboxingCard } from "./UnboxingCard";
 
 type Recognition = { lang: string; interimResults: boolean; continuous: boolean; start(): void; stop(): void; abort(): void; onresult: ((event: { results: ArrayLike<{ 0: { transcript: string }; isFinal: boolean }> }) => void) | null; onerror: (() => void) | null; onend: (() => void) | null };
 type RecognitionConstructor = new () => Recognition;
@@ -78,6 +81,8 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
   const [words, setWords] = useState<NewWordPreview[]>([]);
   const [answeredIds, setAnsweredIds] = useState<Set<string>>(new Set());
   const [current, setCurrent] = useState<NewWordsSentence | null>(null);
+  const [revealPhase, setRevealPhase] = useState(false);
+  const [revealedWordIds, setRevealedWordIds] = useState<Set<string>>(new Set());
   const [input, setInput] = useState("");
   const [judgment, setJudgment] = useState<JudgedTranslation | null>(null);
   const [senseCreated, setSenseCreated] = useState(false);
@@ -245,9 +250,16 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
     setSessionId(active.sessionId); setCompletionId(crypto.randomUUID());
     setSentences(active.sentences); setWords(active.words ?? []);
     setAnsweredIds(new Set(active.answeredSentenceIds));
-    setCurrent(next);
     setLanguageCode(active.languageCode ?? "en"); setLanguageName(active.languageName ?? "idioma estudado");
     setResumable(null); setResult(null); setPreparing(false); resetAttempt();
+    if (active.answeredSentenceIds.length === 0 && (active.words ?? []).length > 0) {
+      setRevealPhase(true);
+      setRevealedWordIds(new Set());
+      setCurrent(null);
+    } else {
+      setRevealPhase(false);
+      setCurrent(next);
+    }
   }
 
   async function start() {
@@ -432,7 +444,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
       // foi abandonada — apenas evita rejeição não tratada (o fetch não é cancelável).
       inflightJudgeRef.current?.catch(() => undefined); inflightJudgeRef.current = null;
       prefetchRef.current?.dispose();
-      setSessionId(""); setSentences([]); setCurrent(null); setJudgment(null); setResumable(null); resetAttempt();
+      setSessionId(""); setSentences([]); setCurrent(null); setJudgment(null); setResumable(null); setRevealPhase(false); setRevealedWordIds(new Set()); resetAttempt();
     } catch (abandonError) { setError(abandonError instanceof Error ? abandonError.message : "Não foi possível abandonar."); }
     finally { setBusy(false); }
   }
@@ -466,22 +478,105 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
     <audio ref={audioRef} className="sr-only" preload="auto" />
     <BackButton href="/palavras" label="Voltar às palavras" />
     <section className="flashcard-result">
-      <SessionCelebration eyebrow="Sessão concluída" score={result.score} />
-      <p className="subtitle">Você aprendeu {result.wordCount} palavra{result.wordCount === 1 ? "" : "s"} nova{result.wordCount === 1 ? "" : "s"} com {result.sentenceCount} frases.</p>
+      <SessionCelebration eyebrow={`${result.wordCount} palavra${result.wordCount === 1 ? "" : "s"} adotada${result.wordCount === 1 ? "" : "s"}! 🎉`} score={result.score} />
+      <p className="subtitle">Energia máxima (⚡ 100%)! Suas novas palavras estão vivas no seu vocabulário.</p>
       <div className="flashcard-result-grid">
         <div><strong>{result.wordCount}</strong><span>palavras novas</span></div>
         <div><strong>{result.correctSentences}/{result.sentenceCount}</strong><span>frases certas</span></div>
         <div><strong>{result.newSensesAdded}</strong><span>novos significados</span></div>
       </div>
       <section className="flashcard-result-details" aria-label="Palavras aprendidas">
-        {result.words.map((word) => <div key={word.wordId}><span>{word.lemma}</span><strong>{word.translation}</strong></div>)}
+        {result.words.map((word) => {
+          const rarity = classifyWordRarity(word);
+          return (
+            <div key={word.wordId} className="word-adoption-item">
+              <div className="word-adoption-left">
+                <div className="word-adoption-header">
+                  <span className={rarity.badgeClass}>{rarity.emoji} {rarity.label}</span>
+                  <strong>{word.lemma}</strong>
+                </div>
+                <span className="row-meta">{word.translation}</span>
+              </div>
+              <span className="word-adoption-energy" title="Energia máxima! Revise nas próximas 24h para manter.">
+                ⚡ 100%
+              </span>
+            </div>
+          );
+        })}
       </section>
-      <button className="green-button full-button" onClick={() => { setResult(null); setSentences([]); setWords([]); setAnsweredIds(new Set()); }} type="button"><Sparkles /> Aprender mais palavras</button>
+      <button className="green-button full-button" onClick={() => { setResult(null); setSentences([]); setWords([]); setAnsweredIds(new Set()); setRevealPhase(false); setRevealedWordIds(new Set()); }} type="button"><Sparkles /> Aprender mais palavras</button>
       <StartFlashcardsWithWords label="Revisar em cards" wordIds={result.words.map((word) => word.wordId)} />
+      <Link
+        href={`/chat?huntWordIds=${result.words.map((w) => w.wordId).join(",")}`}
+        className="outline-button full-button"
+      >
+        <MessageCircle aria-hidden="true" size={18} /> Testar {result.wordCount} palavras em uma conversa
+      </Link>
       <Link className="outline-button full-button" href="/palavras">Voltar às palavras</Link>
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
     </section>
   </div>, false);
+
+  if (revealPhase && !result && words.length > 0) {
+    const allRevealed = words.every((w) => revealedWordIds.has(w.wordId));
+    return shell(
+      <div className="flashcard-screen">
+        <audio ref={audioRef} className="sr-only" preload="auto" />
+        <div className="top-row">
+          <BackButton label="Sair" onClick={() => setExitOpen(true)} />
+          <Pill>
+            {revealedWordIds.size}/{words.length} cartas reveladas
+          </Pill>
+        </div>
+        <div className="progress-line">
+          <span
+            className="progress-fill"
+            style={{ transform: `scaleX(${revealedWordIds.size / Math.max(1, words.length)})` }}
+          />
+        </div>
+        <section className="unboxing-phase">
+          <ScreenHeader
+            centered
+            subtitle={`${words.length} palavra${words.length === 1 ? "" : "s"} para descobrir`}
+            title="Novas palavras!"
+          />
+          <div className="unboxing-grid">
+            {words.map((word, i) => (
+              <UnboxingCard
+                flipped={revealedWordIds.has(word.wordId)}
+                index={i}
+                key={word.wordId}
+                languageCode={languageCode}
+                onFlip={() => {
+                  setRevealedWordIds((prev) => new Set(prev).add(word.wordId));
+                }}
+                rarity={classifyWordRarity(word)}
+                word={word}
+              />
+            ))}
+          </div>
+          {allRevealed ? (
+            <button
+              className="green-button full-button pop-in"
+              onClick={() => {
+                setRevealPhase(false);
+                const first = sentences[0];
+                if (first) setCurrent(first);
+              }}
+              type="button"
+            >
+              Começar a praticar!
+            </button>
+          ) : (
+            <p className="row-meta text-center">
+              Revele todas as cartas para iniciar o treino
+            </p>
+          )}
+        </section>
+      </div>,
+      false
+    );
+  }
 
   if (current) {
     const wordIndex = words.findIndex((word) => word.wordId === current.targetWordId);

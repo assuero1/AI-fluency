@@ -18,6 +18,9 @@ import { ScreenHeader } from "./ScreenHeader";
 import { TeacherChatPanel } from "./TeacherChatPanel";
 import { MessageWordPlayer } from "./MessageWordPlayer";
 import { VoiceButton } from "./VoiceButton";
+import { HuntWordsMission } from "./HuntWordsMission";
+import { parseHuntWords, detectHuntWordsInMessage, type HuntWord } from "@/lib/learning/word-hunting";
+import { burstConfetti } from "@/lib/client/confetti";
 import type { ConversationFields, CorrectionFields, MessageFields, WordFields } from "@/lib/learning/conversations";
 import type { SelectionExplanation } from "@/lib/learning/selection-explanation";
 import { resolveSelectionState } from "@/lib/learning/selection-ui";
@@ -107,6 +110,27 @@ export function ChatConversation({
   const [error, setError] = useState<string | null>(null);
   const [failedMessage, setFailedMessage] = useState<string | null>(null);
   const [isPolishingSpeech, setIsPolishingSpeech] = useState(false);
+  const huntWords = useMemo(() => parseHuntWords(conversation.fields.hunt_words), [conversation.fields.hunt_words]);
+  const [foundHuntWords, setFoundHuntWords] = useState<Set<string>>(() => {
+    const initialFound = new Set<string>();
+    if (huntWords.length > 0) {
+      for (const msg of initialMessages) {
+        if (msg.fields.role === "user") {
+          const found = detectHuntWordsInMessage(msg.fields.text, huntWords);
+          for (const hw of found) initialFound.add(hw.wordId);
+        }
+      }
+    }
+    return initialFound;
+  });
+  const [huntToast, setHuntToast] = useState<string | null>(null);
+  const huntToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (huntToastTimerRef.current) clearTimeout(huntToastTimerRef.current);
+    };
+  }, []);
   const recognitionRef = useRef<SpeechRecognitionInstance | null>(null);
   const recognitionStartTextRef = useRef("");
   const speechFinalSegmentsRef = useRef<string[]>([]);
@@ -353,6 +377,7 @@ export function ChatConversation({
         assistantMessage?: TeableRecord<MessageFields>;
         corrections?: TeableRecord<CorrectionFields>[];
         words?: TeableRecord<WordFields>[];
+        huntWordsFound?: HuntWord[];
       };
 
       if (!response.ok || !data.ok || !data.userMessage || !data.assistantMessage) {
@@ -367,6 +392,34 @@ export function ChatConversation({
         data.assistantMessage!
       ]);
       setCorrections((current) => [...current, ...(data.corrections ?? [])]);
+
+      if (data.huntWordsFound && data.huntWordsFound.length > 0) {
+        const foundList = data.huntWordsFound;
+        setFoundHuntWords((prev) => {
+          const newlyFound = foundList.filter((hw) => !prev.has(hw.wordId));
+          if (newlyFound.length === 0) return prev;
+
+          const next = new Set(prev);
+          for (const hw of newlyFound) next.add(hw.wordId);
+
+          playSound("achievement");
+          vibrate("success");
+          const wordNames = newlyFound.map((hw) => `"${hw.lemma}"`).join(", ");
+          const toastMsg = newlyFound.length === 1
+            ? `🎯 Palavra caçada: ${wordNames}!`
+            : `🎯 Palavras caçadas: ${wordNames}!`;
+          setHuntToast(toastMsg);
+          if (huntToastTimerRef.current) clearTimeout(huntToastTimerRef.current);
+          huntToastTimerRef.current = setTimeout(() => setHuntToast(null), 3200);
+
+          if (huntWords.length > 0 && next.size >= huntWords.length) {
+            burstConfetti({ particles: 90 });
+          }
+
+          return next;
+        });
+      }
+
       retryRequestRef.current = null;
       setFailedMessage(null);
     } catch (sendError) {
@@ -653,6 +706,16 @@ export function ChatConversation({
         </div>
       </div>
 
+      {huntWords.length > 0 ? (
+        <HuntWordsMission huntWords={huntWords} foundWordIds={foundHuntWords} />
+      ) : null}
+
+      {huntToast ? (
+        <div className="hunt-toast" role="status" aria-live="polite">
+          {huntToast}
+        </div>
+      ) : null}
+
       {isTeacherOpen ? (
         <TeacherChatPanel
           conversationId={conversation.id}
@@ -780,7 +843,7 @@ export function ChatConversation({
           ) : (
             <div key={message.id}>
               <div className="bubble user">
-                {transcriptEnabled ? message.fields.text : "Mensagem enviada por você."}
+                {transcriptEnabled ? highlightHuntWords(message.fields.text, huntWords) : "Mensagem enviada por você."}
                 {transcriptEnabled ? <div className="message-actions">
                   <CopyButton compact label="Copiar sua mensagem" text={message.fields.text} />
                   <TranslationButton sourceLanguage={speechLanguage} text={message.fields.text} />
@@ -981,4 +1044,36 @@ function createOptimisticUserMessage(
       created_at: new Date().toISOString()
     }
   };
+}
+
+function highlightHuntWords(text: string, huntWords: HuntWord[]): React.ReactNode {
+  if (!huntWords.length || !text) return text;
+  const candidates = huntWords
+    .flatMap((hw) => [hw.lemma, ...hw.forms])
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .sort((a, b) => b.length - a.length);
+
+  if (!candidates.length) return text;
+
+  try {
+    const escaped = candidates.map((c) => c.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+    const regex = new RegExp(`(?<![\\p{L}\\p{N}_])(${escaped})(?![\\p{L}\\p{N}_])`, "giu");
+    const parts = text.split(regex);
+    if (parts.length === 1) return text;
+
+    const candidateSet = new Set(candidates.map((c) => c.toLowerCase()));
+    return parts.map((part, index) => {
+      if (candidateSet.has(part.toLowerCase())) {
+        return (
+          <mark className="golden-trigger" key={index}>
+            {part}
+          </mark>
+        );
+      }
+      return part;
+    });
+  } catch {
+    return text;
+  }
 }

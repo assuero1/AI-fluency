@@ -17,6 +17,12 @@ import {
   MessageChannel,
   normalizeStoredInteractionMode
 } from "./chat-contracts";
+import {
+  detectHuntWordsInMessage,
+  parseHuntWords,
+  selectHuntWords,
+  type HuntWord
+} from "./word-hunting";
 
 export type ConversationFields = {
   Name?: string;
@@ -32,6 +38,7 @@ export type ConversationFields = {
   duration_seconds: number;
   ai_model_used: string;
   summary: string;
+  hunt_words?: HuntWord[] | string;
 };
 
 export type MessageFields = {
@@ -217,6 +224,7 @@ export async function startConversation(input: {
   reason?: string;
   interactionMode?: unknown;
   targetUserMessageCount?: unknown;
+  huntWordIds?: string[] | string;
 }) {
   const { client, user, profile } = await assertPracticeReady();
   const ai = await getAiConfig();
@@ -248,6 +256,17 @@ export async function startConversation(input: {
     topicTitle = created.topic.fields.title;
   }
 
+  const specificHuntWordIds = typeof input.huntWordIds === "string"
+    ? input.huntWordIds.split(",").map((s) => s.trim()).filter(Boolean)
+    : Array.isArray(input.huntWordIds)
+    ? input.huntWordIds.filter((id): id is string => typeof id === "string")
+    : undefined;
+
+  const huntWords = await selectHuntWords(client, user.id, profile.id, {
+    specificWordIds: specificHuntWordIds,
+    count: 2
+  });
+
   const conversation = await client.createRecord<ConversationFields>("conversations", {
     Name: topicTitle,
     user_id: user.id,
@@ -261,7 +280,8 @@ export async function startConversation(input: {
     ended_at: "",
     duration_seconds: 0,
     ai_model_used: ai.chatModel ?? "",
-    summary: ""
+    summary: "",
+    hunt_words: JSON.stringify(huntWords)
   });
 
   await client.createRecord("practiceSessions", {
@@ -289,6 +309,7 @@ export async function startConversation(input: {
 
   return {
     conversation,
+    huntWords,
     redirectTo: `/chat?conversationId=${encodeURIComponent(conversation.id)}`
   };
 }
@@ -576,6 +597,24 @@ async function completeConversationTurn(
   const history = context.messages.some((message) => message.id === userMessage.id) ? context.messages : [...context.messages, userMessage];
   const analysisTurn = await createAnalyzedAssistantTurn(context.conversation, context.topicTitle, context.topicReason, context.profile, history, userMessage);
 
+  const huntWords = parseHuntWords(context.conversation.fields.hunt_words);
+  const huntWordsFound = detectHuntWordsInMessage(userMessage.fields.text, huntWords);
+
+  if (huntWordsFound.length > 0) {
+    const nowIso = new Date().toISOString();
+    for (const hw of huntWordsFound) {
+      trackConversationEvent(client, context.conversation.fields.user_id, "hunt_word_used", {
+        conversation_id: context.conversation.id,
+        word_id: hw.wordId,
+        lemma: hw.lemma
+      });
+      // Bônus SRS conservador: registra implicit_review_at na palavra
+      client.updateRecord<WordFields>("words", hw.wordId, {
+        implicit_review_at: nowIso
+      }).catch(() => undefined);
+    }
+  }
+
   trackConversationEvent(client, context.conversation.fields.user_id, "conversation_message_sent", {
     conversation_id: context.conversation.id,
     user_message_id: userMessage.id,
@@ -589,7 +628,8 @@ async function completeConversationTurn(
     userMessage,
     assistantMessage: analysisTurn.assistantMessage,
     corrections: analysisTurn.corrections,
-    words: analysisTurn.words
+    words: analysisTurn.words,
+    huntWordsFound
   };
 }
 
@@ -601,11 +641,15 @@ async function getExistingTurnResult(
   const assistantMessage = context.messages.slice(index + 1).find((message) => message.fields.role === "assistant");
   if (!assistantMessage) return null;
 
+  const huntWords = parseHuntWords(context.conversation.fields.hunt_words);
+  const huntWordsFound = detectHuntWordsInMessage(userMessage.fields.text, huntWords);
+
   return {
     userMessage,
     assistantMessage,
     corrections: context.corrections.filter((correction) => correction.fields.message_id === userMessage.id),
-    words: [] as TeableRecord<WordFields>[]
+    words: [] as TeableRecord<WordFields>[],
+    huntWordsFound
   };
 }
 

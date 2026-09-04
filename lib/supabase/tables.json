@@ -41,7 +41,9 @@
     {
       "key": "conversations",
       "tableName": "conversations",
-      "jsonbColumns": [],
+      "jsonbColumns": [
+        "hunt_words"
+      ],
       "fkColumns": {
         "user_id": "users",
         "language_profile_id": "language_profiles",

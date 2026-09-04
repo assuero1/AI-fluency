@@ -180,7 +180,12 @@ export async function getHomeData() {
       percent: todayGoal.percent,
       complete: todayGoal.complete,
       weekConversations,
-      weekConversationGoal
+      weekConversationGoal,
+      trail: {
+        newWordsDone: daySummary.newWordsToday > 0,
+        conversationDone: daySummary.conversationsToday > 0,
+        reviewDone: daySummary.flashcardSessionsToday > 0
+      }
     },
     quests,
     completedConversations: conversations.filter((conversation) => conversation.fields.status === "completed").length,

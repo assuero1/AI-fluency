@@ -12,7 +12,8 @@ export async function POST(request: Request) {
       source: typeof body.source === "string" ? body.source : undefined,
       reason: typeof body.reason === "string" ? body.reason : undefined,
       interactionMode: body.interactionMode,
-      targetUserMessageCount: body.targetUserMessageCount
+      targetUserMessageCount: body.targetUserMessageCount,
+      huntWordIds: (Array.isArray(body.huntWordIds) || typeof body.huntWordIds === "string") ? body.huntWordIds : undefined
     });
 
     after(() => flushConversationEventWrites());

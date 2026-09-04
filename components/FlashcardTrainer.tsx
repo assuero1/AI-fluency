@@ -9,6 +9,7 @@ import type { AnswerMatch, DailyQueueSummary, Flashcard, FlashcardAnswer, Flashc
 import { releaseMicForPlayback } from "@/lib/learning/speech";
 import { playSound } from "@/lib/client/ui-sound";
 import { vibrate } from "@/lib/client/haptics";
+import { comboAfterAnswer, comboSoundForStreak, initialComboState, type ComboState } from "@/lib/client/combo-tracker";
 import { BackButton } from "./BackButton";
 import { EmptyState } from "./EmptyState";
 import { LoadingScene } from "./LoadingScene";
@@ -36,6 +37,7 @@ export function FlashcardTrainer() {
   const [sessionId, setSessionId] = useState("");
   const [completionId, setCompletionId] = useState("");
   const [cards, setCards] = useState<Flashcard[]>([]);
+  const [combo, setCombo] = useState<ComboState>(initialComboState());
   const [languageCode, setLanguageCode] = useState("es");
   const [languageName, setLanguageName] = useState("idioma estudado");
   const [queue, setQueue] = useState<QueueItem[]>([]);
@@ -146,7 +148,7 @@ export function FlashcardTrainer() {
       const data = await response.json() as { ok?: boolean; error?: string; sessionId?: string; cards?: Flashcard[]; languageCode?: string; languageName?: string; adapted?: boolean };
       if (!response.ok || !data.ok || !data.sessionId || !data.cards?.length) throw new Error(data.error ?? "Não foi possível montar o treino.");
       const initialQueue = createFlashcardQueue(data.cards);
-      setSessionId(data.sessionId); setCompletionId(crypto.randomUUID()); setCards(data.cards); setQueue(initialQueue); setCurrentItem(selectNextQueueItem(initialQueue, 0)); setLanguageCode(data.languageCode ?? "es"); setLanguageName(data.languageName ?? "idioma estudado"); setAdapted(data.adapted === true); setResumable(null); setAnswers([]); setResult(null); resetAttempt();
+      setSessionId(data.sessionId); setCompletionId(crypto.randomUUID()); setCards(data.cards); setQueue(initialQueue); setCurrentItem(selectNextQueueItem(initialQueue, 0)); setLanguageCode(data.languageCode ?? "es"); setLanguageName(data.languageName ?? "idioma estudado"); setAdapted(data.adapted === true); setResumable(null); setAnswers([]); setResult(null); setCombo(initialComboState()); resetAttempt();
     } catch (startError) { setError(startError instanceof Error ? startError.message : "Não foi possível montar o treino."); }
     finally { setBusy(false); setWait("none"); }
   }
@@ -175,6 +177,9 @@ export function FlashcardTrainer() {
     const typedAnswer = forgot ? "" : input.trim();
     if (forgot) setInput("");
     const match = forgot ? "incorrect" as const : compareAnswerForCard(card, typedAnswer);
+    const wasCorrect = !forgot && (match === "exact" || match === "acceptable" || match === "minor_error");
+    const nextCombo = comboAfterAnswer(combo, wasCorrect);
+    setCombo(nextCombo);
     const responseTimeMs = Math.max(0, Date.now() - presentationStartedAt);
     setListening(false);
     try {
@@ -182,10 +187,10 @@ export function FlashcardTrainer() {
       const data = await response.json() as { ok?: boolean; hardDays?: number; easyDays?: number };
       if (!response.ok || !data.ok || typeof data.hardDays !== "number" || typeof data.easyDays !== "number") throw new Error("preview unavailable");
       setRevealed({ match, forgot, responseTimeMs, hardDays: data.hardDays, easyDays: data.easyDays });
-      celebrateMatch({ forgot, match });
+      celebrateMatch({ forgot, match }, nextCombo);
     } catch {
       setRevealed({ match, forgot, responseTimeMs, hardDays: null, easyDays: null });
-      celebrateMatch({ forgot, match });
+      celebrateMatch({ forgot, match }, nextCombo);
     }
   }
 
@@ -232,6 +237,12 @@ export function FlashcardTrainer() {
       const remainingAnswers = answers.slice(0, -1);
       const rebuilt = rebuildFlashcardQueue(cards, remainingAnswers);
       setAnswers(remainingAnswers); setQueue(rebuilt.queue); setCurrentItem(rebuilt.currentItem); setUndoState(null); resetAttempt();
+      let recomputedCombo = initialComboState();
+      for (const a of remainingAnswers) {
+        const correct = a.rating === "good" || a.rating === "easy" || a.rating === "hard";
+        recomputedCombo = comboAfterAnswer(recomputedCombo, correct);
+      }
+      setCombo(recomputedCombo);
     } catch (undoError) { setError(undoError instanceof Error ? undoError.message : "Não foi possível desfazer."); }
     finally { setBusy(false); }
   }
@@ -302,7 +313,7 @@ export function FlashcardTrainer() {
       <p className="subtitle">Cada tentativa ajustou o domínio e a próxima revisão das palavras.</p>
       <div className="flashcard-result-grid"><div><strong>{result.uniqueCardCount}</strong><span>cards únicos</span></div><div><strong>{result.presentationCount}</strong><span>apresentações</span></div><div><strong>{result.recoveredCards}</strong><span>recuperados</span></div></div>
       <section className="flashcard-result-details" aria-label="Detalhes do resultado">
-        <div><span>Primeira tentativa</span><strong>{formatAccuracy(result.firstAttemptAccuracy)}</strong></div><div><span>Recuperação final</span><strong>{formatAccuracy(result.eventualRecallAccuracy)}</strong></div><div><span>Tempo médio</span><strong>{formatResponseTime(result.averageResponseTimeMs)}</strong></div><div><span>Duração</span><strong>{formatDuration(result.durationSeconds)}</strong></div>
+        <div><span>Primeira tentativa</span><strong>{formatAccuracy(result.firstAttemptAccuracy)}</strong></div><div><span>Recuperação final</span><strong>{formatAccuracy(result.eventualRecallAccuracy)}</strong></div><div><span>Maior combo</span><strong>{combo.maxStreak}x</strong></div><div><span>Tempo médio</span><strong>{formatResponseTime(result.averageResponseTimeMs)}</strong></div><div><span>Duração</span><strong>{formatDuration(result.durationSeconds)}</strong></div>
       </section>
       <section className="flashcard-retrain" aria-label="Retreinos">
         <strong>Praticar novamente</strong>
@@ -316,6 +327,11 @@ export function FlashcardTrainer() {
       >
         <MessageCircle aria-hidden="true" size={16} /> Usar palavras em conversa
       </Link>
+      {result.score >= 80 && (
+        <Link href="/palavras/novas" className="outline-button full-button">
+          <Sparkles aria-hidden="true" size={18} /> Você dominou a fila! Descubra palavras novas
+        </Link>
+      )}
       <Link className="outline-button full-button" href="/palavras">Voltar às palavras</Link>
       {wait === "boot" ? <>
       <LoadingScene variant="overlay" moment="enter" palette="palavras" title="Montando seu treino..." />
@@ -337,7 +353,12 @@ export function FlashcardTrainer() {
         <Pill tone={card.type === "cloze" ? "info" : "primary"}>{cardTypeLabel(card.type, languageName)}</Pill>
         {card.targetSenseId && card.senseOrder && card.senseCount && card.senseCount > 1 ? <Pill tone="info">significado {card.senseOrder} de {card.senseCount}</Pill> : null}
       </div>
-      <section className="active-recall-card" aria-label={card.type === "listening" ? "Card de escuta" : "Card de recuperação ativa"}>
+      <section className={`active-recall-card${combo.onFire ? " on-fire" : ""}`} aria-label={card.type === "listening" ? "Card de escuta" : "Card de recuperação ativa"}>
+        {combo.streak >= 2 && (
+          <div className={`combo-badge visible${combo.onFire ? " on-fire" : ""}`} aria-label={`${combo.streak} acertos seguidos`}>
+            🔥 {combo.streak}x
+          </div>
+        )}
         <span>{card.type === "listening" ? "Ouça antes de responder" : card.type === "cloze" ? "Complete a frase" : "Lembre antes de responder"}</span>
         {card.type === "listening" ? <div className="flashcard-listening-controls">
           <VoiceButton languageCode={languageCode} label="Ouvir áudio" onAudioFailure={() => setAudioFailed(true)} onPlayback={(event) => { setAudioReplayCount((count) => count + 1); if (event.slow) setUsedSlowAudio(true); }} text={card.audioText ?? card.sentence ?? card.expectedAnswer} />
@@ -448,10 +469,18 @@ function isAutoForgot(revealed: { forgot: boolean; match: AnswerMatch }) {
 
 // Feedback do veredito no reveal: errado/não lembro desce, quase acerta soa
 // neutro, acerto sobe com vibração de sucesso. Falhas são silenciosas nas libs.
-function celebrateMatch(revealed: { forgot: boolean; match: AnswerMatch }) {
-  if (revealed.forgot || revealed.match === "incorrect" || revealed.match === "unknown") { playSound("wrong"); vibrate("warn"); return; }
-  if (revealed.match === "minor_error") { playSound("neutral"); return; }
-  playSound("correct");
+function celebrateMatch(revealed: { forgot: boolean; match: AnswerMatch }, currentCombo?: ComboState) {
+  if (revealed.forgot || revealed.match === "incorrect" || revealed.match === "unknown") {
+    playSound("wrong");
+    vibrate("warn");
+    return;
+  }
+  const soundToPlay = currentCombo ? comboSoundForStreak(currentCombo.streak) : "correct";
+  if (revealed.match === "minor_error") {
+    playSound(soundToPlay);
+    return;
+  }
+  playSound(soundToPlay);
   vibrate("success");
 }
 

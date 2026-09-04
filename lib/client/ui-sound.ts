@@ -1,6 +1,19 @@
 let ctx: AudioContext | null = null;
 
-export const SOUND_NAMES = ["button", "correct", "neutral", "wrong", "goal", "complete", "achievement"] as const;
+export const SOUND_NAMES = [
+  "button",
+  "correct",
+  "neutral",
+  "wrong",
+  "goal",
+  "complete",
+  "achievement",
+  "combo_1",
+  "combo_2",
+  "combo_3",
+  "combo_4",
+  "combo_5"
+] as const;
 export type SoundName = (typeof SOUND_NAMES)[number];
 
 export type SoundNote = { frequency: number; startAt: number; duration: number; type?: OscillatorType };
@@ -36,8 +49,19 @@ export const SOUND_CATALOG: Record<SoundName, SoundSpec> = {
     { frequency: 784, startAt: 0.2, duration: 0.1, type: "triangle" },
     { frequency: 1046, startAt: 0.3, duration: 0.14, type: "triangle" },
     { frequency: 1318, startAt: 0.42, duration: 0.22, type: "triangle" }
-  ] }
+  ] },
+  combo_1: { gain: 0.10, notes: [{ frequency: 523, startAt: 0, duration: 0.14, type: "triangle" }] },
+  combo_2: { gain: 0.10, notes: [{ frequency: 587, startAt: 0, duration: 0.14, type: "triangle" }] },
+  combo_3: { gain: 0.11, notes: [{ frequency: 659, startAt: 0, duration: 0.14, type: "triangle" }] },
+  combo_4: { gain: 0.11, notes: [{ frequency: 784, startAt: 0, duration: 0.14, type: "triangle" }] },
+  combo_5: { gain: 0.12, notes: [{ frequency: 1046, startAt: 0, duration: 0.14, type: "triangle" }] }
 };
+
+export function comboSoundName(streak: number): SoundName {
+  if (streak <= 0) return "correct";
+  if (streak >= 5) return "combo_5";
+  return `combo_${streak}` as SoundName;
+}
 
 const SOUND_ENABLED_KEY = "ai-fluency:sound-enabled";
 

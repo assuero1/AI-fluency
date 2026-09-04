@@ -142,7 +142,7 @@ describe("DeepInfra chat completions & connection", () => {
       messages: [{ role: "user", content: "Olá" }],
       reasoning_effort: "none"
     });
-    expect(capturedBody?.thinking).toBeUndefined();
+    expect((capturedBody as Record<string, unknown> | null)?.thinking).toBeUndefined();
 
     expect(result.content).toBe("Olá! Tudo bem com você?");
     expect(result.provider).toBe("deepinfra");

@@ -14,6 +14,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { MilestoneModal } from "./MilestoneModal";
 import { HomeTodayCard } from "./HomeTodayCard";
+import { DailyTrailCard } from "./DailyTrailCard";
 import { PushOptInCard } from "./PushOptInCard";
 import { QuestList } from "./QuestList";
 import { IconBubble } from "./IconBubble";
@@ -56,6 +57,11 @@ type HomeData = {
     complete: boolean;
     weekConversations: number;
     weekConversationGoal: number;
+    trail?: {
+      newWordsDone: boolean;
+      conversationDone: boolean;
+      reviewDone: boolean;
+    };
   };
   quests?: Array<{ key: string; title: string; target: number; progress: number; complete: boolean }>;
   completedConversations?: number;
@@ -187,6 +193,11 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           weekConversations={home.today.weekConversations}
         />
       ) : null}
+
+      <DailyTrailCard
+        trail={home.today?.trail}
+        onStartConversation={() => setStartDraft({ mode: "free_conversation", title: "Conversa livre" })}
+      />
 
       <QuestList quests={home.quests ?? []} />
 

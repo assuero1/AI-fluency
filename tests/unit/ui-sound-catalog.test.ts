@@ -3,7 +3,20 @@ import { SOUND_CATALOG, SOUND_NAMES } from "@/lib/client/ui-sound";
 
 describe("SOUND_CATALOG", () => {
   it("expõe exatamente os sons do catálogo", () => {
-    expect([...SOUND_NAMES].sort()).toEqual(["achievement", "button", "complete", "correct", "goal", "neutral", "wrong"]);
+    expect([...SOUND_NAMES].sort()).toEqual([
+      "achievement",
+      "button",
+      "combo_1",
+      "combo_2",
+      "combo_3",
+      "combo_4",
+      "combo_5",
+      "complete",
+      "correct",
+      "goal",
+      "neutral",
+      "wrong"
+    ]);
   });
 
   it("cada som tem notas e ganho dentro dos limites do app", () => {
