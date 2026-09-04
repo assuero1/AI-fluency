@@ -21,7 +21,8 @@ export async function POST(request: Request) {
     const result = await getOrCreateCachedSpeech(body.text ?? "", {
       voice,
       format,
-      speed
+      speed,
+      languageCode: speechLanguage
     });
 
     return jsonOk({ ok: true, languageCode: speechLanguage, ...result });

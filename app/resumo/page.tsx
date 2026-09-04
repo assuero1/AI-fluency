@@ -1,4 +1,4 @@
-import { BookOpen, Check, Clock, MessageCircle, MessageSquareOff } from "lucide-react";
+import { BookOpen, MessageSquareOff } from "lucide-react";
 import Link from "next/link";
 import { AppShell } from "@/components/AppShell";
 import { IconBubble } from "@/components/IconBubble";
@@ -48,19 +48,19 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
     {
       value: `${feedback.fields.correction_score}/10`,
       label: "Correções aplicadas",
-      icon: Check,
+      talkitoIcon: "check-stamp" as const,
       tone: "primary" as const
     },
     {
       value: `+${feedback.fields.new_words_count}`,
       label: "Novas palavras",
-      icon: MessageCircle,
+      talkitoIcon: "listening-bubble" as const,
       tone: "info" as const
     },
     {
       value: String(correctionsCount),
       label: "Erros recorrentes",
-      icon: Clock,
+      talkitoIcon: "clock-timer" as const,
       tone: "warning" as const
     },
     {
@@ -77,7 +77,7 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
       <ScreenHeader title="Conversa finalizada" subtitle={`${duration} min · Feedback salvo no calendário`} />
       <section className="section">
         <div className="celebration-hero pop-in">
-          <IconBubble Icon={Check} tone="primary" />
+          <IconBubble talkitoIcon="check-stamp" tone="primary" />
           <div className="row-copy">
             <div className="row-title">Muito bem, {learnerName}!</div>
             <div className="row-meta">{topicTitle}</div>
@@ -104,7 +104,7 @@ export default async function SummaryPage({ searchParams }: SummaryPageProps) {
                 key={word.id}
                 title={word.fields.display_text || word.fields.lemma}
                 meta={formatSavedWordMeta(word, data.wordSensesUsage)}
-                Icon={MessageCircle}
+                talkitoIcon="listening-bubble"
                 tone="primary"
               />
             ))

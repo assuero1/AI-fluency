@@ -18,7 +18,8 @@ export async function POST(request: Request) {
     const result = await prepareCaptionedSpeech(body.text ?? "", {
       voice,
       format,
-      speed
+      speed,
+      languageCode: speechLanguage
     });
 
     return jsonOk({ ok: true, languageCode: speechLanguage, ...result });

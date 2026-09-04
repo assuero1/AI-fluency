@@ -5,10 +5,11 @@ import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "n
 import path from "node:path";
 import { segmentMessage } from "@/lib/learning/captions";
 import { getActiveTTSProvider } from "@/lib/tts/factory";
-import { captionedSpeech, KokoroRequestError, streamSpeech, synthesizeSpeech, type WordTimestamp } from "./client";
+import type { SynthesisRequestOptions } from "@/lib/tts/types";
+import { KokoroRequestError, streamSpeech, type WordTimestamp } from "./client";
 import { getKokoroConfig } from "./config";
 import { resolveSynthesisRequest, SynthesisValidationError } from "./validation";
-import { normalizeSpeechLanguage, selectKokoroVoice } from "./voices";
+import { normalizeSpeechLanguage } from "./voices";
 
 type CachedAudioMetadata = {
   id: string;
@@ -67,7 +68,8 @@ export async function warmKokoroLanguage(languageCode: string | undefined) {
   await getOrCreateCachedSpeech(greetings[language] ?? greetings.en, {
     voice,
     format: provider.getOutputFormat(),
-    speed: provider.getSpeed()
+    speed: provider.getSpeed(),
+    languageCode: language
   });
 }
 
@@ -85,7 +87,12 @@ export async function warmCaptionedMessage(text: string, languageCode: string | 
   const speechLanguage = supportedSpeechLanguages.has(requested) ? requested : "en";
   const voice = provider.resolveVoice(speechLanguage);
   await Promise.all(segmentMessage(text).map((segment) =>
-    prepareCaptionedSpeech(segment, { voice, format: provider.getOutputFormat(), speed: provider.getSpeed() }).catch(() => undefined)
+    prepareCaptionedSpeech(segment, {
+      voice,
+      format: provider.getOutputFormat(),
+      speed: provider.getSpeed(),
+      languageCode: speechLanguage
+    }).catch(() => undefined)
   ));
 }
 
@@ -106,13 +113,18 @@ export async function warmCachedSpeech(texts: string[], languageCode: string | u
     while (queue.length) {
       const text = queue.shift();
       if (text === undefined) break;
-      await getOrCreateCachedSpeech(text, { voice, format: provider.getOutputFormat(), speed: provider.getSpeed() }).catch(() => undefined);
+      await getOrCreateCachedSpeech(text, {
+        voice,
+        format: provider.getOutputFormat(),
+        speed: provider.getSpeed(),
+        languageCode: speechLanguage
+      }).catch(() => undefined);
     }
   });
   await Promise.all(workers);
 }
 
-export async function prepareCachedSpeech(input: string, options?: { voice?: string; format?: string; speed?: number }): Promise<CachedSpeech> {
+export async function prepareCachedSpeech(input: string, options?: SynthesisRequestOptions): Promise<CachedSpeech> {
   const provider = getActiveTTSProvider();
   const config = provider.getSynthesisConfig();
   const cacheConfig = getKokoroConfig();
@@ -123,7 +135,7 @@ export async function prepareCachedSpeech(input: string, options?: { voice?: str
     if (error instanceof SynthesisValidationError) throw new KokoroRequestError(error.message, error.status);
     throw error;
   }
-  const audioId = createAudioId(request.text, request.voice, request.outputFormat, request.speed, provider.type);
+  const audioId = createAudioId(request.text, request.voice, request.outputFormat, request.speed, provider.type, request.languageCode);
   const cached = await getCachedSpeech(audioId);
   if (cached) return { ...cached, cached: true };
 
@@ -149,7 +161,7 @@ export async function prepareCachedSpeech(input: string, options?: { voice?: str
   };
 }
 
-export async function prepareCaptionedSpeech(input: string, options?: { voice?: string; format?: string; speed?: number }): Promise<CaptionedSpeechResult> {
+export async function prepareCaptionedSpeech(input: string, options?: SynthesisRequestOptions): Promise<CaptionedSpeechResult> {
   const provider = getActiveTTSProvider();
   const config = provider.getSynthesisConfig();
   const cacheConfig = getKokoroConfig();
@@ -160,7 +172,7 @@ export async function prepareCaptionedSpeech(input: string, options?: { voice?: 
     if (error instanceof SynthesisValidationError) throw new KokoroRequestError(error.message, error.status);
     throw error;
   }
-  const audioId = createAudioId(request.text, request.voice, request.outputFormat, request.speed, provider.type);
+  const audioId = createAudioId(request.text, request.voice, request.outputFormat, request.speed, provider.type, request.languageCode);
 
   const cached = await getCachedSpeech(audioId);
   if (cached) {
@@ -186,12 +198,17 @@ export async function prepareCaptionedSpeech(input: string, options?: { voice?: 
 }
 
 async function synthesizeCaptionedSpeech(
-  request: { text: string; voice: string; outputFormat: string; speed: number },
+  request: { text: string; voice: string; outputFormat: string; speed: number; languageCode?: string },
   audioId: string
 ): Promise<CaptionedSpeechResult> {
   const provider = getActiveTTSProvider();
   const config = getKokoroConfig();
-  const result = await provider.captionedSpeech(request.text, { voice: request.voice, format: request.outputFormat, speed: request.speed });
+  const result = await provider.captionedSpeech(request.text, {
+    voice: request.voice,
+    format: request.outputFormat,
+    speed: request.speed,
+    languageCode: request.languageCode
+  });
   await mkdir(config.cacheDir, { recursive: true });
   const metadata: CachedAudioMetadata = {
     id: audioId,
@@ -224,7 +241,7 @@ async function synthesizeCaptionedSpeech(
   };
 }
 
-export async function getOrCreateCachedSpeech(input: string, options?: { voice?: string; format?: string; speed?: number }): Promise<CachedSpeech> {
+export async function getOrCreateCachedSpeech(input: string, options?: SynthesisRequestOptions): Promise<CachedSpeech> {
   const provider = getActiveTTSProvider();
   const config = provider.getSynthesisConfig();
   let request: ReturnType<typeof resolveSynthesisRequest>;
@@ -234,7 +251,7 @@ export async function getOrCreateCachedSpeech(input: string, options?: { voice?:
     if (error instanceof SynthesisValidationError) throw new KokoroRequestError(error.message, error.status);
     throw error;
   }
-  const audioId = createAudioId(request.text, request.voice, request.outputFormat, request.speed, provider.type);
+  const audioId = createAudioId(request.text, request.voice, request.outputFormat, request.speed, provider.type, request.languageCode);
   const cached = await getCachedSpeech(audioId);
   if (cached) return { ...cached, cached: true };
 
@@ -389,11 +406,16 @@ async function persistStreamedAudio(
   void pruneAudioCache(config.cacheDir, config.cacheMaxMb * 1024 * 1024, config.cacheMaxAgeDays).catch(() => undefined);
 }
 
-async function createCachedSpeech(input: { audioId: string; text: string; voice: string; outputFormat: string; speed: number }): Promise<CachedSpeech> {
+async function createCachedSpeech(input: { audioId: string; text: string; voice: string; outputFormat: string; speed: number; languageCode?: string }): Promise<CachedSpeech> {
   const provider = getActiveTTSProvider();
   const config = getKokoroConfig();
   await mkdir(config.cacheDir, { recursive: true });
-  const result = await provider.synthesizeSpeech(input.text, { voice: input.voice, format: input.outputFormat, speed: input.speed });
+  const result = await provider.synthesizeSpeech(input.text, {
+    voice: input.voice,
+    format: input.outputFormat,
+    speed: input.speed,
+    languageCode: input.languageCode
+  });
   const extension = extensionFor(result.outputFormat, result.contentType);
   const metadata: CachedAudioMetadata = {
     id: input.audioId,
@@ -424,10 +446,11 @@ async function createCachedSpeech(input: { audioId: string; text: string; voice:
   };
 }
 
-export function createAudioId(text: string, voice: string, outputFormat: string, speed = 1, provider = "kokoro") {
+export function createAudioId(text: string, voice: string, outputFormat: string, speed = 1, provider = "kokoro", languageCode?: string) {
+  const normLang = normalizeSpeechLanguage(languageCode);
   const payload = provider === "kokoro"
     ? { version: 2, text: text.normalize("NFC"), voice, outputFormat, speed }
-    : { version: 2, provider, text: text.normalize("NFC"), voice, outputFormat, speed };
+    : { version: 2, provider, language: normLang, text: text.normalize("NFC"), voice, outputFormat, speed };
   return createHash("sha256")
     .update(JSON.stringify(payload))
     .digest("hex");

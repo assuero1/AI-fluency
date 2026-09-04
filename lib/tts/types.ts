@@ -33,6 +33,7 @@ export type SynthesizedSpeechResult = {
   outputFormat: string;
   voice: string;
   audioBuffer: Buffer;
+  words?: WordTimestamp[];
 };
 
 export type CaptionedSpeechResult = {

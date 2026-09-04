@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { AiConfigError, AiRequestError } from "@/lib/ai/client";
-import { KokoroConfigError, KokoroRequestError } from "@/lib/kokoro/client";
+import { KokoroRequestError } from "@/lib/kokoro/client";
 import { TTSConfigError, TTSRequestError } from "@/lib/tts/types";
 import { AccountValidationError } from "@/lib/learning/account";
 import { LearningStateError } from "@/lib/learning/access";

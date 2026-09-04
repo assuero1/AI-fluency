@@ -63,6 +63,12 @@ describe("TTS Provider Selection and Cache Isolation", () => {
     // Kokoro default matches legacy call without provider arg
     const legacyKokoroId = createAudioId(text, voice, format, speed);
     expect(legacyKokoroId).toBe(kokoroId);
+
+    // DeepInfra differentiates languages with the same text and voice
+    const deepInfraPt = createAudioId(text, voice, format, speed, "deepinfra", "pt");
+    const deepInfraEs = createAudioId(text, voice, format, speed, "deepinfra", "es");
+    expect(deepInfraPt).not.toBe(deepInfraEs);
+    expect(deepInfraPt).not.toBe(deepInfraId);
   });
 
   it("getTTSStatus returns correct provider details", () => {
@@ -139,5 +145,35 @@ describe("TTS Provider Selection and Cache Isolation", () => {
     expect(body.languageCode).toBe("pt");
     expect(body.words).toEqual([]);
     expect(body.audioUrl).toMatch(/^\/api\/voice\/[a-f0-9]{64}$/);
+  });
+
+  it("POST /api/voice/captioned works with deepinfra provider and returns parsed words when provided", async () => {
+    vi.stubEnv("TTS_PROVIDER", "deepinfra");
+    vi.stubEnv("DEEPINFRA_API_KEY", "di-key");
+
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      audio: SAMPLE_BASE64_AUDIO,
+      words: [
+        { id: 1, start: 0.05, end: 0.35, text: "Olá" },
+        { id: 2, start: 0.38, end: 0.8, text: "amigo" }
+      ]
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })));
+
+    const response = await postCaptioned(jsonRequest("http://localhost/api/voice/captioned", {
+      text: "Olá amigo",
+      languageCode: "pt"
+    }));
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { ok: boolean; audioUrl: string; words: unknown[]; languageCode: string };
+    expect(body.ok).toBe(true);
+    expect(body.languageCode).toBe("pt");
+    expect(body.words).toEqual([
+      { word: "Olá", start_time: 0.05, end_time: 0.35 },
+      { word: "amigo", start_time: 0.38, end_time: 0.8 }
+    ]);
   });
 });

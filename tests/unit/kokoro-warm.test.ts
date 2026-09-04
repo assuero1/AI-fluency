@@ -82,9 +82,9 @@ describe("warmCachedSpeech", () => {
     await warmCachedSpeech(["Hello."], "de");
     // Língua suportada nova (japonês) resolve para sua voz configurada.
     await warmCachedSpeech(["こんにちは。"], "ja");
-    const calls = synthesizeSpeech.mock.calls as unknown as Array<[string, { voice: string; format: string; speed: number }]>;
-    expect(calls[0][1]).toEqual({ voice: "pf_dora", format: "mp3", speed: 1.08 });
-    expect(calls[1][1]).toEqual({ voice: "af_heart", format: "mp3", speed: 1.08 });
-    expect(calls[2][1]).toEqual({ voice: "jf_alpha", format: "mp3", speed: 1.08 });
+    const calls = synthesizeSpeech.mock.calls as unknown as Array<[string, { voice: string; format: string; speed: number; languageCode?: string }]>;
+    expect(calls[0][1]).toEqual({ voice: "pf_dora", format: "mp3", speed: 1.08, languageCode: "pt" });
+    expect(calls[1][1]).toEqual({ voice: "af_heart", format: "mp3", speed: 1.08, languageCode: "en" });
+    expect(calls[2][1]).toEqual({ voice: "jf_alpha", format: "mp3", speed: 1.08, languageCode: "ja" });
   });
 });

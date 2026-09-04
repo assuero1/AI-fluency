@@ -121,7 +121,9 @@ describe("DeepInfra Chatterbox client", () => {
 
     expect(capturedBody).toMatchObject({
       text: "Olá, vamos praticar hoje.",
+      language_id: "pt",
       language: "pt",
+      response_format: "mp3",
       voice_id: "pt-voice-id",
       speed: 1.1,
       exaggeration: 0.5
@@ -151,5 +153,25 @@ describe("DeepInfra Chatterbox client", () => {
     expect(result.ok).toBe(true);
     expect(result.words).toEqual([]);
     expect(result.audioBuffer).toEqual(Buffer.from([0x52, 0x49, 0x46, 0x46, 0x00, 0x00]));
+  });
+
+  it("captionedDeepInfraSpeech extracts word timestamps returned by DeepInfra", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+      audio: SAMPLE_BASE64_AUDIO,
+      words: [
+        { id: 1, start: 0.12, end: 0.45, text: "Olá" },
+        { id: 2, start: 0.48, end: 0.95, text: "mundo" }
+      ]
+    }), {
+      status: 200,
+      headers: { "content-type": "application/json" }
+    })));
+
+    const result = await captionedDeepInfraSpeech("Olá mundo", { languageCode: "pt" });
+    expect(result.ok).toBe(true);
+    expect(result.words).toEqual([
+      { word: "Olá", start_time: 0.12, end_time: 0.45 },
+      { word: "mundo", start_time: 0.48, end_time: 0.95 }
+    ]);
   });
 });

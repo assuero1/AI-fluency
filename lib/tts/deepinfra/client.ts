@@ -1,4 +1,12 @@
-import { TTSConfigError, TTSRequestError, type CaptionedSpeechResult, type SynthesizedSpeechResult, type TTSConnectionTestResult, type SynthesisRequestOptions } from "@/lib/tts/types";
+import {
+  TTSConfigError,
+  TTSRequestError,
+  type CaptionedSpeechResult,
+  type SynthesizedSpeechResult,
+  type TTSConnectionTestResult,
+  type SynthesisRequestOptions,
+  type WordTimestamp
+} from "@/lib/tts/types";
 import { normalizeSpeechLanguage } from "@/lib/kokoro/voices";
 import { getDeepInfraConfig } from "./config";
 
@@ -15,25 +23,62 @@ export function decodeBase64Audio(raw: string): Buffer {
   return Buffer.from(cleaned, "base64");
 }
 
-export async function extractAudioBuffer(
+export async function extractAudioData(
   response: Response,
   contentType: string
-): Promise<Buffer> {
+): Promise<{ audioBuffer: Buffer; words: WordTimestamp[] }> {
   const isBinary =
     contentType.startsWith("audio/") ||
     contentType.includes("application/octet-stream");
 
   if (isBinary) {
     const arrayBuffer = await response.arrayBuffer();
-    return Buffer.from(arrayBuffer);
+    return {
+      audioBuffer: Buffer.from(arrayBuffer),
+      words: []
+    };
   }
 
-  const data = (await response.json().catch(() => null)) as { audio?: string; error?: unknown } | null;
+  const data = (await response.json().catch(() => null)) as {
+    audio?: string;
+    words?: Array<{
+      id?: number;
+      start?: number;
+      end?: number;
+      text?: string;
+      word?: string;
+      start_time?: number;
+      end_time?: number;
+    }>;
+    error?: unknown;
+  } | null;
+
   if (!data?.audio) {
     throw new DeepInfraRequestError("DeepInfra response did not contain audio data.", 502, data);
   }
 
-  return decodeBase64Audio(data.audio);
+  const words: WordTimestamp[] = Array.isArray(data.words)
+    ? data.words
+        .map((entry) => ({
+          word: String(entry.text ?? entry.word ?? "").trim(),
+          start_time: Number(entry.start ?? entry.start_time ?? 0),
+          end_time: Number(entry.end ?? entry.end_time ?? 0)
+        }))
+        .filter((entry) => Boolean(entry.word) && Number.isFinite(entry.start_time) && Number.isFinite(entry.end_time))
+    : [];
+
+  return {
+    audioBuffer: decodeBase64Audio(data.audio),
+    words
+  };
+}
+
+export async function extractAudioBuffer(
+  response: Response,
+  contentType: string
+): Promise<Buffer> {
+  const { audioBuffer } = await extractAudioData(response, contentType);
+  return audioBuffer;
 }
 
 export async function testDeepInfraConnection(): Promise<TTSConnectionTestResult> {
@@ -52,8 +97,10 @@ export async function testDeepInfraConnection(): Promise<TTSConnectionTestResult
     },
     body: JSON.stringify({
       text: "Hello, let's practice today.",
+      language_id: "en",
       language: "en",
-      ...(config.defaultVoice ? { voice_id: config.defaultVoice } : {})
+      response_format: config.outputFormat,
+      ...(config.defaultVoice && config.defaultVoice !== "default" ? { voice_id: config.defaultVoice } : {})
     }),
     cache: "no-store",
     signal: AbortSignal.timeout(15_000)
@@ -107,10 +154,12 @@ export async function synthesizeDeepInfraSpeech(
 
   const payload: Record<string, unknown> = {
     text,
-    language: lang
+    language_id: lang,
+    language: lang,
+    response_format: outputFormat
   };
 
-  if (voice) {
+  if (voice && voice !== "default") {
     payload.voice_id = voice;
   }
   if (options?.speed && Number.isFinite(options.speed)) {
@@ -120,6 +169,7 @@ export async function synthesizeDeepInfraSpeech(
     payload.exaggeration = config.exaggeration;
   }
   if (config.cfgWeight !== undefined) {
+    payload.cfg = config.cfgWeight;
     payload.cfg_weight = config.cfgWeight;
   }
 
@@ -142,7 +192,7 @@ export async function synthesizeDeepInfraSpeech(
     throw new DeepInfraRequestError(`DeepInfra request failed: ${response.status}`, response.status, body);
   }
 
-  const audioBuffer = await extractAudioBuffer(response, contentType);
+  const { audioBuffer, words } = await extractAudioData(response, contentType);
   const finalContentType = contentType.startsWith("audio/") ? contentType : `audio/${outputFormat}`;
 
   return {
@@ -150,7 +200,8 @@ export async function synthesizeDeepInfraSpeech(
     contentType: finalContentType,
     outputFormat,
     voice: voice || "default",
-    audioBuffer
+    audioBuffer,
+    words
   };
 }
 
@@ -161,6 +212,6 @@ export async function captionedDeepInfraSpeech(
   const result = await synthesizeDeepInfraSpeech(input, options);
   return {
     ...result,
-    words: []
+    words: result.words ?? []
   };
 }

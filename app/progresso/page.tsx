@@ -1,4 +1,4 @@
-import { BarChart3, Check, CircleAlert, MessageCircle, Target, TrendingUp } from "lucide-react";
+import { BarChart3, Check, MessageCircle } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { plura } from "@/lib/plural";
 import { FocusPracticeButton } from "@/components/FocusPracticeButton";
@@ -7,6 +7,7 @@ import { ListRow } from "@/components/ListRow";
 import { MetricGrid } from "@/components/MetricGrid";
 import { Pill } from "@/components/Pill";
 import { ScreenHeader } from "@/components/ScreenHeader";
+import { TalkitoIcon } from "@/components/TalkitoIcon";
 import { getProgressData } from "@/lib/learning/progress";
 import { MiniChart } from "@/components/MiniChart";
 
@@ -19,21 +20,21 @@ export default async function ProgressPage() {
       value: progress.metrics.correctionScore ? `${progress.metrics.correctionScore}/10` : "—",
       label: "Correções aplicadas",
       foot: plura(progress.profile.monthlyConversations, "sessão neste mês", "sessões neste mês"),
-      icon: Check,
+      talkitoIcon: "check-stamp" as const,
       tone: "primary" as const
     },
     {
       value: String(progress.metrics.flashcardWords),
       label: "Palavras revisadas",
       foot: `${progress.metrics.flashcardMinutes} min em cards`,
-      icon: Check,
+      talkitoIcon: "check-stamp" as const,
       tone: "warning" as const
     },
     {
       value: String(progress.metrics.consolidatedWords),
       label: "Consolidadas",
       foot: `${progress.metrics.difficultWords} difíceis · ${progress.metrics.recoveredWords} recuperadas`,
-      icon: TrendingUp,
+      talkitoIcon: "growth-stairs" as const,
       tone: "info" as const
     }
   ];
@@ -119,7 +120,7 @@ export default async function ProgressPage() {
         <h2 className="section-title">Foco da semana</h2>
         <div className="progress-focus-card">
           <div className="top-row">
-            <Target aria-hidden="true" size={24} />
+            <TalkitoIcon name="target" size={24} />
             <Pill tone="primary">recomendado</Pill>
           </div>
           <div className="row-title mt-4">
@@ -136,7 +137,7 @@ export default async function ProgressPage() {
           {progress.errors.length > 0 ? (
             progress.errors.slice(0, 3).map((error) => (
               <div className="list-row progress-error-row" key={error.type}>
-                <IconBubble Icon={CircleAlert} tone="warning" />
+                <IconBubble talkitoIcon="alert-badge" tone="warning" />
                 <div className="row-copy">
                   <div className="row-title">{formatErrorLabel(error.type)}</div>
                   <div className="row-meta">

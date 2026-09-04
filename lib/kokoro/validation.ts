@@ -16,7 +16,7 @@ export type SynthesisConfig = {
 
 export function resolveSynthesisRequest(
   input: string,
-  options: { voice?: string; format?: string; speed?: number } | undefined,
+  options: { voice?: string; format?: string; speed?: number; languageCode?: string } | undefined,
   config: SynthesisConfig
 ) {
   const text = input.trim();
@@ -32,5 +32,11 @@ export function resolveSynthesisRequest(
   if (!config.allowedFormats.includes(outputFormat)) throw new SynthesisValidationError("Audio format is not allowed for speech synthesis.");
   if (!Number.isFinite(speed) || speed < 0.25 || speed > 4) throw new SynthesisValidationError("Speech speed is not allowed.");
 
-  return { text, voice, outputFormat, speed };
+  return {
+    text,
+    voice,
+    outputFormat,
+    speed,
+    ...(options?.languageCode ? { languageCode: options.languageCode } : {})
+  };
 }
