@@ -1,4 +1,4 @@
-const CACHE_NAME = "ai-fluency-shell-v24";
+const CACHE_NAME = "ai-fluency-shell-v25";
 const APP_SHELL = ["/offline", "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png"];
 
 self.addEventListener("install", (event) => {

@@ -80,6 +80,19 @@
   --streak: #f59d1f;
   --surface-muted: #f8f5ee;
 
+  /* v2 — superfícies, elevação e motion (docs/PLANO_MODERNIZACAO_UI.md §2) */
+  --line-soft: #efe9df;
+  --surface-2: #f5f1e9;
+  --shadow-card: 0 1px 2px rgba(31, 25, 16, .04), 0 10px 28px rgba(31, 25, 16, .06);
+  --shadow-cta: 0 2px 0 var(--section-deep);
+  --motion-press: 110ms;
+  --motion-fast: 160ms;
+  --motion-base: 240ms;
+  --motion-spring: 420ms;
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-inout: cubic-bezier(0.77, 0, 0.175, 1);
+  --ease-spring: cubic-bezier(0.34, 1.4, 0.64, 1);
+
   color-scheme: light;
 }
 
@@ -93,6 +106,7 @@
 
 * {
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
 }
 
 html,
@@ -102,6 +116,12 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-nunito), ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  /* Peso base CALMO (v2): quem quiser gritar declara o próprio peso.
+     Títulos e labels já declaram; texto solto herda 500. */
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
@@ -427,7 +447,7 @@ a {
   background: var(--surface);
   color: var(--text);
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
 }
 
@@ -492,8 +512,9 @@ a {
   border: 1px solid var(--line);
   background: #fff;
   color: var(--text);
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
 }
 
 .dark-button {
@@ -654,17 +675,17 @@ a {
 
 .row-title {
   color: var(--text);
-  font-size: 18px;
-  font-weight: 800;
-  line-height: 1.2;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
 .row-meta {
   margin-top: 6px;
   color: var(--muted);
   font-size: 14px;
-  font-weight: 600;
-  line-height: 1.35;
+  font-weight: 500;
+  line-height: 1.4;
 }
 
 .link-action {
@@ -2757,7 +2778,9 @@ textarea:focus-visible,
   box-shadow: 0 3px 0 rgba(31, 25, 16, .05);
 }
 .choice-card { transition: transform .12s ease, box-shadow .12s ease; }
-.choice-card:hover { transform: translateY(-2px); box-shadow: 0 5px 0 rgba(31, 25, 16, .07); }
+@media (hover: hover) and (pointer: fine) {
+  .choice-card:hover { transform: translateY(-2px); box-shadow: 0 5px 0 rgba(31, 25, 16, .07); }
+}
 .choice-card.active { border-color: var(--section); }
 
 /* === Textos e ícones sobre fundos claros usam o tom profundo da seção === */
@@ -2873,7 +2896,9 @@ textarea:focus-visible,
 .progress-line span { background: var(--section); }
 .bubble.user { background: var(--section-soft); }
 .mic-button { background: var(--section-soft); }
-.list-row:hover { transform: translateY(-2px); }
+@media (hover: hover) and (pointer: fine) {
+  .list-row:hover { transform: translateY(-2px); }
+}
 .interval-hint { display: block; font-size: 12px; opacity: 0.7; font-weight: 400; }
 
 /* === Telas de autenticação (login, signup, reset) === */

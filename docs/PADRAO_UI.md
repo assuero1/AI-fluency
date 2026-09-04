@@ -29,16 +29,21 @@ Derivados: `--space-section: 32` (entre seções) · `--card-pad: 20` (padding i
 | `--radius-xl` | 32 | só o hero: faces do flashcard / active-recall / resultado |
 | `--radius-pill` | 999 | pills, avatares, botões redondos |
 
-### Tipografia (Nunito — pesos permitidos: 600 / 700 / 800 / 900)
+### Tipografia (Nunito variável — v2 "Sticker Calmo")
+
+O **peso base do body é 500** (calmo); quem quiser destaque declara o peso. Display e eyebrow são
+os únicos 900.
 
 | Papel | Classe/tamanho | Especificação |
 |---|---|---|
 | Display (título de tela) | `.title` | 31/900 |
 | Título de seção | `.section-title` | 20/800 |
-| Título de linha/card | `.row-title` | 18/800 |
-| Corpo | — | 16/700 |
-| Meta/label | `.row-meta` | 14/600 |
-| Caption | — | 12/700 |
+| Título de linha/card | `.row-title` | 17/700 |
+| Corpo | herdado do body | 16/500 |
+| Meta/label | `.row-meta` | 14/500 |
+| Pills (controle) | `.pill` | 16/600 |
+| Caption | — | 12/500–700 |
+| Botão | `*-button` | 17/800, tracking −0.01em |
 | Eyebrow | `.eyebrow` | 12/900 caps, tracking 0.08em |
 | Métrica | `.metric-value` | clamp(24–28)/900 |
 | Assinatura | `.word-big` | 52/900 |
@@ -52,6 +57,18 @@ Derivados: `--space-section: 32` (entre seções) · `--card-pad: 20` (padding i
 - Paleta por seção (`.section-*`): `--section`, `--section-deep`, `--section-soft`, `--section-text` — sempre via var, nunca hex.
 - Semânticas: `--warning(-soft)`, `--info(-soft)`, `--danger(-deep/-soft)`, `--neutral(-deep/-soft)`.
 - Complementares: `--streak` (#f59d1f, cor única da chama) · `--surface-muted` (#f8f5ee, bolha da IA).
+
+### Superfícies, elevação e motion (tokens v2)
+
+- `--line-soft` (hairline leve) · `--surface-2` (superfície aninhada dentro de card).
+- `--shadow-card` (elevação difusa dos cards) · `--shadow-cta` (chunk do botão primário — o único 3D da tela).
+- Motion: `--motion-press` 110ms · `--motion-fast` 160ms · `--motion-base` 240ms · `--motion-spring` 420ms;
+  curvas `--ease-out` (entradas), `--ease-inout` (movimento na tela), `--ease-spring` (celebração).
+- **Regra de frequência**: navegação/teclado não animam; ação frequente ≤ 280ms; saída de modal
+  sempre mais rápida que a entrada; celebração (raro) pode exagerar. Detalhes em
+  `docs/PLANO_MODERNIZACAO_UI.md` §2.6.
+- Higiene: `-webkit-tap-highlight-color: transparent` global; hover de transform só dentro de
+  `@media (hover: hover) and (pointer: fine)`.
 
 ## Semântica de botões
 
