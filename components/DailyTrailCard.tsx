@@ -2,6 +2,7 @@
 
 import { Brain, Check, ChevronRight, MessageCircle, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { Pill } from "./Pill";
 
 export type DailyTrailStatus = {
   newWordsDone: boolean;
@@ -29,7 +30,7 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
       title: "Palavras Novas",
       hint: "Unboxing & Adoção",
       icon: Sparkles,
-      tone: "palavras",
+      tone: "palavras" as const,
       done: newWordsDone,
       href: "/palavras/novas",
       action: null
@@ -40,7 +41,7 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
       title: "Conversar com IA",
       hint: "Caça a Palavras",
       icon: MessageCircle,
-      tone: "chat",
+      tone: "chat" as const,
       done: conversationDone,
       href: null,
       action: onStartConversation
@@ -51,7 +52,7 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
       title: "Revisão Inteligente",
       hint: "Combos em Chamas",
       icon: Brain,
-      tone: "brand",
+      tone: "brand" as const,
       done: reviewDone,
       href: "/palavras/treino",
       action: null
@@ -63,30 +64,46 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
       <div className="top-row">
         <div>
           <h2 className="section-title">Trilha do Dia</h2>
-          <p className="row-meta">
-            {allComplete
-              ? "Parabéns! Você completou o ciclo de retenção hoje."
-              : "Complete o ciclo virtuoso: Novas → Chat → Revisão"}
-          </p>
         </div>
-        <span
+        <Pill
           aria-label={`${completedCount} de 3 etapas concluídas`}
-          className={`trail-progress-badge${allComplete ? " all-done" : ""}`}
+          className="trail-progress-badge"
+          tone={allComplete ? "primary" : "default"}
         >
           {allComplete ? "🎉 3/3" : `${completedCount}/3`}
-        </span>
+        </Pill>
       </div>
+
+      <div
+        aria-label={`${completedCount} de 3 etapas concluídas`}
+        aria-valuemax={3}
+        aria-valuemin={0}
+        aria-valuenow={completedCount}
+        className="progress-line"
+        role="progressbar"
+      >
+        <span
+          className="progress-fill"
+          style={{ transform: `scaleX(${completedCount / 3})` }}
+        />
+      </div>
+
+      <p className="row-meta">
+        {allComplete
+          ? "Parabéns! Você completou o ciclo de retenção hoje."
+          : "Complete o ciclo virtuoso: Novas → Chat → Revisão"}
+      </p>
 
       <ol className="trail-step-list">
         {steps.map((step) => {
           const StepIcon = step.icon;
           const content = (
             <>
-              <span className={`trail-step-indicator ${step.tone}${step.done ? " done" : ""}`}>
+              <span className={`trail-step-bubble ${step.tone}${step.done ? " done" : ""}`}>
                 {step.done ? (
-                  <Check aria-hidden="true" size={16} />
+                  <Check aria-hidden="true" size={20} strokeWidth={2.6} />
                 ) : (
-                  <span className="trail-step-num">{step.stepNumber}</span>
+                  <StepIcon aria-hidden="true" size={20} strokeWidth={2.2} />
                 )}
               </span>
               <div className="trail-step-content">
@@ -94,11 +111,17 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
                   <span className={`trail-step-title${step.done ? " done-text" : ""}`}>
                     {step.title}
                   </span>
-                  <span className="trail-step-hint">{step.hint}</span>
+                  <span className="trail-step-badge">Passo {step.stepNumber}</span>
                 </div>
+                <span className="trail-step-hint">{step.hint}</span>
               </div>
-              <StepIcon aria-hidden="true" className={`trail-step-icon ${step.tone}`} size={20} />
-              <ChevronRight aria-hidden="true" className="trail-step-arrow" size={16} />
+              {step.done ? (
+                <span className="trail-step-done-pill" title="Concluído">
+                  <Check aria-hidden="true" size={13} strokeWidth={2.6} /> Concluído
+                </span>
+              ) : (
+                <ChevronRight aria-hidden="true" className="trail-step-arrow" size={18} />
+              )}
             </>
           );
 
