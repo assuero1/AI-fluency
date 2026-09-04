@@ -30,7 +30,11 @@ export async function buildSeamlessTrack(urls: string[]): Promise<SeamlessTrack>
     const response = await fetch(url);
     if (!response.ok) throw new Error(`Audio fetch failed: ${response.status}`);
     const raw = await response.arrayBuffer();
-    return decodeContext.decodeAudioData(raw);
+    try {
+      return await decodeContext.decodeAudioData(raw);
+    } catch (decodeErr) {
+      throw new Error(`decodeAudioData failed for ${url}: ${decodeErr instanceof Error ? decodeErr.message : String(decodeErr)}`);
+    }
   }));
 
   const sampleRate = buffers[0]?.sampleRate ?? 44100;

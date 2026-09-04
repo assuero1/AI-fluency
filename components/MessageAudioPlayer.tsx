@@ -114,15 +114,25 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
       try {
         const urls = await Promise.all(lines.map((line) => requestSpeech(line, languageCode, attempt > 0)));
         if (generationRef.current !== generation) return false;
-        const seamless = await buildSeamlessTrack(urls);
-        if (generationRef.current !== generation) {
-          seamless.dispose();
-          return false;
+        if (urls.length === 1) {
+          ensureAudioElement().src = urls[0];
+          return true;
         }
-        seamlessRef.current?.dispose();
-        seamlessRef.current = seamless;
-        ensureAudioElement().src = seamless.audioUrl;
-        return true;
+        try {
+          const seamless = await buildSeamlessTrack(urls);
+          if (generationRef.current !== generation) {
+            seamless.dispose();
+            return false;
+          }
+          (seamlessRef.current as SeamlessTrack | null)?.dispose();
+          seamlessRef.current = seamless;
+          ensureAudioElement().src = seamless.audioUrl;
+          return true;
+        } catch {
+          // Fallback se buildSeamlessTrack falhar (ex: Web Audio sem suporte a codec): toca a primeira parte direto
+          ensureAudioElement().src = urls[0];
+          return true;
+        }
       } catch (error) {
         lastErrorRef.current = error instanceof Error ? error.message : String(error);
       }
