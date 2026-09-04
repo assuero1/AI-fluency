@@ -90,26 +90,17 @@ describe("chunky playful redesign contracts", () => {
     expect(css).toContain("box-shadow: 0 3px 0 rgba(31, 25, 16, .05)");
   });
 
-  it("renders animated typing dots in the chat instead of static text", () => {
-    expect(read("components/LoadingDots.tsx")).toContain('role="status"');
+  it("renders a mascot loading scene in the chat instead of static text", () => {
     const chat = read("components/ChatConversation.tsx");
-    expect(chat).toContain("<LoadingDots");
-    expect(chat).toContain('srText="A IA está preparando a próxima resposta..."');
-    const css = read("app/globals.css");
-    expect(css).toContain(".loading-dot");
-    expect(css).toContain("animation: dot-bounce");
+    expect(chat).toContain("<LoadingScene");
+    expect(chat).toContain('moment="think"');
   });
 
-  it("provides skeleton-based route loading screens", () => {
-    expect(read("components/Skeleton.tsx")).toContain("skeleton-");
-    expect(read("app/palavras/loading.tsx")).toContain("<Skeleton");
-    expect(read("app/progresso/loading.tsx")).toContain("<Skeleton");
-    expect(read("app/calendario/loading.tsx")).toContain("<Skeleton");
-    expect(read("app/loading.tsx")).toContain("<LoadingDots");
-    const css = read("app/globals.css");
-    expect(css).toContain("animation: shimmer");
-    expect(css).toMatch(/animation:\s*bounce-in/);
-    expect(css).toContain("mark-float 1.6s ease-in-out .6s infinite");
+  it("provides mascot-based route loading screens", () => {
+    expect(read("app/palavras/loading.tsx")).toContain("<LoadingScene");
+    expect(read("app/progresso/loading.tsx")).toContain("<LoadingScene");
+    expect(read("app/calendario/loading.tsx")).toContain("<LoadingScene");
+    expect(read("app/loading.tsx")).toContain("<LoadingScene");
   });
 
   it("animates the audio wave while playing and the mic halo while listening", () => {
