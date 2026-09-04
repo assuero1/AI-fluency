@@ -223,6 +223,7 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
       // Voz sem timestamps no servidor (words vazio) → player legado, sem
       // gastar o download do áudio aqui.
       if (!hasUsableAlignment(buildTrackAlignment(segments))) {
+        reportVoiceFailure(text, languageCode, "captioned alignment unusable, entering legacy mode");
         enterLegacyMode();
         return;
       }
@@ -235,17 +236,24 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
       } else {
         // Monta UM WAV contínuo com todos os segmentos: a bolha toca como um
         // áudio único num <audio> nativo, sem gap entre as partes.
-        const seamless = await buildSeamlessTrack(segments.map((segment) => segment.audioUrl));
-        if (generationRef.current !== generation) {
-          seamless.dispose();
-          return;
+        try {
+          const seamless = await buildSeamlessTrack(segments.map((segment) => segment.audioUrl));
+          if (generationRef.current !== generation) {
+            seamless.dispose();
+            return;
+          }
+          seamless.partOffsets.forEach((offset, segmentIndex) => {
+            if (segments[segmentIndex]) segments[segmentIndex].offset = offset;
+          });
+          seamlessRef.current?.dispose();
+          seamlessRef.current = seamless;
+          audioUrl = seamless.audioUrl;
+        } catch {
+          // Se buildSeamlessTrack falhar (ex.: decodeAudioData não suporta Opus no Safari),
+          // faz fallback gracioso: toca o primeiro áudio direto no <audio>
+          // preservando o alinhamento de palavras em vez de descartar tudo para o modo legado.
+          audioUrl = segments[0].audioUrl;
         }
-        seamless.partOffsets.forEach((offset, segmentIndex) => {
-          if (segments[segmentIndex]) segments[segmentIndex].offset = offset;
-        });
-        seamlessRef.current?.dispose();
-        seamlessRef.current = seamless;
-        audioUrl = seamless.audioUrl;
       }
 
       const audio = ensureAudioElement();
@@ -255,8 +263,9 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
       setSelectedIndex(0);
       setActiveWord(-1);
       setStatusTracked("idle");
-    } catch {
+    } catch (err) {
       if (generationRef.current !== generation) return;
+      reportVoiceFailure(text, languageCode, `loadCaptionedTask failed: ${err instanceof Error ? err.message : String(err)}`);
       enterLegacyMode();
     }
   }, [ensureAudioElement, enterLegacyMode, languageCode, setActiveWord, setSelectedIndex, setStatusTracked, setTrack, text]);
