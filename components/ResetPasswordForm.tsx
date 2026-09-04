@@ -3,7 +3,7 @@
 import { useActionState } from "react";
 import { updatePassword, type AuthFormState } from "@/app/login/actions";
 import { AuthMascot } from "@/components/AuthMascot";
-import { LoadingScene } from "@/components/LoadingScene";
+import { SpiralSpinner } from "@/components/SpiralSpinner";
 
 const initialState: AuthFormState = {};
 
@@ -40,9 +40,9 @@ export function ResetPasswordForm() {
             </p>
           )}
           <button type="submit" disabled={pending} className="green-button full-button auth-submit">
-            {pending ? "Aguarde..." : "Salvar nova senha"}
+            {pending ? <SpiralSpinner label="Salvando nova senha..." size={20} /> : null}
+            {pending ? "Salvando..." : "Salvar nova senha"}
           </button>
-          {pending ? <LoadingScene variant="overlay" moment="save" palette="neutral" title="Salvando nova senha..." /> : null}
         </form>
       </div>
     </>

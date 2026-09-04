@@ -3,7 +3,7 @@
 import { Brain } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { LoadingScene } from "./LoadingScene";
+import { SpiralSpinner } from "./SpiralSpinner";
 
 type StartFlashcardsWithWordsProps = { wordIds: string[]; label: string; disabled?: boolean };
 
@@ -32,8 +32,10 @@ export function StartFlashcardsWithWords({ wordIds, label, disabled }: StartFlas
   }
 
   return <>
-    <button className="outline-button full-button" disabled={disabled || busy || !wordIds.length} onClick={() => void start()} type="button"><Brain /> {label}</button>
+    <button className="outline-button full-button" disabled={disabled || busy || !wordIds.length} onClick={() => void start()} type="button">
+      {busy ? <SpiralSpinner label="Montando seu treino..." size={20} /> : <Brain />}
+      {busy ? "Montando seu treino..." : label}
+    </button>
     {error ? <p className="inline-error" role="alert">{error}</p> : null}
-    {busy ? <LoadingScene variant="overlay" moment="enter" palette="palavras" title="Montando seu treino..." /> : null}
   </>;
 }

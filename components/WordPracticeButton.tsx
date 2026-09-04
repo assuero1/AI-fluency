@@ -3,7 +3,7 @@
 import { Play } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { LoadingScene } from "./LoadingScene";
+import { SpiralSpinner } from "./SpiralSpinner";
 
 type WordPracticeButtonProps = {
   wordId?: string;
@@ -34,11 +34,20 @@ export function WordPracticeButton({ wordId, compact = false }: WordPracticeButt
   return (
     <div className={compact ? "practice-button-wrap compact" : "practice-button-wrap"}>
       <button className={compact ? "voice-icon-button" : "green-button full-button"} disabled={loading} onClick={startPractice} type="button">
-        <Play fill={compact ? "var(--section-text)" : "currentColor"} />
-        {compact ? <span className="sr-only">Praticar esta palavra</span> : "Praticar palavras fracas"}
+        {loading ? (
+          <SpiralSpinner label="Carregando treino..." size={compact ? 16 : 20} />
+        ) : (
+          <Play fill={compact ? "var(--section-text)" : "currentColor"} />
+        )}
+        {compact ? (
+          <span className="sr-only">Praticar esta palavra</span>
+        ) : loading ? (
+          "Preparando..."
+        ) : (
+          "Praticar palavras fracas"
+        )}
       </button>
       {error ? <p className="practice-error" role="alert">{error}</p> : null}
-      {loading ? <LoadingScene variant="overlay" moment="enter" palette="palavras" title="Preparando palavras para praticar..." /> : null}
     </div>
   );
 }

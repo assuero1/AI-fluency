@@ -3,7 +3,7 @@
 import { ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { LoadingScene } from "./LoadingScene";
+import { SpiralSpinner } from "./SpiralSpinner";
 
 export function FocusPracticeButton() {
   const router = useRouter();
@@ -28,11 +28,10 @@ export function FocusPracticeButton() {
   return (
     <div className="focus-practice-wrap">
       <button className="green-button full-button" disabled={loading} onClick={start} type="button">
-        <ArrowRight aria-hidden="true" size={20} />
-        Treinar foco da semana
+        {loading ? <SpiralSpinner label="Preparando o treino..." size={20} /> : <ArrowRight aria-hidden="true" size={20} />}
+        {loading ? "Preparando o treino..." : "Treinar foco da semana"}
       </button>
       {error ? <p className="practice-error" role="alert">{error}</p> : null}
-      {loading ? <LoadingScene variant="overlay" moment="enter" palette="progresso" title="Preparando o treino de foco..." /> : null}
     </div>
   );
 }

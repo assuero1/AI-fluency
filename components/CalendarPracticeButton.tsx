@@ -3,7 +3,7 @@
 import { ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { LoadingScene, type LoadingPalette } from "./LoadingScene";
+import { SpiralSpinner } from "./SpiralSpinner";
 
 type CalendarPracticeButtonProps = {
   date: string;
@@ -16,7 +16,7 @@ type CalendarTopicButtonProps = {
 };
 
 export function CalendarPracticeButton({ date, compact = false }: CalendarPracticeButtonProps) {
-  return <PracticeRequestButton endpoint={`/api/daily-feedback/${date}/practice`} label="Praticar este foco" compact={compact} loadingTitle="Preparando a prática deste foco..." palette="calendario" />;
+  return <PracticeRequestButton endpoint={`/api/daily-feedback/${date}/practice`} label="Praticar este foco" compact={compact} />;
 }
 
 export function CalendarTopicButton({ title, reason }: CalendarTopicButtonProps) {
@@ -26,8 +26,6 @@ export function CalendarTopicButton({ title, reason }: CalendarTopicButtonProps)
       endpoint="/api/conversations/start"
       label="Praticar"
       compact
-      loadingTitle="Preparando sua conversa..."
-      palette="chat"
     />
   );
 }
@@ -36,16 +34,12 @@ function PracticeRequestButton({
   endpoint,
   label,
   compact = false,
-  body,
-  loadingTitle,
-  palette
+  body
 }: {
   endpoint: string;
   label: string;
   compact?: boolean;
   body?: Record<string, string>;
-  loadingTitle: string;
-  palette: LoadingPalette;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -73,11 +67,14 @@ function PracticeRequestButton({
   return (
     <div className={compact ? "calendar-practice-wrap compact" : "calendar-practice-wrap"}>
       <button className={compact ? "outline-button" : "green-button full-button"} disabled={loading} onClick={start} type="button">
-        {compact ? null : <ArrowRight aria-hidden="true" size={20} />}
-        {label}
+        {loading ? (
+          <SpiralSpinner label="Carregando prática..." size={compact ? 16 : 20} />
+        ) : compact ? null : (
+          <ArrowRight aria-hidden="true" size={20} />
+        )}
+        {loading ? "Carregando..." : label}
       </button>
       {error ? <p className="practice-error" role="alert">{error}</p> : null}
-      {loading ? <LoadingScene variant="overlay" moment="enter" palette={palette} title={loadingTitle} /> : null}
     </div>
   );
 }

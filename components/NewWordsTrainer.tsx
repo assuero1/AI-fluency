@@ -23,6 +23,7 @@ import { BackButton } from "./BackButton";
 import { LoadingScene } from "./LoadingScene";
 import { ModalDialog } from "./ModalDialog";
 import { Pill } from "./Pill";
+import { SpiralSpinner } from "./SpiralSpinner";
 import { SessionCelebration } from "./SessionCelebration";
 import { StartFlashcardsWithWords } from "./StartFlashcardsWithWords";
 import { VoiceButton } from "./VoiceButton";
@@ -515,7 +516,12 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
           <input autoComplete="off" id="new-words-translation" maxLength={300} onChange={(event) => setInput(event.target.value)} placeholder="Digite sua tradução" ref={inputRef} value={input} />
           <button aria-label={listening ? "Parar transcrição" : "Falar tradução"} className={listening ? "voice-icon-button listening" : "voice-icon-button"} disabled={!speechSupported} onClick={toggleSpeech} type="button">{listening ? <MicOff /> : <Mic />}</button>
         </div>
-        <div className="flashcard-attempt-actions"><button className="green-button" disabled={!input.trim() || busy} type="submit">Traduzir</button></div>
+        <div className="flashcard-attempt-actions">
+          <button className="green-button" disabled={!input.trim() || busy} type="submit">
+            {wait === "judge" ? <SpiralSpinner label="Avaliando tradução..." size={18} /> : null}
+            {wait === "judge" ? "Avaliando..." : "Traduzir"}
+          </button>
+        </div>
       </form> : <section className="flashcard-reveal" aria-live="polite">
         <div><span>Tradução esperada</span><strong>{judgment.correctedTranslation}</strong></div>
         <div><span>Sua tradução</span><strong>{input}</strong></div>
@@ -525,7 +531,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
           <span className="auto-advance-bar" />
         </button>
       </section>}
-      {wait !== "none" ? <LoadingScene variant="overlay" moment={wait === "judge" ? "think" : "save"} palette="palavras" title={wait === "judge" ? "A IA está avaliando sua tradução..." : "Salvando sua sessão..."} /> : null}
+      {wait === "save" ? <LoadingScene variant="overlay" moment="save" palette="palavras" title="Concluindo sua sessão..." /> : null}
       {error ? <p className="inline-error" role="alert">{error}</p> : null}
       {exitOpen ? (
         <ModalDialog busy={busy} onClose={() => setExitOpen(false)} titleId="leave-new-words-title">

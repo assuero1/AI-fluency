@@ -19,7 +19,7 @@ import { QuestList } from "./QuestList";
 import { IconBubble } from "./IconBubble";
 import { ConversationSetupDialog, ConfirmedConversationStart, ConversationStartDraft } from "./ConversationSetupDialog";
 import { EmptyState } from "./EmptyState";
-import { LoadingScene } from "./LoadingScene";
+import { SpiralSpinner } from "./SpiralSpinner";
 import { MetricGrid } from "./MetricGrid";
 import { Pill } from "./Pill";
 import { ScreenHeader } from "./ScreenHeader";
@@ -206,8 +206,8 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           </label>
           <div className="topic-card-footer">
             <button className="outline-button" disabled={pendingAction === "suggest"} onClick={suggestTopic} type="button">
-              <Sparkles aria-hidden="true" size={18} />
-              Sugerir um tema
+              {pendingAction === "suggest" ? <SpiralSpinner label="Pensando em um tema..." size={16} /> : <Sparkles aria-hidden="true" size={18} />}
+              {pendingAction === "suggest" ? "Pensando..." : "Sugerir um tema"}
             </button>
             <button
               className="green-button"
@@ -220,7 +220,6 @@ export function HomeDashboard({ home }: { home: HomeData }) {
           </div>
         </div>
         {error ? <div className="inline-error" role="alert">{error}</div> : null}
-        {pendingAction === "suggest" ? <LoadingScene variant="overlay" moment="think" palette="chat" title="Pensando em um tema para você..." /> : null}
       </section>
 
       <section className="section">

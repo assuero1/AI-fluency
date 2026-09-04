@@ -2,7 +2,7 @@
 
 import { Bot, GraduationCap, Send, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { LoadingScene } from "./LoadingScene";
+import { SpiralSpinner } from "./SpiralSpinner";
 import { IconBubble } from "./IconBubble";
 import { ModalDialog } from "./ModalDialog";
 import type { MessageFields } from "@/lib/learning/conversations";
@@ -184,7 +184,8 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
       <div className="teacher-chat-history" ref={historyRef}>
         {loadState.status === "loading" ? (
           <div className="teacher-chat-state">
-            <LoadingScene variant="inline" moment="enter" palette="chat" title="Carregando conversa com o professor..." />
+            <SpiralSpinner label="Carregando conversa com o professor..." size={24} />
+            <p className="row-meta">Carregando conversa com o professor...</p>
           </div>
         ) : null}
 

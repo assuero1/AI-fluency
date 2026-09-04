@@ -8,9 +8,11 @@ import { Bubble } from "./Bubble";
 import { IconBubble } from "./IconBubble";
 import { CopyButton } from "./CopyButton";
 import { ConversationGoalProgress } from "./ConversationGoalProgress";
+import { LoadingDots } from "./LoadingDots";
 import { LoadingScene } from "./LoadingScene";
 import { ModalDialog } from "./ModalDialog";
 import { Pill } from "./Pill";
+import { SpiralSpinner } from "./SpiralSpinner";
 import { TranslationButton } from "./TranslationButton";
 import { ScreenHeader } from "./ScreenHeader";
 import { TeacherChatPanel } from "./TeacherChatPanel";
@@ -721,8 +723,8 @@ export function ChatConversation({
             <button data-autofocus className="outline-button" disabled={isSending} onClick={() => setIsExitDialogOpen(false)} type="button">
               Continuar treino
             </button>
-            <button className="danger-button" disabled={isSending} onClick={abandonConversation} type="button">
-              <LogOut /> Abandonar treino
+            <button className="danger-button" disabled={isSending || closing === "abandon"} onClick={abandonConversation} type="button">
+              {closing === "abandon" ? <SpiralSpinner label="Abandonando..." size={16} /> : <LogOut />} Abandonar treino
             </button>
           </div>
         </ModalDialog>
@@ -751,7 +753,6 @@ export function ChatConversation({
         </ModalDialog>
       ) : null}
 
-      {closing === "abandon" ? <LoadingScene variant="overlay" moment="save" palette="chat" title="Encerrando o treino..." /> : null}
       {closing === "finish" ? <LoadingScene variant="overlay" moment="think" palette="chat" title="Preparando seu resumo..." /> : null}
 
       <div className="chat-stack" ref={chatStackRef}>
@@ -813,7 +814,7 @@ export function ChatConversation({
           <div className="chat-row">
             <IconBubble Icon={Bot} />
             <div className="bubble ai typing-bubble">
-              <LoadingScene variant="inline" moment="think" palette="chat" title="" />
+              <LoadingDots srText="A IA está respondendo..." />
             </div>
           </div>
         ) : null}

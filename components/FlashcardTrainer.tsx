@@ -191,7 +191,7 @@ export function FlashcardTrainer() {
 
   async function grade(difficulty: "hard" | "easy" | null) {
     if (!revealed || busy || !currentItem) return;
-    setBusy(true); setWait("save"); setError("");
+    setBusy(true); setError("");
     const clientAttemptId = currentAttemptId || crypto.randomUUID();
     setCurrentAttemptId(clientAttemptId);
     let persisted: FlashcardAnswer;
@@ -201,14 +201,15 @@ export function FlashcardTrainer() {
       if (!attemptResponse.ok || !attemptData.ok || !attemptData.attempt) throw new Error(attemptData.error ?? "Não foi possível salvar a tentativa.");
       persisted = attemptData.attempt;
     } catch (attemptError) {
-      setError(attemptError instanceof Error ? attemptError.message : "Não foi possível salvar a tentativa."); setBusy(false); setWait("none"); return;
+      setError(attemptError instanceof Error ? attemptError.message : "Não foi possível salvar a tentativa."); setBusy(false); return;
     }
     const nextAnswers = [...answers, persisted];
     const nextQueue = advanceFlashcardQueue(queue, currentItem, persisted.rating, nextAnswers.length);
     const nextItem = selectNextQueueItem(nextQueue, nextAnswers.length);
     if (nextItem) {
-      setAnswers(nextAnswers); setQueue(nextQueue); setCurrentItem(nextItem); setUndoState({ expiresAt: Date.now() + 5_000 }); setBusy(false); setWait("none"); resetAttempt(); return;
+      setAnswers(nextAnswers); setQueue(nextQueue); setCurrentItem(nextItem); setUndoState({ expiresAt: Date.now() + 5_000 }); setBusy(false); resetAttempt(); return;
     }
+    setWait("save");
     try {
       const response = await fetch("/api/practice/flashcards/complete", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sessionId, clientCompletionId: completionId, answers: nextAnswers }) });
       const data = await response.json() as ({ ok?: boolean; error?: string } & Partial<FlashcardPracticeResult>);
@@ -365,7 +366,7 @@ export function FlashcardTrainer() {
         </div>}
       </section>}
       {undoState ? <p className="speech-status">Avaliação registrada. <button className="outline-button" disabled={busy} onClick={() => void undoLast()} type="button">Desfazer</button></p> : null}
-      {wait === "save" ? <LoadingScene variant="overlay" moment="save" palette="palavras" title="Salvando resultado..." /> : null}{error ? <p className="inline-error" role="alert">{error}</p> : null}
+      {wait === "save" ? <LoadingScene variant="overlay" moment="save" palette="palavras" title="Concluindo seu treino..." /> : null}{error ? <p className="inline-error" role="alert">{error}</p> : null}
       {exitConfirmationOpen ? (
         <ModalDialog busy={busy} onClose={() => setExitConfirmationOpen(false)} titleId="leave-training-title">
           <h2 className="section-title" id="leave-training-title">Sair do treino?</h2>

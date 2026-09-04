@@ -2,8 +2,8 @@
 
 import { MessageCircle, Target, Users } from "lucide-react";
 import { useState } from "react";
-import { LoadingScene } from "./LoadingScene";
 import { ModalDialog } from "./ModalDialog";
+import { SpiralSpinner } from "./SpiralSpinner";
 
 export type ConversationStartDraft = {
   title?: string;
@@ -155,10 +155,10 @@ export function ConversationSetupDialog({ busy, draft, onCancel, onConfirm }: Co
           onClick={confirm}
           type="button"
         >
-          Começar prática
+          {busy ? <SpiralSpinner label="Preparando conversa..." size={16} /> : null}
+          {busy ? "Preparando..." : "Começar prática"}
         </button>
       </div>
-      {busy ? <LoadingScene variant="overlay" moment="enter" palette="chat" title="Preparando sua conversa..." /> : null}
     </ModalDialog>
   );
 }
