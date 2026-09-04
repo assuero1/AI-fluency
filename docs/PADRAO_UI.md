@@ -72,13 +72,15 @@ os únicos 900.
 
 ## Semântica de botões
 
-| Classe | Quando | Exemplo |
+| Classe | Quando | Visual v2 |
 |---|---|---|
-| `green-button` | Ação primária — iniciar/continuar prática, submit. **Máx. 1 por tela** | "Fazer minha prática" |
-| `dark-button` | Confirmação neutra em modal | "Continuar mesmo assim" |
-| `outline-button` | Ação secundária | "Ver no calendário" |
-| `danger-button` | Ação destrutiva confirmada | "Apagar dados" |
+| `green-button` | Ação primária — iniciar/continuar prática, submit. **Máx. 1 por tela; único 3D da tela** (chunk 2px `--shadow-cta` + brilho no topo) | cor da seção |
+| `outline-button` | Ação secundária — **tonal**: fundo `--section-soft`, texto `--section-text`, sem borda/sombra | tonal |
+| `dark-button` | Confirmação neutra em modal | escuro + chunk 2px |
+| `danger-button` | Ação destrutiva confirmada | vermelho + chunk 2px |
 | Ícone-ghost 44px | Sair/fechar sem peso destrutivo | X no header do chat |
+| `.text-button` | Ação terciária de baixo risco (Cancelar, Copiar) | texto `--section-text`, sem fundo |
+| desabilitado | Estado inequívoco | `--neutral-soft` + `--subtle`, sem chunk |
 
 Micro-interações (feedback de toque, som/vibração) seguem `docs/PADRAO_INTERACAO.md` — **não renomear** `.green-button/.dark-button/.outline-button/.danger-button`, o `ButtonFeedback` depende delas.
 

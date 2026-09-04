@@ -27,19 +27,23 @@ await page.getByRole("button", { name: "Entrar" }).click();
 await page.waitForURL(`${base}/`, { timeout: 20000 });
 await page.waitForTimeout(800);
 
-// ---- Treino: sessão custom ----
+// ---- Treino: retoma sessão pendente ou monta uma custom ----
 await page.goto(`${base}/palavras/treino`, { waitUntil: "networkidle", timeout: 15000 }).catch(() => {});
 await page.waitForTimeout(1200);
-// Sessão pendente de execuções anteriores abre o modal de retomada: segue por ele.
 const resume = page.getByRole("button", { name: "Continuar treino" });
-if (await resume.count()) { await resume.click().catch(() => {}); await page.waitForTimeout(1500); }
-await page.getByRole("button", { name: "Sessão custom" }).click();
-await page.waitForTimeout(800);
-await page.getByRole("button", { name: /Montar treino com/i }).click().catch((e) => console.log("begin failed:", e.message));
-await page.waitForTimeout(2000);
+const customToggle = page.getByRole("button", { name: "Sessão custom" });
+if (await resume.count()) {
+  await resume.click().catch(() => {});
+  await page.waitForTimeout(1800);
+} else if (await customToggle.count()) {
+  await customToggle.click();
+  await page.waitForTimeout(800);
+  await page.getByRole("button", { name: /Montar treino com/i }).click().catch(() => {});
+  await page.waitForTimeout(3000);
+}
 await shot("treino-card-front");
-const flip = page.getByRole("button", { name: /virar|revelar|mostrar|resposta/i }).first();
-if (await flip.count()) { await flip.click().catch((e) => console.log("flip failed:", e.message)); await page.waitForTimeout(800); }
+const flip = page.getByRole("button", { name: /virar|revelar|mostrar|resposta|Não lembro/i }).first();
+if (await flip.count()) { await flip.click().catch(() => {}); await page.waitForTimeout(900); }
 await shot("treino-card-back");
 
 // ---- Chat: conversa com tema digitado ----
