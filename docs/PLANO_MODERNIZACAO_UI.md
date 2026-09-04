@@ -2,7 +2,7 @@
 
 Criado em 2026-09-03, derivado da avaliação em `docs/AVALIACAO_UI_UX_2026-09-03.md`.
 Direção: **mais moderno, clean e minimalista, com personalidade, mantendo a paleta** e fiel ao logo
-(camaleão Talkkito). Sucessor do plano F0–F4 (fases aqui usam a letra **M**).
+(camaleão Talkito). Sucessor do plano F0–F4 (fases aqui usam a letra **M**).
 **v1.1 (2026-09-03):** revisão com lente de design engineering — §2.6 reescrito com tabela de
 frequência de motion, correções pontuais de código (flip 500ms, press, progresso via scaleX),
 §2.7 novo (perceived performance), aceite de M0/M2/M4/M5 expandido.

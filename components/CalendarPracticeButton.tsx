@@ -72,8 +72,8 @@ function PracticeRequestButton({
 
   return (
     <div className={compact ? "calendar-practice-wrap compact" : "calendar-practice-wrap"}>
-      <button className={compact ? "outline-button" : "dark-button full-button"} disabled={loading} onClick={start} type="button">
-        {compact ? null : <ArrowRight />}
+      <button className={compact ? "outline-button" : "green-button full-button"} disabled={loading} onClick={start} type="button">
+        {compact ? null : <ArrowRight aria-hidden="true" size={20} />}
         {label}
       </button>
       {error ? <p className="practice-error" role="alert">{error}</p> : null}

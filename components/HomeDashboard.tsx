@@ -202,21 +202,23 @@ export function HomeDashboard({ home }: { home: HomeData }) {
               placeholder="Ex.: viagens, entrevistas, rotina, tecnologia..."
               value={topic}
             />
-            <Edit3 />
+            <Edit3 aria-hidden="true" size={18} />
           </label>
-          <button className="outline-button" disabled={pendingAction === "suggest"} onClick={suggestTopic} type="button">
-            <Sparkles />
-            Sugerir um tema
-          </button>
+          <div className="topic-card-footer">
+            <button className="outline-button" disabled={pendingAction === "suggest"} onClick={suggestTopic} type="button">
+              <Sparkles aria-hidden="true" size={18} />
+              Sugerir um tema
+            </button>
+            <button
+              className="green-button"
+              disabled={!topic.trim() || Boolean(pendingAction)}
+              onClick={() => setStartDraft({ title: topic, mode: "custom_topic", source: "user_custom" })}
+              type="button"
+            >
+              Começar com este tema
+            </button>
+          </div>
         </div>
-        <button
-          className="green-button full-button mt-4"
-          disabled={!topic.trim() || Boolean(pendingAction)}
-          onClick={() => setStartDraft({ title: topic, mode: "custom_topic", source: "user_custom" })}
-          type="button"
-        >
-          Começar com este tema
-        </button>
         {error ? <div className="inline-error" role="alert">{error}</div> : null}
         {pendingAction === "suggest" ? <LoadingScene variant="overlay" moment="think" palette="chat" title="Pensando em um tema para você..." /> : null}
       </section>

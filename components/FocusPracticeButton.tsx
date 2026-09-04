@@ -27,8 +27,8 @@ export function FocusPracticeButton() {
 
   return (
     <div className="focus-practice-wrap">
-      <button className="dark-button full-button" disabled={loading} onClick={start} type="button">
-        <ArrowRight />
+      <button className="green-button full-button" disabled={loading} onClick={start} type="button">
+        <ArrowRight aria-hidden="true" size={20} />
         Treinar foco da semana
       </button>
       {error ? <p className="practice-error" role="alert">{error}</p> : null}

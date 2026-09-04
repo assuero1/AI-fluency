@@ -1,6 +1,6 @@
-# Avaliação de UI/UX — Talkkito (todas as telas)
+# Avaliação de UI/UX — Talkito (todas as telas)
 
-Avaliação em 2026-09-03, sobre o build local (rebrand Talkkito não-commitado + refinamentos F0–F4).
+Avaliação em 2026-09-03, sobre o build local (rebrand Talkito não-commitado + refinamentos F0–F4).
 Método: screenshots de 23 telas/estados em viewport mobile 390×844 (`.playwright-mcp/ui-review-2026-09-03/`)
 via `scripts/visual-audit-after.mjs` + `visual-audit-extra.mjs` + `visual-audit-flows.mjs`, com fixture QA
 (`qa-fixture.mjs`) para dados realistas; checagem de consistência contra `docs/PADRAO_UI.md` (greps da

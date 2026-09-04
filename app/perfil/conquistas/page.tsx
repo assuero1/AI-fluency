@@ -18,7 +18,7 @@ export default async function AchievementsPage() {
     .sort((a, b) => b.pct - a.pct)[0];
 
   return (
-    <AppShell activeNav="perfil" section="neutral">
+    <AppShell activeNav="perfil" section="progresso">
       <BackButton href="/perfil" label="Voltar ao perfil" />
       <ScreenHeader
         title="Conquistas"

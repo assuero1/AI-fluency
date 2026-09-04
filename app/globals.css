@@ -808,20 +808,23 @@ a {
 }
 
 .topic-card {
-  min-height: 146px;
   padding: var(--card-pad);
-  border: 1px solid #d8d8d8;
+  border: 1px solid var(--line-soft);
   border-radius: var(--radius-lg);
   background: #fff;
+  box-shadow: var(--shadow-card);
 }
 
 .topic-placeholder {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
   color: var(--muted);
-  font-size: 18px;
-  line-height: 1.35;
+  font-size: 16px;
+  line-height: 1.45;
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--line-soft);
 }
 
 .topic-placeholder input {
@@ -831,7 +834,8 @@ a {
   outline: 0;
   background: transparent;
   color: var(--text);
-  font-size: 18px;
+  font-size: 16px;
+  font-weight: 600;
 }
 
 .topic-placeholder input::placeholder {
@@ -840,7 +844,7 @@ a {
 }
 
 .topic-card .outline-button {
-  margin-top: 28px;
+  margin-top: var(--space-4);
 }
 
 .word-summary {
@@ -1409,6 +1413,21 @@ a {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.chat-topic-actions .ghost-icon-button {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--line-soft);
+  background: var(--surface);
+  color: var(--section-text);
+  transition: background var(--motion-fast) ease, border-color var(--motion-fast) ease;
+}
+
+.chat-topic-actions .ghost-icon-button:hover {
+  background: var(--section-soft);
+  border-color: transparent;
 }
 
 .chat-topic-actions .outline-button {
@@ -2785,26 +2804,49 @@ textarea:focus-visible,
   50% { transform: scale(1.18); }
 }
 
-/* === Camada chunky: botões 3D === */
-.outline-button,
-.dark-button,
-.green-button {
-  border-width: 2px;
+/* === Camada chunky: botões 3D e botões tonais padronizados === */
+.green-button,
+.dark-button {
+  border: 0;
   border-radius: var(--radius-md);
   font-weight: 800;
   cursor: pointer;
-  box-shadow: 0 4px 0 var(--line-deep);
-  transition: transform .1s ease, box-shadow .1s ease, filter .15s ease;
+  transition: transform var(--motion-press) var(--ease-out), box-shadow var(--motion-press) var(--ease-out), filter var(--motion-fast) ease;
 }
-.dark-button { box-shadow: 0 4px 0 #000; }
+
 .green-button {
   background: var(--section);
   box-shadow: var(--shadow-cta), inset 0 1px 0 rgba(255, 255, 255, .25);
 }
+
+.dark-button {
+  background: var(--dark-cta);
+  color: #fff;
+  box-shadow: 0 2px 0 var(--neutral-deep), inset 0 1px 0 rgba(255, 255, 255, .18);
+}
+
+.outline-button {
+  border: 0;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--section-soft);
+  color: var(--section-text);
+  box-shadow: none;
+  transition: transform var(--motion-press) var(--ease-out), filter var(--motion-fast) ease;
+}
+
 .section-progresso .green-button { color: #4a3c00; }
-.outline-button:hover:not(:disabled),
-.dark-button:hover:not(:disabled),
-.green-button:hover:not(:disabled) { filter: brightness(1.04); }
+
+.green-button:hover:not(:disabled),
+.dark-button:hover:not(:disabled) {
+  filter: brightness(1.04);
+}
+
+.outline-button:hover:not(:disabled) {
+  filter: brightness(0.96);
+}
+
 .outline-button:active:not(:disabled) {
   transform: scale(0.98);
 }
@@ -2818,6 +2860,7 @@ textarea:focus-visible,
 .dark-button:active:not(:disabled) {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, .18);
 }
+
 .dark-button:disabled,
 .green-button:disabled,
 .outline-button:disabled {
@@ -2826,6 +2869,7 @@ textarea:focus-visible,
   color: var(--subtle);
   box-shadow: none;
   transform: none;
+  cursor: not-allowed;
 }
 
 /* === Motivos de marca v2 (§2.5): espiral da cauda e balão do mascote === */
@@ -3314,12 +3358,35 @@ textarea:focus-visible,
   .auth-wordmark-img { width: 196px; }
 }
 
-/* === Conquistas: toast global e itens bloqueados === */
 .achievement-toast { position: fixed; z-index: 9998; left: 50%; transform: translateX(-50%); bottom: calc(84px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 12px; align-items: center; width: min(92vw, 380px); padding: 14px; border: 2px solid var(--line); border-radius: var(--radius-md); background: #fff; box-shadow: 0 6px 0 rgba(31, 25, 16, .12); animation: pop-in .45s cubic-bezier(.34, 1.4, .64, 1) both; }
 .achievement-toast .flashcard-trophy { margin: 0; width: 44px; height: 44px; border-radius: var(--radius-sm); display: grid; place-items: center; flex: none; }
 .achievement-locked { opacity: .55; }
-.milestone-modal { text-align: center; }
-.home-today { background: var(--section-soft); border-radius: var(--radius-lg); }
+.home-today {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--card-pad);
+  background: var(--section-soft);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--line-soft);
+}
+.home-today .word-big {
+  margin: var(--space-1) 0;
+}
+.home-today .row-meta {
+  margin: 0;
+}
+.topic-card-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: var(--space-4);
+  flex-wrap: wrap;
+}
+.topic-card-footer .outline-button,
+.topic-card-footer .green-button {
+  flex: 1 1 140px;
+}
 .quest-complete { opacity: .75; }
 .nav-badge { position: absolute; top: 2px; right: 22%; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 999px; background: #e0524a; color: #fff; font-size: 12px; font-weight: 800; display: grid; place-items: center; }
 
