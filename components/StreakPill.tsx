@@ -1,4 +1,4 @@
-import { Flame } from "lucide-react";
+import { TalkitoIcon } from "./TalkitoIcon";
 import { Pill } from "./Pill";
 import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 
@@ -6,7 +6,7 @@ import { formatPracticeStreak } from "@/lib/learning/practice-activity";
 export function StreakPill({ streak, className = "" }: { streak: number; className?: string }) {
   return (
     <Pill aria-label={`Sequência atual: ${formatPracticeStreak(streak)}`} className={className}>
-      <Flame aria-hidden="true" size={16} color="var(--streak)" fill="var(--streak)" />{" "}
+      <TalkitoIcon name="streak-flame" size={16} className="inline-block" />{" "}
       {formatPracticeStreak(streak)}
     </Pill>
   );

@@ -1,10 +1,8 @@
 "use client";
 
 import {
-  BriefcaseBusiness,
   ChevronDown,
   Edit3,
-  Laptop,
   MessageCircle,
   Sparkles,
   TrendingUp
@@ -25,6 +23,7 @@ import { MetricGrid } from "./MetricGrid";
 import { Pill } from "./Pill";
 import { ScreenHeader } from "./ScreenHeader";
 import { SectionHeader } from "./SectionHeader";
+import { TalkitoIcon, type TalkitoIconName } from "./TalkitoIcon";
 import type { HomeSuggestion } from "@/lib/learning/home";
 
 type HomeData = {
@@ -76,7 +75,11 @@ type HomeData = {
   };
 };
 
-const suggestionIcons = [BriefcaseBusiness, MessageCircle, Laptop];
+const suggestionTalkitoIcons: TalkitoIconName[] = [
+  "travel-suitcase",
+  "listening-bubble",
+  "remote-laptop"
+];
 
 export function HomeDashboard({ home }: { home: HomeData }) {
   const router = useRouter();
@@ -156,7 +159,23 @@ export function HomeDashboard({ home }: { home: HomeData }) {
 
   return (
     <>
-      <ScreenHeader title={home.user.name ? `Olá, ${home.user.name} 👋` : "Olá 👋"} subtitle="Pronto para praticar hoje?" streak={home.practice.streak} />
+      <ScreenHeader
+        title={
+          home.user.name ? (
+            <span className="inline-flex items-center gap-2">
+              Olá, {home.user.name}
+              <TalkitoIcon name="chameleon-standing" size={26} />
+            </span>
+          ) : (
+            <span className="inline-flex items-center gap-2">
+              Olá
+              <TalkitoIcon name="chameleon-standing" size={26} />
+            </span>
+          )
+        }
+        subtitle="Pronto para praticar hoje?"
+        streak={home.practice.streak}
+      />
 
       <div className="selector-bar">
         <Link
@@ -173,7 +192,7 @@ export function HomeDashboard({ home }: { home: HomeData }) {
         </Link>
         <div aria-hidden="true" className="selector-divider" />
         <div className="selector-item level-summary">
-          <TrendingUp aria-hidden="true" size={20} />
+          <TalkitoIcon name="growth-stairs" size={20} />
           <span>Nível {profile?.level ?? "Intermediário (B1)"}</span>
         </div>
       </div>
@@ -237,10 +256,10 @@ export function HomeDashboard({ home }: { home: HomeData }) {
         <SectionHeader actionHref="/calendario" actionLabel="Ver calendário" title="Sugestões para sua prática" />
         <div className="row-list">
           {suggestions.length ? suggestions.map((item, index) => {
-            const Icon = suggestionIcons[index] ?? MessageCircle;
+            const iconName = suggestionTalkitoIcons[index % suggestionTalkitoIcons.length];
             return (
               <div className="list-row" key={`${item.id ?? item.title}-${index}`}>
-                <IconBubble Icon={Icon} tone={item.tone} />
+                <IconBubble talkitoIcon={iconName} tone={item.tone} />
                 <div className="row-copy">
                   <div className="row-title">
                     {item.title} <Pill tone={item.tone}>{item.badge}</Pill>

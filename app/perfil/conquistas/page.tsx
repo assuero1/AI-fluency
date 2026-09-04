@@ -1,4 +1,4 @@
-import { Lock, Trophy } from "lucide-react";
+import { TalkitoIcon } from "@/components/TalkitoIcon";
 import { AppShell } from "@/components/AppShell";
 import { BackButton } from "@/components/BackButton";
 import { ScreenHeader } from "@/components/ScreenHeader";
@@ -43,7 +43,11 @@ export default async function AchievementsPage() {
           {rows.map((row) => (
             <div className={`list-row${row.unlockedAt ? "" : " achievement-locked"}`} key={row.key}>
               <span className={`icon-circle ${row.unlockedAt ? "green" : ""}`}>
-                {row.unlockedAt ? <Trophy aria-hidden="true" size={24} /> : <Lock aria-hidden="true" size={24} />}
+                {row.unlockedAt ? (
+                  <TalkitoIcon name="trophy" size={24} />
+                ) : (
+                  <TalkitoIcon name="lock-gold" size={24} />
+                )}
               </span>
               <div className="row-copy">
                 <div className="row-title">{row.title}</div>

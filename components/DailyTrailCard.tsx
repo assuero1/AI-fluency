@@ -1,8 +1,9 @@
 "use client";
 
-import { Brain, Check, ChevronRight, MessageCircle, Sparkles } from "lucide-react";
+import { Check, ChevronRight, MessageCircle, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { Pill } from "./Pill";
+import { TalkitoIcon } from "./TalkitoIcon";
 
 export type DailyTrailStatus = {
   newWordsDone: boolean;
@@ -51,7 +52,7 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
       stepNumber: 3,
       title: "Revisão Inteligente",
       hint: "Combos em Chamas",
-      icon: Brain,
+      icon: () => <TalkitoIcon name="brain" size={20} />,
       tone: "brand" as const,
       done: reviewDone,
       href: "/palavras/treino",
@@ -70,7 +71,13 @@ export function DailyTrailCard({ trail, onStartConversation }: DailyTrailCardPro
           className="trail-progress-badge"
           tone={allComplete ? "primary" : "default"}
         >
-          {allComplete ? "🎉 3/3" : `${completedCount}/3`}
+          {allComplete ? (
+            <span className="inline-flex items-center gap-1">
+              <TalkitoIcon name="party-popper" size={16} /> 3/3
+            </span>
+          ) : (
+            `${completedCount}/3`
+          )}
         </Pill>
       </div>
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, type ReactNode } from "react";
-import { Trophy } from "lucide-react";
+import { TalkitoIcon } from "./TalkitoIcon";
 import { burstConfetti } from "@/lib/client/confetti";
 import { playSound } from "@/lib/client/ui-sound";
 import { vibrate } from "@/lib/client/haptics";
@@ -27,7 +27,7 @@ export function SessionCelebration({ score, eyebrow, children }: SessionCelebrat
   }, [score]);
 
   return <>
-    <div className="flashcard-trophy celebrate"><Trophy /></div>
+    <div className="flashcard-trophy celebrate"><TalkitoIcon name="trophy" size={48} /></div>
     <div className="eyebrow">{eyebrow}</div>
     <h1 className="title"><CountUp value={score} suffix="% de acerto" /></h1>
     {children}

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Trophy } from "lucide-react";
+import { TalkitoIcon } from "./TalkitoIcon";
 import { playSound } from "@/lib/client/ui-sound";
 import { vibrate } from "@/lib/client/haptics";
 
@@ -56,7 +56,7 @@ export function AchievementToast() {
   if (!current) return null;
 
   return <div className="achievement-toast" role="status" aria-live="polite">
-    <div className="flashcard-trophy celebrate"><Trophy aria-hidden="true" /></div>
+    <div className="flashcard-trophy celebrate"><TalkitoIcon name="trophy" size={28} /></div>
     <div className="row-copy">
       <div className="row-title">Conquista desbloqueada: {current.title}</div>
       <div className="row-meta">{current.description}</div>

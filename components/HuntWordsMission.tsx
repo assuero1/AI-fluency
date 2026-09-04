@@ -1,7 +1,8 @@
 "use client";
 
-import { Check, Info, Target, Trophy } from "lucide-react";
+import { Info } from "lucide-react";
 import { useState } from "react";
+import { TalkitoIcon } from "./TalkitoIcon";
 import type { HuntWord } from "@/lib/learning/word-hunting";
 
 type HuntWordsMissionProps = {
@@ -27,12 +28,12 @@ export function HuntWordsMission({ huntWords, foundWordIds }: HuntWordsMissionPr
         <div className="hunt-mission-title">
           {isComplete ? (
             <>
-              <Trophy aria-hidden="true" size={16} />
+              <TalkitoIcon name="trophy" size={18} />
               <span>Missão Completa!</span>
             </>
           ) : (
             <>
-              <Target aria-hidden="true" size={16} />
+              <TalkitoIcon name="target" size={18} />
               <span>Missão: use estas palavras</span>
             </>
           )}
@@ -64,7 +65,7 @@ export function HuntWordsMission({ huntWords, foundWordIds }: HuntWordsMissionPr
               type="button"
             >
               {isFound ? (
-                <Check aria-hidden="true" size={14} />
+                <TalkitoIcon name="check-stamp" size={14} />
               ) : (
                 <Info aria-hidden="true" size={14} />
               )}
@@ -78,7 +79,12 @@ export function HuntWordsMission({ huntWords, foundWordIds }: HuntWordsMissionPr
         <div className="hunt-pill-hint">
           {(() => {
             const word = huntWords.find((w) => w.wordId === activeHintId);
-            return word ? `💡 ${word.lemma}: ${word.translation}` : null;
+            return word ? (
+              <span className="inline-flex items-center gap-1.5">
+                <TalkitoIcon name="lightbulb" size={16} />
+                <span>{word.lemma}: {word.translation}</span>
+              </span>
+            ) : null;
           })()}
         </div>
       )}

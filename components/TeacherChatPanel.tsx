@@ -1,7 +1,8 @@
 "use client";
 
-import { Bot, GraduationCap, Send, X } from "lucide-react";
+import { Bot, Send, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { TalkitoIcon } from "./TalkitoIcon";
 import { SpiralSpinner } from "./SpiralSpinner";
 import { IconBubble } from "./IconBubble";
 import { ModalDialog } from "./ModalDialog";
@@ -162,7 +163,7 @@ export function TeacherChatPanel({ conversationId, topicTitle, onClose }: Teache
     >
       <div className="teacher-chat-header">
         <div className="teacher-chat-heading">
-          <GraduationCap aria-hidden="true" size={24} />
+          <TalkitoIcon name="teacher-chameleon" size={32} />
           <div>
             <h2 id="teacher-chat-title" className="section-title">Professor de IA</h2>
             <p className="row-meta" id="teacher-chat-description">Dúvidas sobre esta prática: {topicTitle}</p>

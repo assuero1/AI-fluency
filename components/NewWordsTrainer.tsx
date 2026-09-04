@@ -18,11 +18,18 @@ import { createAudioPrefetchQueue, type AudioPrefetchQueue } from "@/lib/learnin
 import { compareFlashcardAnswer } from "@/lib/learning/flashcard-answer";
 import { playSound } from "@/lib/client/ui-sound";
 import { vibrate } from "@/lib/client/haptics";
-import { classifyWordRarity } from "@/lib/learning/word-rarity";
+import { classifyWordRarity, type WordRarity } from "@/lib/learning/word-rarity";
 import { AppShell } from "./AppShell";
 import { BackButton } from "./BackButton";
 import { LoadingScene } from "./LoadingScene";
 import { ModalDialog } from "./ModalDialog";
+import { TalkitoIcon, type TalkitoIconName } from "./TalkitoIcon";
+
+const RARITY_ICON_MAP: Record<WordRarity, TalkitoIconName> = {
+  essential: "badge-essential",
+  native_expression: "badge-native",
+  power_word: "badge-power"
+};
 import { Pill } from "./Pill";
 import { SpiralSpinner } from "./SpiralSpinner";
 import { SessionCelebration } from "./SessionCelebration";
@@ -478,8 +485,11 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
     <audio ref={audioRef} className="sr-only" preload="auto" />
     <BackButton href="/palavras" label="Voltar às palavras" />
     <section className="flashcard-result">
-      <SessionCelebration eyebrow={`${result.wordCount} palavra${result.wordCount === 1 ? "" : "s"} adotada${result.wordCount === 1 ? "" : "s"}! 🎉`} score={result.score} />
-      <p className="subtitle">Energia máxima (⚡ 100%)! Suas novas palavras estão vivas no seu vocabulário.</p>
+      <SessionCelebration eyebrow={`${result.wordCount} palavra${result.wordCount === 1 ? "" : "s"} adotada${result.wordCount === 1 ? "" : "s"}!`} score={result.score} />
+      <p className="subtitle">
+        Energia máxima (
+        <TalkitoIcon name="lightning" size={14} className="inline-block" /> 100%)! Suas novas palavras estão vivas no seu vocabulário.
+      </p>
       <div className="flashcard-result-grid">
         <div><strong>{result.wordCount}</strong><span>palavras novas</span></div>
         <div><strong>{result.correctSentences}/{result.sentenceCount}</strong><span>frases certas</span></div>
@@ -492,13 +502,16 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
             <div key={word.wordId} className="word-adoption-item">
               <div className="word-adoption-left">
                 <div className="word-adoption-header">
-                  <span className={rarity.badgeClass}>{rarity.emoji} {rarity.label}</span>
+                  <span className={rarity.badgeClass}>
+                    <TalkitoIcon name={RARITY_ICON_MAP[rarity.rarity]} size={14} className="inline-block mr-1" />
+                    {rarity.label}
+                  </span>
                   <strong>{word.lemma}</strong>
                 </div>
                 <span className="row-meta">{word.translation}</span>
               </div>
               <span className="word-adoption-energy" title="Energia máxima! Revise nas próximas 24h para manter.">
-                ⚡ 100%
+                <TalkitoIcon name="lightning" size={14} className="inline-block mr-1" /> 100%
               </span>
             </div>
           );

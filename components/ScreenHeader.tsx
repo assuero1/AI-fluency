@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { StreakPill } from "./StreakPill";
 
 export function ScreenHeader({
@@ -6,7 +7,7 @@ export function ScreenHeader({
   centered = false,
   streak
 }: {
-  title: string;
+  title: ReactNode;
   subtitle?: string;
   centered?: boolean;
   streak?: number;

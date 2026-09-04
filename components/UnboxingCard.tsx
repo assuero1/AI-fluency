@@ -2,11 +2,18 @@
 
 import { Sparkles } from "lucide-react";
 import type { KeyboardEvent } from "react";
-import type { RarityMeta } from "@/lib/learning/word-rarity";
+import type { RarityMeta, WordRarity } from "@/lib/learning/word-rarity";
 import { playSound } from "@/lib/client/ui-sound";
 import { vibrate } from "@/lib/client/haptics";
 import { burstConfetti } from "@/lib/client/confetti";
 import { VoiceButton } from "./VoiceButton";
+import { TalkitoIcon, type TalkitoIconName } from "./TalkitoIcon";
+
+const RARITY_ICON_MAP: Record<WordRarity, TalkitoIconName> = {
+  essential: "badge-essential",
+  native_expression: "badge-native",
+  power_word: "badge-power"
+};
 
 type UnboxingCardProps = {
   word: { lemma: string; translation: string; partOfSpeech?: string };
@@ -63,7 +70,7 @@ export function UnboxingCard({
         {/* Verso revelado */}
         <div className="unboxing-card-back" aria-live="polite">
           <div className={rarity.badgeClass}>
-            <span>{rarity.emoji}</span>
+            <TalkitoIcon name={RARITY_ICON_MAP[rarity.rarity]} size={16} />
             <span>{rarity.label}</span>
           </div>
           <h3 className="unboxing-word-lemma">{word.lemma}</h3>

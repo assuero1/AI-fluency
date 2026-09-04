@@ -3,6 +3,7 @@
 import { Brain, Check, Clock3, Layers3, MessageCircle, Mic, MicOff, RotateCcw, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { TalkitoIcon } from "./TalkitoIcon";
 import { compareAnswerForCard } from "@/lib/learning/flashcard-answer";
 import { advanceFlashcardQueue, createFlashcardQueue, selectNextQueueItem, rebuildFlashcardQueue } from "@/lib/learning/flashcard-queue";
 import type { AnswerMatch, DailyQueueSummary, Flashcard, FlashcardAnswer, FlashcardCriterion, FlashcardPracticeResult, FlashcardQueueKind, QueueItem } from "@/lib/learning/flashcard-contracts";
@@ -356,7 +357,7 @@ export function FlashcardTrainer() {
       <section className={`active-recall-card${combo.onFire ? " on-fire" : ""}`} aria-label={card.type === "listening" ? "Card de escuta" : "Card de recuperação ativa"}>
         {combo.streak >= 2 && (
           <div className={`combo-badge visible${combo.onFire ? " on-fire" : ""}`} aria-label={`${combo.streak} acertos seguidos`}>
-            🔥 {combo.streak}x
+            <TalkitoIcon name="streak-flame" size={20} className="inline-block mr-1" /> {combo.streak}x
           </div>
         )}
         <span>{card.type === "listening" ? "Ouça antes de responder" : card.type === "cloze" ? "Complete a frase" : "Lembre antes de responder"}</span>
@@ -403,7 +404,7 @@ export function FlashcardTrainer() {
 
   return <div className="flashcard-screen">
     <BackButton href="/palavras" label="Voltar às palavras" />
-    <section className="flashcard-intro"><div className="flashcard-brand"><Brain aria-hidden="true" /></div><div><div className="eyebrow">Revisão inteligente</div><h1 className="title">Treino de cards</h1><p className="subtitle">Recupere a palavra da memória antes de conferir a resposta.</p></div></section>
+    <section className="flashcard-intro"><div className="flashcard-brand"><TalkitoIcon name="brain" size={36} /></div><div><div className="eyebrow">Revisão inteligente</div><h1 className="title">Treino de cards</h1><p className="subtitle">Recupere a palavra da memória antes de conferir a resposta.</p></div></section>
     {resumable?.currentItem ? (
       <ModalDialog busy={busy} onClose={continueSession} titleId="resume-training-title">
         <RotateCcw aria-hidden="true" size={28} />
@@ -420,7 +421,7 @@ export function FlashcardTrainer() {
       <h2 className="section-title">Fila de hoje</h2>
       {dailyQueue.sessionCardCount > 0 ? <>
         <p className="row-meta">{dailyQueue.dueCount} revisões + {dailyQueue.newCount} novas · ~{dailyQueue.estimatedMinutes} min{dailyQueue.remainingCount > 0 ? ` · +${dailyQueue.remainingCount} continuam depois` : ""}</p>
-        <button className="green-button full-button" disabled={busy} onClick={() => void start("daily")} type="button"><Brain /> Começar revisão de hoje</button>
+        <button className="green-button full-button" disabled={busy} onClick={() => void start("daily")} type="button"><TalkitoIcon name="brain" size={20} className="inline-block mr-2" /> Começar revisão de hoje</button>
       </> : <EmptyState Icon={Brain} mascotSrc="/mascot.png" title={dailyQueue.introducedToday > 0 ? "Fila de hoje concluída" : "Nada na fila de hoje"} description={dailyQueue.introducedToday > 0 ? "Amanhã há mais — ou pratique abaixo." : "Converse para salvar palavras novas ou monte uma sessão custom."} />}
       <div className="top-row row-meta">
         <span>Novas por dia</span>
@@ -438,7 +439,7 @@ export function FlashcardTrainer() {
       <section className="section"><h2 className="section-title">Quais palavras priorizar?</h2><p className="row-meta">Palavras com revisão vencida sempre entram primeiro; o critério ordena o restante.</p><div className="flashcard-choice-grid"><button className={criterion === "least_used" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("least_used")} type="button"><Layers3 /><div><strong>Menos usadas</strong><span>Reforça palavras com pouca prática</span></div></button><button className={criterion === "oldest" ? "choice-card active" : "choice-card"} onClick={() => setCriterion("oldest")} type="button"><Clock3 /><div><strong>Há mais tempo sem usar</strong><span>Recupera vocabulário esquecido</span></div></button></div></section>
       <section className="section"><div className="top-row"><h2 className="section-title">Quantidade de palavras</h2><strong>{count}</strong></div><input aria-label="Quantidade de palavras" className="flashcard-range" min="2" max="30" onChange={(event) => setCount(Number(event.target.value))} step="1" type="range" value={count} /><div className="top-row row-meta"><span>2</span><span>30</span></div></section>
       <div className="soft-card"><Sparkles aria-hidden="true" size={24} /><div><strong>Como funciona</strong><p className="row-meta">Tente lembrar antes de ver a resposta — o treino agenda a próxima revisão pelo seu acerto.</p></div></div>
-      <button className="green-button full-button" disabled={busy} onClick={() => void start("custom")} type="button"><Brain /> Montar treino com {count} palavras</button>
+      <button className="green-button full-button" disabled={busy} onClick={() => void start("custom")} type="button"><TalkitoIcon name="brain" size={20} className="inline-block mr-2" /> Montar treino com {count} palavras</button>
     </> : null}
     {wait === "boot" ? <>
       <LoadingScene variant="overlay" moment="enter" palette="palavras" title="Montando seu treino..." />
