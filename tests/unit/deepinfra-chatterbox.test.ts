@@ -5,6 +5,7 @@ import {
   DeepInfraConfigError,
   DeepInfraRequestError,
   sanitizeTextForChatterbox,
+  streamDeepInfraSpeech,
   synthesizeDeepInfraSpeech,
   testDeepInfraConnection
 } from "@/lib/tts/deepinfra/client";
@@ -270,6 +271,53 @@ describe("DeepInfra Chatterbox client", () => {
       exaggeration: 0.22,
       cfg: 0.50,
       cfg_weight: 0.50
+    });
+  });
+
+  describe("streamDeepInfraSpeech", () => {
+    it("returns audio stream directly on binary streaming response", async () => {
+      let capturedBody: Record<string, unknown> | null = null;
+      const rawAudio = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x01, 0x02]);
+
+      vi.stubGlobal("fetch", vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+        capturedBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        return new Response(rawAudio, {
+          status: 200,
+          headers: { "content-type": "audio/mpeg" }
+        });
+      }));
+
+      const result = await streamDeepInfraSpeech("Hello, streaming world!", { languageCode: "en" });
+      expect(capturedBody).toMatchObject({
+        text: "Hello, streaming world!",
+        stream: true
+      });
+      expect(result.contentType).toBe("audio/mpeg");
+      expect(result.outputFormat).toBe("mp3");
+
+      const reader = result.audioStream.getReader();
+      const chunk = await reader.read();
+      expect(chunk.value).toEqual(rawAudio);
+    });
+
+    it("converts JSON base64 audio response to stream seamlessly", async () => {
+      vi.stubGlobal("fetch", vi.fn(async () => {
+        return new Response(JSON.stringify({ audio: SAMPLE_BASE64_AUDIO }), {
+          status: 200,
+          headers: { "content-type": "application/json" }
+        });
+      }));
+
+      const result = await streamDeepInfraSpeech("Streaming test", { languageCode: "en" });
+      expect(result.outputFormat).toBe("mp3");
+
+      const reader = result.audioStream.getReader();
+      const chunk = await reader.read();
+      expect(chunk.value).toEqual(new Uint8Array(decodeBase64Audio(SAMPLE_BASE64_AUDIO)));
+    });
+
+    it("validates empty input and throws 400", async () => {
+      await expect(streamDeepInfraSpeech("   ")).rejects.toMatchObject({ status: 400 });
     });
   });
 });

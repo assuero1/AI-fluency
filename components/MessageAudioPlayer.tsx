@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Loader2, Pause, Play, RotateCcw, SkipBack, SkipForward } from "lucide-react";
+import { Pause, Play, RotateCcw, SkipBack, SkipForward } from "lucide-react";
 import { buildSeamlessTrack, type SeamlessTrack } from "@/lib/learning/seamless-audio";
 import { splitIntoSentences } from "@/lib/learning/sentences";
 import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
@@ -292,12 +292,21 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
     if (statusRef.current === "ended") setStatusTracked("idle");
   }
 
-  // Preload da faixa completa (só na última mensagem): baixa e decodifica
-  // todas as frases para o primeiro play começar sem espera.
+  // Preload da faixa completa: se preload=true, prepara imediatamente.
+  // Se for mensagem antiga, prepara suavemente em idle após 1.5s.
   useEffect(() => {
-    if (!preload || !lines.length || seamlessRef.current) return;
+    if (!lines.length || seamlessRef.current) return;
     const generation = generationRef.current;
-    void prepareTrack(generation);
+    if (preload) {
+      void prepareTrack(generation);
+      return;
+    }
+    const timer = setTimeout(() => {
+      if (!seamlessRef.current && statusRef.current === "idle") {
+        void prepareTrack(generationRef.current);
+      }
+    }, 1500);
+    return () => clearTimeout(timer);
   }, [lines.length, preload, prepareTrack]);
 
   useEffect(() => () => {
@@ -310,7 +319,11 @@ export function MessageAudioPlayer({ text, languageCode, showTranscript, preload
 
   const playIcon =
     status === "loading" ? (
-      <Loader2 aria-hidden="true" className="animate-spin" size={20} />
+      <span className="audio-waveform-loader" aria-hidden="true">
+        <span className="audio-wave-bar" />
+        <span className="audio-wave-bar" />
+        <span className="audio-wave-bar" />
+      </span>
     ) : status === "playing" ? (
       <Pause aria-hidden="true" size={20} />
     ) : status === "ended" ? (

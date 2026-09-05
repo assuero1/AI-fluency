@@ -8,6 +8,13 @@ let activeVoice: ActiveVoice | null = null;
 const speechRequests = new Map<string, Promise<string>>();
 const captionedRequests = new Map<string, Promise<CaptionedSpeechResult>>();
 
+// Aquece a conexão HTTP com o servidor Next.js uma única vez por sessão de
+// página — resolve o TCP/TLS handshake antes do usuário clicar em Play,
+// eliminando ~100 ms de latência na conexão fria.
+if (typeof fetch !== "undefined") {
+  void fetch("/api/voice/warmup", { keepalive: true }).catch(() => undefined);
+}
+
 export type CaptionedWord = {
   word: string;
   start_time: number;

@@ -2,6 +2,7 @@ import {
   TTSConfigError,
   TTSRequestError,
   type CaptionedSpeechResult,
+  type StreamedSpeechResult,
   type SynthesizedSpeechResult,
   type TTSConnectionTestResult,
   type SynthesisRequestOptions,
@@ -296,3 +297,117 @@ export async function captionedDeepInfraSpeech(
     words: result.words ?? []
   };
 }
+
+export async function streamDeepInfraSpeech(
+  input: string,
+  options?: SynthesisRequestOptions
+): Promise<StreamedSpeechResult> {
+  const config = getDeepInfraConfig();
+
+  if (!config.apiKey) {
+    throw new DeepInfraConfigError("DEEPINFRA_API_KEY is not configured.");
+  }
+
+  const text = input.trim();
+  if (!text) {
+    throw new DeepInfraRequestError("Text is required for speech synthesis.", 400);
+  }
+  if (text.length > 1200) {
+    throw new DeepInfraRequestError("Text is too long for speech synthesis.", 413);
+  }
+
+  const lang = normalizeSpeechLanguage(options?.languageCode);
+  const voice = options?.voice || config.voicesByLanguage[lang] || config.defaultVoice || "";
+  const outputFormat = (options?.format || config.outputFormat).toLowerCase();
+
+  const sanitizedText = sanitizeTextForChatterbox(text, lang);
+
+  const payload: Record<string, unknown> = {
+    text: sanitizedText,
+    language_id: lang,
+    language: lang,
+    response_format: outputFormat,
+    stream: true
+  };
+
+  if (voice && voice !== "default") {
+    payload.voice_id = voice;
+  }
+  if (options?.speed && Number.isFinite(options.speed)) {
+    payload.speed = options.speed;
+  }
+  const wordTokens = sanitizedText.split(/\s+/).filter(Boolean);
+  const isShortUtterance = wordTokens.length <= 2;
+
+  const effectiveTemperature = config.hasCustomTemperature
+    ? config.temperature
+    : (isShortUtterance ? 0.50 : config.temperature);
+
+  const effectiveExaggeration = config.hasCustomExaggeration
+    ? config.exaggeration
+    : (isShortUtterance ? 0.22 : config.exaggeration);
+
+  const effectiveCfg = config.hasCustomCfgWeight
+    ? config.cfgWeight
+    : (isShortUtterance ? 0.50 : config.cfgWeight);
+
+  if (effectiveTemperature !== undefined) {
+    payload.temperature = effectiveTemperature;
+  }
+  if (effectiveExaggeration !== undefined) {
+    payload.exaggeration = effectiveExaggeration;
+  }
+  if (effectiveCfg !== undefined) {
+    payload.cfg = effectiveCfg;
+    payload.cfg_weight = effectiveCfg;
+  }
+
+  const endpoint = `${trimSlash(config.baseUrl)}/v1/inference/${config.model}`;
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+    signal: AbortSignal.timeout(35_000)
+  });
+
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (!response.ok) {
+    const body = contentType.includes("application/json") ? await response.json().catch(() => null) : await response.text();
+    throw new DeepInfraRequestError(`DeepInfra request failed: ${response.status}`, response.status, body);
+  }
+
+  const isBinary = contentType.startsWith("audio/") || contentType.includes("application/octet-stream");
+  const finalContentType = isBinary && contentType.startsWith("audio/") ? contentType : `audio/${outputFormat}`;
+
+  if (isBinary && response.body) {
+    return {
+      audioStream: response.body,
+      contentType: finalContentType,
+      outputFormat,
+      voice: voice || "default",
+      speed: options?.speed
+    };
+  }
+
+  const { audioBuffer } = await extractAudioData(response, contentType);
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(new Uint8Array(audioBuffer));
+      controller.close();
+    }
+  });
+
+  return {
+    audioStream: stream,
+    contentType: finalContentType,
+    outputFormat,
+    voice: voice || "default",
+    speed: options?.speed
+  };
+}
+

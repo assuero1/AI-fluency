@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Pause, Play, RotateCcw, SkipBack, SkipForward } from "lucide-react";
+import { Pause, Play, RotateCcw, SkipBack, SkipForward } from "lucide-react";
 import {
   activeIndexAtTime,
   alignWords,
@@ -432,9 +432,19 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
   }
 
   useEffect(() => {
-    if (!preload || mode !== "word" || trackRef.current) return;
+    if (mode !== "word" || trackRef.current) return;
     if (!text.trim()) return;
-    void loadCaptioned(false).catch(() => undefined);
+    if (preload) {
+      void loadCaptioned(false).catch(() => undefined);
+      return;
+    }
+    // Para mensagens não preloaded de imediato: busca com pequeno delay para não saturar a rede
+    const timer = setTimeout(() => {
+      if (!trackRef.current && statusRef.current === "idle") {
+        void loadCaptioned(false).catch(() => undefined);
+      }
+    }, 1200);
+    return () => clearTimeout(timer);
   }, [loadCaptioned, mode, preload, text]);
 
   useEffect(() => () => {
@@ -452,7 +462,11 @@ export function MessageWordPlayer({ text, languageCode, showTranscript, preload 
   const showWords = showTranscript && track !== null && track.aligned.length > 0;
   const playIcon =
     status === "loading" ? (
-      <Loader2 aria-hidden="true" className="animate-spin" size={20} />
+      <span className="audio-waveform-loader" aria-hidden="true">
+        <span className="audio-wave-bar" />
+        <span className="audio-wave-bar" />
+        <span className="audio-wave-bar" />
+      </span>
     ) : status === "playing" ? (
       <Pause aria-hidden="true" size={20} />
     ) : status === "ended" ? (

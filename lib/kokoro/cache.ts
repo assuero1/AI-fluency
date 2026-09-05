@@ -6,7 +6,7 @@ import path from "node:path";
 import { segmentMessage } from "@/lib/learning/captions";
 import { getActiveTTSProvider } from "@/lib/tts/factory";
 import type { SynthesisRequestOptions } from "@/lib/tts/types";
-import { KokoroRequestError, streamSpeech, type WordTimestamp } from "./client";
+import { KokoroRequestError, type WordTimestamp } from "./client";
 import { getKokoroConfig } from "./config";
 import { resolveSynthesisRequest, SynthesisValidationError } from "./validation";
 import { normalizeSpeechLanguage } from "./voices";
@@ -326,12 +326,43 @@ export async function streamPendingAudio(audioId: string) {
     await rm(path.join(cacheDir, `${audioId}.pending.json`), { force: true }).catch(() => undefined);
     return null;
   }
-  const result = await streamSpeech(pending.text, {
-    voice: pending.voice,
-    format: pending.outputFormat,
-    speed: pending.speed
-  });
-  // The pending record is dropped only after Kokoro accepted the request, so a
+
+  const provider = getActiveTTSProvider();
+  let result: {
+    audioStream: ReadableStream<Uint8Array>;
+    contentType: string;
+    outputFormat: string;
+    voice: string;
+    speed?: number;
+  };
+
+  if (typeof provider.streamSpeech === "function") {
+    result = await provider.streamSpeech(pending.text, {
+      voice: pending.voice,
+      format: pending.outputFormat,
+      speed: pending.speed
+    });
+  } else {
+    const synthResult = await provider.synthesizeSpeech(pending.text, {
+      voice: pending.voice,
+      format: pending.outputFormat,
+      speed: pending.speed
+    });
+    result = {
+      audioStream: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(synthResult.audioBuffer));
+          controller.close();
+        }
+      }),
+      contentType: synthResult.contentType,
+      outputFormat: synthResult.outputFormat,
+      voice: synthResult.voice,
+      speed: pending.speed
+    };
+  }
+
+  // The pending record is dropped only after the provider accepted the request, so a
   // failed synthesis leaves the same audio URL retryable until it expires.
   pendingSpeech.delete(audioId);
   await rm(path.join(cacheDir, `${audioId}.pending.json`), { force: true }).catch(() => undefined);
@@ -347,7 +378,8 @@ export async function streamPendingAudio(audioId: string) {
 async function readPendingSpeech(cacheDir: string, audioId: string): Promise<PendingSpeech | null> {
   try {
     const parsed = JSON.parse(await readFile(path.join(cacheDir, `${audioId}.pending.json`), "utf8")) as PendingSpeech;
-    const config = getKokoroConfig();
+    const provider = getActiveTTSProvider();
+    const config = provider.getSynthesisConfig();
     if (
       parsed.id !== audioId ||
       typeof parsed.text !== "string" ||

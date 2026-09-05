@@ -1,6 +1,7 @@
 import { normalizeSpeechLanguage } from "@/lib/kokoro/voices";
 import type {
   CaptionedSpeechResult,
+  StreamedSpeechResult,
   SynthesizedSpeechResult,
   SynthesisRequestOptions,
   TTSConnectionTestResult,
@@ -9,6 +10,7 @@ import type {
 } from "@/lib/tts/types";
 import {
   captionedDeepInfraSpeech,
+  streamDeepInfraSpeech,
   synthesizeDeepInfraSpeech,
   testDeepInfraConnection
 } from "./client";
@@ -27,6 +29,10 @@ export class DeepInfraTTSProvider implements TTSProvider {
 
   async captionedSpeech(input: string, options?: SynthesisRequestOptions): Promise<CaptionedSpeechResult> {
     return captionedDeepInfraSpeech(input, options);
+  }
+
+  async streamSpeech(input: string, options?: SynthesisRequestOptions): Promise<StreamedSpeechResult> {
+    return streamDeepInfraSpeech(input, options);
   }
 
   async testConnection(): Promise<TTSConnectionTestResult> {

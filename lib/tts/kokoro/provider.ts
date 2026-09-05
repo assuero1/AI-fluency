@@ -1,8 +1,9 @@
-import { captionedSpeech, synthesizeSpeech, testKokoroConnection } from "@/lib/kokoro/client";
+import { captionedSpeech, streamSpeech, synthesizeSpeech, testKokoroConnection } from "@/lib/kokoro/client";
 import { getKokoroConfig, getKokoroStatus } from "@/lib/kokoro/config";
 import { selectKokoroVoice } from "@/lib/kokoro/voices";
 import type {
   CaptionedSpeechResult,
+  StreamedSpeechResult,
   SynthesizedSpeechResult,
   SynthesisRequestOptions,
   TTSConnectionTestResult,
@@ -34,6 +35,17 @@ export class KokoroTTSProvider implements TTSProvider {
       voice: result.voice,
       audioBuffer: result.audioBuffer,
       words: result.words
+    };
+  }
+
+  async streamSpeech(input: string, options?: SynthesisRequestOptions): Promise<StreamedSpeechResult> {
+    const result = await streamSpeech(input, options);
+    return {
+      audioStream: result.audioStream,
+      contentType: result.contentType,
+      outputFormat: result.outputFormat,
+      voice: result.voice,
+      speed: result.speed
     };
   }
 

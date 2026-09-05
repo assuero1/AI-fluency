@@ -73,11 +73,20 @@ export type SynthesisConfig = {
   allowedFormats: string[];
 };
 
+export type StreamedSpeechResult = {
+  audioStream: ReadableStream<Uint8Array>;
+  contentType: string;
+  outputFormat: string;
+  voice: string;
+  speed?: number;
+};
+
 export interface TTSProvider {
   readonly type: TTSProviderType;
   readonly model: string;
   synthesizeSpeech(input: string, options?: SynthesisRequestOptions): Promise<SynthesizedSpeechResult>;
   captionedSpeech(input: string, options?: SynthesisRequestOptions): Promise<CaptionedSpeechResult>;
+  streamSpeech?(input: string, options?: SynthesisRequestOptions): Promise<StreamedSpeechResult>;
   testConnection(): Promise<TTSConnectionTestResult>;
   getStatus(): TTSStatus;
   resolveVoice(languageCode?: string): string;
