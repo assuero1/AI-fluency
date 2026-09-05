@@ -5,7 +5,6 @@ import { prepareRouteNudgeElement, silentWavUri } from "@/lib/learning/speech";
 type ActiveVoice = { owner: symbol; stop: () => void };
 
 let activeVoice: ActiveVoice | null = null;
-const speechRequests = new Map<string, Promise<string>>();
 const captionedRequests = new Map<string, Promise<CaptionedSpeechResult>>();
 
 // Aquece a conexão HTTP com o servidor Next.js uma única vez por sessão de
@@ -38,60 +37,50 @@ export function releaseActiveVoice(owner: symbol) {
 }
 
 export function requestSpeech(text: string, languageCode: string | undefined, refresh = false): Promise<string> {
-  const key = `${languageCode ?? ""}\n${text}`;
-  // refresh=true descarta uma URL resolvida antes (ex.: o áudio expirou no
-  // servidor) e força um novo POST, que re-sintetiza se o cache sumiu.
-  if (refresh) speechRequests.delete(key);
-  const existing = speechRequests.get(key);
-  if (existing) return existing;
-
-  const request = fetch("/api/voice/synthesize", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, languageCode })
-  }).then(async (response) => {
-    const data = (await response.json()) as { ok?: boolean; audioUrl?: string; error?: string };
-    if (!response.ok || !data.ok || !data.audioUrl) throw new Error(data.error ?? "Audio unavailable.");
-    return data.audioUrl;
-  }).catch((error) => {
-    speechRequests.delete(key);
-    throw error;
-  });
-
-  if (speechRequests.size >= 100) {
-    const oldestKey = speechRequests.keys().next().value;
-    if (oldestKey) speechRequests.delete(oldestKey);
-  }
-  speechRequests.set(key, request);
-  return request;
+  return requestCaptionedSpeech(text, languageCode, refresh).then((result) => result.audioUrl);
 }
 
-export function requestCaptionedSpeech(text: string, languageCode: string | undefined): Promise<CaptionedSpeechResult> {
+export function requestCaptionedSpeech(text: string, languageCode: string | undefined, refresh = false): Promise<CaptionedSpeechResult> {
   const key = `${languageCode ?? ""}\n${text}`;
+  if (refresh) captionedRequests.delete(key);
   const existing = captionedRequests.get(key);
   if (existing) return existing;
-
   const request = fetch("/api/voice/captioned", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, languageCode })
   }).then(async (response) => {
     const data = (await response.json()) as { ok?: boolean; audioUrl?: string; words?: CaptionedWord[]; error?: string };
-    if (!response.ok || !data.ok || !data.audioUrl || !Array.isArray(data.words)) {
-      throw new Error(data.error ?? "Audio unavailable.");
-    }
-    return { audioUrl: data.audioUrl, words: data.words };
+    if (!response.ok || !data.ok || !data.audioUrl) throw new Error(data.error ?? "Audio unavailable.");
+    return { audioUrl: data.audioUrl, words: Array.isArray(data.words) ? data.words : [] };
   }).catch((error) => {
-    captionedRequests.delete(key);
+    if (captionedRequests.get(key) === request) captionedRequests.delete(key);
     throw error;
   });
-
   if (captionedRequests.size >= 100) {
     const oldestKey = captionedRequests.keys().next().value;
     if (oldestKey) captionedRequests.delete(oldestKey);
   }
   captionedRequests.set(key, request);
   return request;
+}
+
+/** Pré-carrega bytes comprimidos no cache HTTP sem decodificar/reempacotar. */
+const preloadedAudio = new Map<string, Promise<void>>();
+export function preloadSpeechAudio(text: string, languageCode?: string) {
+  return requestSpeech(text, languageCode).then((url) => {
+    const existing = preloadedAudio.get(url);
+    if (existing) return existing;
+    const task = fetch(url, { cache: "force-cache" }).then(async (response) => {
+      if (!response.ok) throw new Error(`Audio fetch failed: ${response.status}`);
+      // Drena o corpo para aquecer o cache, sem manter uma cópia em memória JS.
+      const reader = response.body?.getReader();
+      if (reader) { while (!(await reader.read()).done) { /* consume */ } }
+    }).catch((error) => { preloadedAudio.delete(url); throw error; });
+    if (preloadedAudio.size >= 20) preloadedAudio.delete(preloadedAudio.keys().next().value!);
+    preloadedAudio.set(url, task);
+    return task;
+  });
 }
 
 export function reportVoiceFailure(text: string, languageCode: string | undefined, reason: string) {

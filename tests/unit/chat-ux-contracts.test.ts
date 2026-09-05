@@ -33,9 +33,9 @@ describe("chat ux contracts", () => {
   });
 
   it("makes TTS failure visible on the player buttons", () => {
-    for (const file of ["components/MessageWordPlayer.tsx", "components/MessageAudioPlayer.tsx"]) {
+    for (const file of ["components/MessageAudioPlayer.tsx"]) {
       const player = read(file);
-      expect(player).toContain('status === "error" ? "voice-icon-button audio-error" : "voice-icon-button"');
+      expect(player).toContain('state.status === "error" ? " audio-error" : ""');
     }
     const css = read("app/globals.css");
     expect(css).toContain(".voice-icon-button.audio-error");
@@ -44,10 +44,10 @@ describe("chat ux contracts", () => {
 
   it("falls back to readable text when the player errors, even with transcript off", () => {
     const wordPlayer = read("components/MessageWordPlayer.tsx");
-    expect(wordPlayer).toContain("showTranscript || status === \"error\"");
-    expect(wordPlayer).toContain("Áudio indisponível agora — leia a mensagem acima.");
+
+    expect(wordPlayer).toContain("<MessageAudioPlayer {...props} />");
     const audioPlayer = read("components/MessageAudioPlayer.tsx");
-    expect(audioPlayer).toContain("showTranscript || status === \"error\"");
+    expect(audioPlayer).toContain("showTranscript || state.status === \"error\"");
     expect(audioPlayer).toContain("Áudio indisponível agora — leia a mensagem acima.");
   });
 });

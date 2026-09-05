@@ -1,5 +1,9 @@
 "use client";
 
+import { applyAudioRate } from "@/lib/learning/audio-policy";
+import { AudioSpeedControl, useAudioRate } from "./AudioSpeedControl";
+import { preloadSpeechAudio } from "./voice-shared";
+
 import Link from "next/link";
 import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { Mic, MicOff } from "lucide-react";
@@ -114,6 +118,8 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
   // Auto-avanço: 4s após o julgamento a próxima frase abre sozinha; tocar na
   // barrinha adianta. O ref permite cancelar em novo agendamento, reset,
   // abandono e unmount (sem avanço fantasma).
+  const preferredAudioRate = useAudioRate();
+  useEffect(() => { if (audioRef.current) applyAudioRate(audioRef.current, preferredAudioRate); }, [preferredAudioRate]);
   const autoAdvanceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // O timer dispara 4s depois do agendamento: precisa chamar a versão MAIS
   // RECENTE de continueToNext — a closure do render em que o timer foi criado
@@ -130,6 +136,19 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
   const cancelAutoAdvance = useCallback(() => {
     if (autoAdvanceRef.current) { clearTimeout(autoAdvanceRef.current); autoAdvanceRef.current = null; }
   }, []);
+
+  const scheduleAutoAdvance = useCallback(() => {
+    cancelAutoAdvance();
+    autoAdvanceRef.current = setTimeout(function finishWhenAudioEnds() {
+      const audio = audioRef.current;
+      if (audio && !audio.paused && !audio.ended) {
+        autoAdvanceRef.current = setTimeout(finishWhenAudioEnds, 100);
+        return;
+      }
+      autoAdvanceRef.current = null;
+      void continueToNextRef.current();
+    }, AUTO_ADVANCE_MS);
+  }, [cancelAutoAdvance]);
 
   const advanceNow = () => {
     cancelAutoAdvance();
@@ -189,6 +208,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
         const url = await requestSpeech(current.audioText, languageCode);
         if (cancelled) return;
         if (audio.src !== url) audio.src = url;
+        applyAudioRate(audio);
         await audio.play();
       } catch {
         if (!cancelled) { setAudioFailed(true); reportVoiceFailure(current.audioText, languageCode, "autoplay-rejected"); }
@@ -203,14 +223,15 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
   useEffect(() => {
     if (!sentences.length || result) return;
     prefetchRef.current?.dispose();
+    const start = Math.max(0, sentences.findIndex((sentence) => sentence.audioText === current?.audioText));
     const queue = createAudioPrefetchQueue({
-      texts: sentences.map((sentence) => sentence.audioText),
-      request: (text) => requestSpeech(text, languageCode)
+      texts: sentences.slice(start, start + 3).map((sentence) => sentence.audioText),
+      request: (text) => preloadSpeechAudio(text, languageCode)
     });
     prefetchRef.current = queue;
     queue.start();
     return () => queue.dispose();
-  }, [sentences, result, languageCode]);
+  }, [sentences, result, languageCode, current?.audioText]);
 
   async function fetchActiveSession(): Promise<ActiveNewWordsPractice | null> {
     const response = await fetch("/api/practice/new-words", { cache: "no-store" });
@@ -353,8 +374,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
       playSound("correct");
       vibrate("success");
       setAnsweredIds((previous) => new Set([...previous, current.id]));
-      cancelAutoAdvance();
-      autoAdvanceRef.current = setTimeout(() => { autoAdvanceRef.current = null; void continueToNextRef.current(); }, AUTO_ADVANCE_MS);
+      scheduleAutoAdvance();
       const backgroundJudge = fetch("/api/practice/new-words/judge", { method: "POST", headers: { "Content-Type": "application/json" }, body: judgeBody })
         .then(async (response) => {
           const data = await readJsonOrThrow(response) as { ok?: boolean; error?: string; attempt?: { judgment: JudgedTranslation; senseCreated: boolean } };
@@ -392,8 +412,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
       setAnsweredIds((previous) => new Set([...previous, current.id]));
       // O julgamento fica visível 4s (a barrinha dá o feedback visual do tempo)
       // e a próxima frase abre sozinha; tocar na barrinha adianta.
-      cancelAutoAdvance();
-      autoAdvanceRef.current = setTimeout(() => { autoAdvanceRef.current = null; void continueToNextRef.current(); }, AUTO_ADVANCE_MS);
+      scheduleAutoAdvance();
     } catch (submitError) { setError(submitError instanceof Error ? submitError.message : "Não foi possível avaliar a tradução."); }
     finally { setBusy(false); setWait("none"); }
   }
@@ -535,6 +554,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
     return shell(
       <div className="flashcard-screen">
         <audio ref={audioRef} className="sr-only" preload="auto" />
+        <AudioSpeedControl />
         <div className="top-row">
           <BackButton label="Sair" onClick={() => setExitOpen(true)} />
           <Pill>
@@ -595,6 +615,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
     const wordIndex = words.findIndex((word) => word.wordId === current.targetWordId);
     return shell(<div className="flashcard-screen">
       <audio ref={audioRef} className="sr-only" preload="auto" />
+      <AudioSpeedControl />
       <div className="top-row">
         <BackButton label="Sair" onClick={() => setExitOpen(true)} />
         <Pill>{answeredIds.size}/{sentences.length} frases{wordIndex >= 0 ? ` · palavra ${wordIndex + 1}/${words.length}` : ""}</Pill>
@@ -616,7 +637,7 @@ export function NewWordsTrainer({ initialLanguageName = "idioma estudado" }: New
             return word ? `${word.lemma} · ${word.translation}` : "";
           })()}
         </p>
-        {!audioFailed ? <VoiceButton compact languageCode={languageCode} label="Ouvir novamente" text={current.audioText} onPlayback={() => setAudioReplayCount((count) => count + 1)} onAudioFailure={() => setAudioFailed(true)} /> : <p className="flashcard-audio-fallback" role="status">Áudio indisponível. Continue pelo texto.</p>}
+        {!audioFailed ? <span onClickCapture={cancelAutoAdvance}><VoiceButton compact languageCode={languageCode} label="Ouvir novamente" text={current.audioText} onPlayback={() => { audioRef.current?.pause(); cancelAutoAdvance(); setAudioReplayCount((count) => count + 1); }} onPlaybackEnd={scheduleAutoAdvance} onAudioFailure={() => { setAudioFailed(true); scheduleAutoAdvance(); }} /></span> : <p className="flashcard-audio-fallback" role="status">Áudio indisponível. Continue pelo texto.</p>}
       </section>
       {!judgment ? <form className="flashcard-attempt" onSubmit={submitTranslation}>
         <label htmlFor="new-words-translation">Sua tradução em português</label>

@@ -69,10 +69,10 @@ describe("QA: Instant Audio Playback & DeepInfra Chatterbox Streaming", () => {
       expect(fetchCount).toBe(1);
     });
 
-    it("verifica contrato de mensagens/route.ts aguardando o warm antes de responder", () => {
+    it("agenda warm após responder, sem bloquear o texto", () => {
       const routeContent = readFile("app/api/conversations/[conversationId]/messages/route.ts");
-      expect(routeContent).toContain("await warmCaptionedMessage(assistant.text, assistant.language_detected)");
-      expect(routeContent).not.toMatch(/after\(\(\)\s*=>\s*warmCaptionedMessage/);
+      expect(routeContent).toContain("after(() => warmCaptionedMessage(assistant.text, assistant.language_detected))");
+      expect(routeContent).not.toContain("await warmCaptionedMessage");
     });
   });
 
@@ -159,13 +159,6 @@ describe("QA: Instant Audio Playback & DeepInfra Chatterbox Streaming", () => {
       expect(css).toContain("@keyframes audioWavePulse");
     });
 
-    it("MessageWordPlayer utiliza audio-waveform-loader no estado loading", () => {
-      const wordPlayer = readFile("components/MessageWordPlayer.tsx");
-      expect(wordPlayer).toContain('className="audio-waveform-loader"');
-      expect(wordPlayer).toContain('className="audio-wave-bar"');
-      expect(wordPlayer).not.toMatch(/status\s*===\s*"loading"\s*\?\s*\(\s*<Loader2/);
-    });
-
     it("MessageAudioPlayer utiliza audio-waveform-loader no estado loading", () => {
       const audioPlayer = readFile("components/MessageAudioPlayer.tsx");
       expect(audioPlayer).toContain('className="audio-waveform-loader"');
@@ -173,14 +166,8 @@ describe("QA: Instant Audio Playback & DeepInfra Chatterbox Streaming", () => {
       expect(audioPlayer).not.toMatch(/status\s*===\s*"loading"\s*\?\s*\(\s*<Loader2/);
     });
 
-    it("MessageWordPlayer possui preload inteligente com timer para mensagens antigas", () => {
-      const wordPlayer = readFile("components/MessageWordPlayer.tsx");
-      expect(wordPlayer).toMatch(/setTimeout\(\(\)\s*=>\s*\{[\s\S]*loadCaptioned\(false\)/);
-    });
-
-    it("MessageAudioPlayer possui preload inteligente com timer para mensagens antigas", () => {
-      const audioPlayer = readFile("components/MessageAudioPlayer.tsx");
-      expect(audioPlayer).toMatch(/setTimeout\(\(\)\s*=>\s*\{[\s\S]*prepareTrack\(generationRef\.current\)/);
+    it("o modo palavra reutiliza o player progressivo em vez de gerar outro áudio", () => {
+      expect(readFile("components/MessageWordPlayer.tsx")).toContain("<MessageAudioPlayer {...props} />");
     });
   });
 });

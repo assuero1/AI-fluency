@@ -61,3 +61,21 @@ describe("fila de prefetch de áudio", () => {
     expect(request).toHaveBeenCalledTimes(4);
   });
 });
+
+describe("bounded speculative audio", () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+  it("limits simultaneous requests, deduplicates texts and ignores repeated start", async () => {
+    const releases: Array<() => void> = [];
+    const request = vi.fn(() => new Promise<void>((resolve) => releases.push(resolve)));
+    const { createAudioPrefetchQueue } = await import("../../lib/learning/audio-prefetch");
+    const queue = createAudioPrefetchQueue({ texts: ["a", "a", "b", "c"], request, concurrency: 2, spacingMs: 0, burstSpacingMs: 0 });
+    queue.start(); queue.start();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(request).toHaveBeenCalledTimes(2);
+    releases[0]();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(request).toHaveBeenCalledTimes(3);
+    queue.dispose(); releases.forEach((resolve) => resolve());
+  });
+});

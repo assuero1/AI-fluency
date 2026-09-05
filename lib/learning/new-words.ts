@@ -419,14 +419,11 @@ export async function generateNewWordsDeck(sessionId: string): Promise<void> {
       rejection_reasons: generation.rejectionReasons
     });
 
-    // Warm das 2 primeiras frases AGUARDADO (a frase 1 toca instantânea); o resto
-    // é fogo-e-esqueça — a geração já roda dentro do after(), então o serverless
-    // mantém a execução. Best-effort: erro não propaga.
-    const warmTexts = cards.map((card) => card.audioText);
-    await warmCachedSpeech(warmTexts.slice(0, 2), profile.fields.language_code).catch(() => undefined);
-    if (warmTexts.length > 2) {
-      void warmCachedSpeech(warmTexts.slice(2), profile.fields.language_code).catch(() => undefined);
-    }
+    // A geração já roda no after() da rota. Prepara só a janela inicial;
+    // o cliente mantém as próximas frases aquecidas conforme o aluno avança.
+    const warmTexts = cards.slice(0, 3).map((card) => card.audioText);
+    await warmCachedSpeech(warmTexts, profile.fields.language_code).catch(() => undefined);
+
   } catch (error) {
     // Best-effort: marca "failed" (é isso que sinaliza a UI) sem pisotear um
     // status que já mudou (ex.: abandonada durante a geração) e engole o erro.

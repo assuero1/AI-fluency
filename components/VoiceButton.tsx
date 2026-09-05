@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Loader2, Pause, Play, RotateCcw, Volume2 } from "lucide-react";
+import { applyAudioRate } from "@/lib/learning/audio-policy";
+import { useAudioRate } from "./AudioSpeedControl";
 import { msUntilAudioRouteRestored } from "@/lib/learning/speech";
 import {
   claimActiveVoice,
@@ -20,6 +22,7 @@ type VoiceButtonProps = {
   playbackRate?: number;
   onPlayback?: (event: { replay: boolean; slow: boolean }) => void;
   onAudioFailure?: () => void;
+  onPlaybackEnd?: () => void;
 };
 
 type VoiceStatus = "idle" | "loading" | "ready" | "playing" | "paused" | "ended" | "error";
@@ -38,7 +41,10 @@ function Wave({ playing = false }: { playing?: boolean }) {
   );
 }
 
-export function VoiceButton({ text, label = "Ouvir", compact = false, languageCode, preload = false, playbackRate = 1, onPlayback, onAudioFailure }: VoiceButtonProps) {
+export function VoiceButton({ text, label = "Ouvir", compact = false, languageCode, preload = false, playbackRate, onPlayback, onAudioFailure, onPlaybackEnd }: VoiceButtonProps) {
+  const preferredRate = useAudioRate();
+  const effectiveRate = playbackRate ?? preferredRate;
+  const unlockHandleRef = useRef<ReturnType<typeof unlockAudioForPlayback> | null>(null);
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const loadPromiseRef = useRef<Promise<HTMLAudioElement | null> | null>(null);
@@ -47,8 +53,10 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
   const playbackRequestedRef = useRef(false);
   const unlockedAudioRef = useRef<HTMLAudioElement | null>(null);
   const textRef = useRef(text);
+  const generationRef = useRef(0);
 
   const releaseAudio = useCallback(() => {
+    generationRef.current++;
     const audio = audioRef.current;
     if (!audio) return;
     audio.pause();
@@ -59,6 +67,8 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
   }, []);
 
   const stopForAnotherVoice = useCallback(() => {
+    generationRef.current++;
+    unlockHandleRef.current?.cancel();
     const audio = audioRef.current;
     if (!audio) return;
     audio.pause();
@@ -87,7 +97,13 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     audio.preload = "auto";
     audio.src = audioUrl;
     audio.onended = () => {
-      if (audioRef.current === audio) setStatus("ended");
+      if (audioRef.current === audio) { setStatus("ended"); releaseActiveVoice(ownerRef.current); onPlaybackEnd?.(); }
+    };
+    audio.oncanplay = () => {
+      if (audioRef.current === audio) setStatus((previous) => previous === "loading" || previous === "idle" ? "ready" : previous);
+    };
+    audio.onpause = () => {
+      if (audioRef.current === audio && !audio.ended) setStatus((previous) => previous === "playing" ? "paused" : previous);
     };
     audio.onerror = () => {
       if (audioRef.current !== audio) return;
@@ -102,11 +118,11 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     if (urlChanged) {
       audio.currentTime = 0;
       setStatus("idle");
-    } else {
+    } else if (audio.readyState >= 3) {
       setStatus("ready");
     }
     return audio;
-  }, [languageCode, onAudioFailure, releaseAudio, text]);
+  }, [languageCode, onAudioFailure, onPlaybackEnd, releaseAudio, text]);
 
   const recreateAudio = useCallback(() => {
     if (!audioUrlRef.current) return null;
@@ -115,20 +131,24 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
 
   const playExisting = useCallback(async (audio: HTMLAudioElement) => {
     claimActiveVoice(ownerRef.current, stopForAnotherVoice);
-    audio.playbackRate = playbackRate;
+    const generation = generationRef.current;
+    unlockHandleRef.current?.cancel();
+    applyAudioRate(audio, effectiveRate);
     // iOS: se o microfone acabou de ser liberado, aguarda a AVAudioSession
     // restaurar a rota do alto-falante antes de tocar.
     const routeRestoreWait = msUntilAudioRouteRestored();
     if (routeRestoreWait > 0) {
       await new Promise((resolve) => setTimeout(resolve, routeRestoreWait));
     }
+    if (generationRef.current !== generation || audioRef.current !== audio) return;
     // Uma segunda tentativa cobre rejeições transitórias do iOS (sessão de
     // áudio ainda restaurando a rota depois do microfone).
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         await audio.play();
+        if (generationRef.current !== generation || audioRef.current !== audio) return;
         setStatus("playing");
-        onPlayback?.({ replay: audio.currentTime > 0, slow: playbackRate < 1 });
+        onPlayback?.({ replay: audio.currentTime > 0, slow: effectiveRate < 1 });
         return;
       } catch {
         // Outra voz pode ter assumido este elemento; não reporta nem retenta.
@@ -140,7 +160,7 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     setStatus("error");
     reportVoiceFailure(text, languageCode, "audio.play() rejected");
     onAudioFailure?.();
-  }, [languageCode, onAudioFailure, onPlayback, playbackRate, stopForAnotherVoice, text]);
+  }, [languageCode, onAudioFailure, onPlayback, effectiveRate, stopForAnotherVoice, text]);
 
   const ensureAudio = useCallback(async (): Promise<HTMLAudioElement | null> => {
     if (audioRef.current && audioUrlRef.current) return audioRef.current;
@@ -167,7 +187,12 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     }
   }, [createAudio, languageCode, releaseAudio, text]);
 
+  useEffect(() => {
+    if (audioRef.current) applyAudioRate(audioRef.current, effectiveRate);
+  }, [effectiveRate]);
+
   useEffect(() => () => {
+    unlockHandleRef.current?.cancel();
     releaseAudio();
   }, [releaseAudio]);
 
@@ -191,6 +216,8 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
   async function togglePlayback() {
     if (!text.trim()) return;
     playbackRequestedRef.current = true;
+    claimActiveVoice(ownerRef.current, stopForAnotherVoice);
+    const generation = generationRef.current;
 
     const existing = audioRef.current;
     if (existing && status === "playing") {
@@ -221,14 +248,14 @@ export function VoiceButton({ text, label = "Ouvir", compact = false, languageCo
     const audio = ensureBareAudio();
     if (unlockedAudioRef.current !== audio) {
       unlockedAudioRef.current = audio;
-      unlockAudioForPlayback(audio);
+      unlockHandleRef.current = unlockAudioForPlayback(audio);
     }
 
     try {
       const readyAudio = await ensureAudio();
       // null: o texto mudou enquanto a síntese estava em voo; o efeito de
       // troca de texto já resetou o estado para o conteúdo novo.
-      if (!readyAudio) return;
+      if (!readyAudio || generationRef.current !== generation) return;
       await playExisting(readyAudio);
     } catch (error) {
       setStatus("error");

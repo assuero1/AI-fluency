@@ -6,6 +6,7 @@ import { normalizeSpeechLanguage } from "@/lib/kokoro/voices";
 const supportedLanguages = new Set(["en", "es", "fr", "it", "pt", "ja", "zh", "hi"]);
 
 export async function POST(request: Request) {
+  const started = performance.now();
   try {
     const body = (await request.json()) as { text?: string; languageCode?: string; format?: string; voice?: string };
     const provider = getActiveTTSProvider();
@@ -22,7 +23,9 @@ export async function POST(request: Request) {
       languageCode: speechLanguage
     });
 
-    return jsonOk({ ok: true, languageCode: speechLanguage, ...result });
+    return jsonOk({ ok: true, languageCode: speechLanguage, ...result }, {
+      headers: { "Server-Timing": `speech;dur=${(performance.now() - started).toFixed(1)};desc="${result.cached ? "cache-hit" : "generated"}"` }
+    });
   } catch (error) {
     return handleApiError(error);
   }

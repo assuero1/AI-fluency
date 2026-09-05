@@ -108,8 +108,23 @@ export function timedIndices(aligned: AlignedToken[]): number[] {
  * servidor (hoje todas exceto inglês) geram `words: []` e nenhum token
  * alinhado — nesse caso o player deve degradar para o modo legado.
  */
-export function hasUsableAlignment(aligned: AlignedToken[]): boolean {
-  return timedIndices(aligned).length > 0;
+export function hasUsableAlignment(aligned: AlignedToken[], duration = Infinity): boolean {
+  const words = aligned.filter((token) => /[\p{L}\p{N}]/u.test(token.text));
+  if (!words.length) return false;
+  let previousEnd = 0;
+  let covered = 0;
+  for (const token of words) {
+    if (token.start === undefined && token.end === undefined) continue;
+    if (!Number.isFinite(token.start) || !Number.isFinite(token.end)) return false;
+    const start = token.start as number;
+    const end = token.end as number;
+    if (start < 0 || end <= start || (Number.isFinite(duration) && end > duration + 0.05)) return false;
+    // Tokens agrupados podem compartilhar o mesmo intervalo.
+    if (end < previousEnd) return false;
+    previousEnd = end;
+    covered++;
+  }
+  return covered / words.length >= 0.8;
 }
 
 /** Índice da palavra ativa para um tempo de reprodução (start incluso, end exclusivo). */

@@ -9,12 +9,9 @@ export async function POST(request: Request, context: { params: Promise<{ conver
     const body = (await request.json()) as { text?: string; clientRequestId?: string };
     const result = await sendConversationMessage(conversationId, body.text ?? "", body.clientRequestId);
     after(() => flushConversationEventWrites());
-    // Aquece a síntese do áudio da resposta ANTES de responder ao cliente:
-    // quando o balão da IA renderizar no chat, o cache já estará 100% pronto,
-    // eliminando a latência no primeiro clique de play.
     const assistant = result.assistantMessage?.fields;
     if (assistant?.text) {
-      await warmCaptionedMessage(assistant.text, assistant.language_detected).catch(() => undefined);
+      after(() => warmCaptionedMessage(assistant.text, assistant.language_detected));
     }
     return jsonOk({ ok: true, ...result }, { status: 201 });
   } catch (error) {

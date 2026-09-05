@@ -1,5 +1,3 @@
-import fs from "node:fs";
-import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import {
   createStallTracker,
@@ -7,8 +5,6 @@ import {
   unlockAudioForPlayback
 } from "@/components/voice-shared";
 
-const root = path.resolve(import.meta.dirname, "../..");
-const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 
 type FakeAudio = {
   paused: boolean;
@@ -206,74 +202,4 @@ describe("gesture unlock cancellation", () => {
   });
 });
 
-/** Contratos de fiação nos dois players do chat (o modo palavra cai para o
- * legado quando a voz não tem timestamps — ambos precisam dos mesmos consertos). */
-describe("player resilience wiring", () => {
-  const players = ["components/MessageWordPlayer.tsx", "components/MessageAudioPlayer.tsx"];
-
-  it("reconciles the status when the element pauses outside the buttons", () => {
-    for (const file of players) {
-      const source = read(file);
-      expect(source).toMatch(/ensureAudioElement[\s\S]*?audio\.onpause = \(\) => \{[\s\S]*?statusRef\.current !== "playing"[\s\S]*?setStatusTracked\(/);
-    }
-  });
-
-  it("reports an element error instead of staying loading or playing forever", () => {
-    for (const file of players) {
-      const source = read(file);
-      expect(source).toMatch(/audio\.onerror = \(\) => \{[\s\S]*?reportVoiceFailure\(/);
-    }
-  });
-
-  it("cancels the unlock before issuing the real play and unmutes it", () => {
-    const word = read("components/MessageWordPlayer.tsx");
-    expect(word).toContain("unlockHandleRef.current = unlockAudioForPlayback");
-    expect(word).toMatch(/playAt = useCallback\(async[\s\S]*?unlockHandleRef\.current\?\.cancel\(\);[\s\S]*?audio\.muted = false;/);
-    const legacy = read("components/MessageAudioPlayer.tsx");
-    expect(legacy).toContain("unlockHandleRef.current = unlockAudioForPlayback");
-    expect(legacy).toMatch(/startPlayerAt = useCallback\(async[\s\S]*?unlockHandleRef\.current\?\.cancel\(\);[\s\S]*?audio\.muted = false;/);
-  });
-
-  it("runs the stall watchdog inside the highlight loop", () => {
-    for (const file of players) {
-      const source = read(file);
-      expect(source).toContain("createStallTracker()");
-      expect(source).toMatch(/samplePlaybackStall\(audio, stallTrackerRef\.current, statusRef\.current === "playing", giveUpStalledPlayback\)/);
-      expect(source).toMatch(/giveUpStalledPlayback = useCallback\(\(\) => \{[\s\S]*?reportVoiceFailure\(/);
-    }
-  });
-
-  it("has graceful fallback when buildSeamlessTrack fails (e.g. unsupported codec like Opus on Safari)", () => {
-    const word = read("components/MessageWordPlayer.tsx");
-    expect(word).toContain("const seamless = await buildSeamlessTrack");
-    expect(word).toMatch(/catch\s*\{[\s\S]*?audioUrl = segments\[0\]\.audioUrl;/);
-
-    const legacy = read("components/MessageAudioPlayer.tsx");
-    expect(legacy).toMatch(/if \(urls\.length === 1\) \{\s*ensureAudioElement\(\)\.src = urls\[0\];/);
-    expect(legacy).toMatch(/catch\s*\{[\s\S]*?ensureAudioElement\(\)\.src = urls\[0\];/);
-  });
-
-  it("seamless-audio wraps decodeAudioData with detailed error context", () => {
-    const seamlessSource = read("lib/learning/seamless-audio.ts");
-    expect(seamlessSource).toContain("decodeAudioData failed for");
-  });
-
-  it("has optimistic UI without loading spinner during background preload", () => {
-    const word = read("components/MessageWordPlayer.tsx");
-    expect(word).toContain("const loadCaptionedTask = useCallback(async (userInitiated = false)");
-    expect(word).toContain("void loadCaptioned(false).catch(() => undefined)");
-    expect(word).toContain("await loadCaptioned(true)");
-  });
-
-  it("pre-buffers audio silently on track resolution for zero-delay play", () => {
-    const word = read("components/MessageWordPlayer.tsx");
-    expect(word).toMatch(/audio\.src = audioUrl;[\s\S]*?audio\.load\(\);[\s\S]*?fetch\(audioUrl/);
-  });
-
-  it("conversations.ts wires Early TTS Trigger in parallel with database persistence", () => {
-    const conv = read("lib/learning/conversations.ts");
-    expect(conv).toContain("import { warmCaptionedMessage } from \"@/lib/kokoro/cache\";");
-    expect(conv).toMatch(/assistantReply = safeTutorReply[\s\S]*?void warmCaptionedMessage\(assistantReply, profile\?\.fields\.language_code\)\.catch/);
-    expect(conv).toMatch(/quickActionReply = safeTutorReply[\s\S]*?void warmCaptionedMessage\(quickActionReply, context\.profile\?\.fields\.language_code\)\.catch/);
-  });
-});
+// O comportamento dos players unificados é exercitado em progressive-audio.test.ts.

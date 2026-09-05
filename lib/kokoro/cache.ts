@@ -3,7 +3,9 @@ import "server-only";
 import { createHash } from "node:crypto";
 import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { segmentMessage } from "@/lib/learning/captions";
+import { splitIntoSentences } from "@/lib/learning/sentences";
+import { getDeepInfraConfig } from "@/lib/tts/deepinfra/config";
+import { sanitizeTextForChatterbox } from "@/lib/tts/deepinfra/client";
 import { getActiveTTSProvider } from "@/lib/tts/factory";
 import type { SynthesisRequestOptions } from "@/lib/tts/types";
 import { KokoroRequestError, type WordTimestamp } from "./client";
@@ -30,6 +32,7 @@ type CachedSpeech = {
   outputFormat: string;
   voice: string;
   cached: boolean;
+  words?: WordTimestamp[];
 };
 
 type CaptionedSpeechResult = CachedSpeech & { words: WordTimestamp[] };
@@ -40,6 +43,7 @@ type PendingSpeech = {
   voice: string;
   outputFormat: string;
   speed: number;
+  languageCode?: string;
   expiresAt: number;
 };
 
@@ -86,14 +90,12 @@ export async function warmCaptionedMessage(text: string, languageCode: string | 
   const requested = normalizeSpeechLanguage(languageCode);
   const speechLanguage = supportedSpeechLanguages.has(requested) ? requested : "en";
   const voice = provider.resolveVoice(speechLanguage);
-  await Promise.all(segmentMessage(text).map((segment) =>
-    prepareCaptionedSpeech(segment, {
-      voice,
-      format: provider.getOutputFormat(),
-      speed: provider.getSpeed(),
-      languageCode: speechLanguage
-    }).catch(() => undefined)
-  ));
+  // Mesmo recorte do player; apenas a janela inicial, sem gerar todo o histórico.
+  for (const segment of splitIntoSentences(text).slice(0, 3)) {
+    await prepareCaptionedSpeech(segment, {
+      voice, format: provider.getOutputFormat(), speed: provider.getSpeed(), languageCode: speechLanguage
+    }).catch(() => undefined);
+  }
 }
 
 /**
@@ -163,6 +165,12 @@ export async function prepareCachedSpeech(input: string, options?: SynthesisRequ
 
 export async function prepareCaptionedSpeech(input: string, options?: SynthesisRequestOptions): Promise<CaptionedSpeechResult> {
   const provider = getActiveTTSProvider();
+  // Chatterbox entrega o mesmo áudio com ou sem pedido de legendas. Uma
+  // ausência explícita de timestamps nunca deve provocar outra inferência.
+  if (provider.type === "deepinfra") {
+    const result = await getOrCreateCachedSpeech(input, options);
+    return { ...result, words: result.words ?? [] };
+  }
   const config = provider.getSynthesisConfig();
   const cacheConfig = getKokoroConfig();
   let request: ReturnType<typeof resolveSynthesisRequest>;
@@ -287,7 +295,8 @@ export async function getCachedSpeech(audioId: string): Promise<Omit<CachedSpeec
       audioUrl: `/api/voice/${audioId}`,
       contentType: metadata.contentType,
       outputFormat: metadata.outputFormat,
-      voice: metadata.voice
+      voice: metadata.voice,
+      words: metadata.words
     };
   } catch {
     await rm(path.join(cacheDir, `${audioId}.json`), { force: true }).catch(() => undefined);
@@ -340,13 +349,15 @@ export async function streamPendingAudio(audioId: string) {
     result = await provider.streamSpeech(pending.text, {
       voice: pending.voice,
       format: pending.outputFormat,
-      speed: pending.speed
+      speed: pending.speed,
+      languageCode: pending.languageCode
     });
   } else {
     const synthResult = await provider.synthesizeSpeech(pending.text, {
       voice: pending.voice,
       format: pending.outputFormat,
-      speed: pending.speed
+      speed: pending.speed,
+      languageCode: pending.languageCode
     });
     result = {
       audioStream: new ReadableStream<Uint8Array>({
@@ -457,7 +468,8 @@ async function createCachedSpeech(input: { audioId: string; text: string; voice:
     voice: result.voice,
     speed: input.speed,
     createdAt: new Date().toISOString(),
-    bytes: result.audioBuffer.byteLength
+    bytes: result.audioBuffer.byteLength,
+    ...(provider.type === "deepinfra" || result.words ? { words: result.words ?? [] } : {})
   };
   const filePath = path.join(config.cacheDir, metadata.fileName);
   const metadataPath = path.join(config.cacheDir, `${input.audioId}.json`);
@@ -474,15 +486,24 @@ async function createCachedSpeech(input: { audioId: string; text: string; voice:
     contentType: metadata.contentType,
     outputFormat: metadata.outputFormat,
     voice: metadata.voice,
-    cached: false
+    cached: false,
+    words: metadata.words
   };
 }
 
 export function createAudioId(text: string, voice: string, outputFormat: string, speed = 1, provider = "kokoro", languageCode?: string) {
   const normLang = normalizeSpeechLanguage(languageCode);
+  const config = provider === "deepinfra" ? getDeepInfraConfig() : null;
   const payload = provider === "kokoro"
     ? { version: 2, text: text.normalize("NFC"), voice, outputFormat, speed }
-    : { version: 3, provider, language: normLang, text: text.normalize("NFC"), voice, outputFormat, speed };
+    : {
+      version: 4, provider, language: normLang,
+      text: sanitizeTextForChatterbox(text.normalize("NFC"), normLang), voice, outputFormat, speed,
+      model: config?.model, temperature: config?.temperature,
+      exaggeration: config?.exaggeration, cfg: config?.cfgWeight,
+      customTemperature: config?.hasCustomTemperature,
+      customExaggeration: config?.hasCustomExaggeration, customCfg: config?.hasCustomCfgWeight
+    };
   return createHash("sha256")
     .update(JSON.stringify(payload))
     .digest("hex");

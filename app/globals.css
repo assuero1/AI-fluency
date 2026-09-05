@@ -4150,3 +4150,9 @@ textarea:focus-visible,
 }
 
 
+
+/* Preferência comum de áudio, sem alterar a composição dos controles. */
+.line-player-controls { flex-wrap: wrap; }
+.audio-speed-control { max-width: 155px; min-height: 32px; border: 1px solid var(--border, #ddd); border-radius: 8px; background: transparent; color: inherit; font: inherit; font-size: 12px; }
+.audio-word-button { border: 0; padding: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.audio-word-button:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
