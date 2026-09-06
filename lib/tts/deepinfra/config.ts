@@ -1,3 +1,4 @@
+import { TTSConfigError } from "@/lib/tts/types";
 import { getEnv, getFirstEnv, maskSecret } from "@/lib/env";
 
 export function getDeepInfraConfig() {
@@ -26,9 +27,20 @@ export function getDeepInfraConfig() {
     voicesByLanguage,
     outputFormat,
     speed: clampNumber(getEnv("DEEPINFRA_CHATTERBOX_SPEED"), 1.0, 0.25, 4),
-    temperature: clampNumber(rawTemp, 0.65, 0.1, 2.0),
-    exaggeration: clampNumber(rawExagg, 0.35, 0.0, 1.0),
-    cfgWeight: clampNumber(rawCfg, 0.45, 0.0, 1.0),
+    temperature: configuredNumber("DEEPINFRA_CHATTERBOX_TEMPERATURE", 0.65, 0, 2),
+    exaggeration: configuredNumber("DEEPINFRA_CHATTERBOX_EXAGGERATION", 0.35, 0, 1),
+    cfgWeight: configuredNumber("DEEPINFRA_CHATTERBOX_CFG_WEIGHT", 0.45, 0, 1),
+    topP: configuredNumber("DEEPINFRA_CHATTERBOX_TOP_P", 0.95, 0, 1),
+    minP: configuredNumber("DEEPINFRA_CHATTERBOX_MIN_P", 0, 0, 1),
+    topK: configuredNumber("DEEPINFRA_CHATTERBOX_TOP_K", 1000, 0, 1000, true),
+    repetitionPenalty: configuredNumber("DEEPINFRA_CHATTERBOX_REPETITION_PENALTY", 1.2, 0, 5),
+    seed: getEnv("DEEPINFRA_CHATTERBOX_SEED") === undefined ? undefined : configuredNumber("DEEPINFRA_CHATTERBOX_SEED", 0, 0, 2147483647, true),
+    serviceTier: configuredChoice("DEEPINFRA_CHATTERBOX_SERVICE_TIER", "default", ["default", "priority", "flex"]),
+    failFast: configuredChoice("DEEPINFRA_CHATTERBOX_FAIL_FAST", "false", ["true", "false"]) === "true",
+    requestTimeoutMs: configuredNumber("DEEPINFRA_CHATTERBOX_TIMEOUT_MS", 35000, 1000, 120000, true),
+    shortTemperature: configuredNumber("DEEPINFRA_CHATTERBOX_SHORT_TEMPERATURE", rawTemp ? configuredNumber("DEEPINFRA_CHATTERBOX_TEMPERATURE", 0.65, 0, 2) : 0.5, 0, 2),
+    shortExaggeration: configuredNumber("DEEPINFRA_CHATTERBOX_SHORT_EXAGGERATION", rawExagg ? configuredNumber("DEEPINFRA_CHATTERBOX_EXAGGERATION", 0.35, 0, 1) : 0.22, 0, 1),
+    shortCfgWeight: configuredNumber("DEEPINFRA_CHATTERBOX_SHORT_CFG_WEIGHT", rawCfg ? configuredNumber("DEEPINFRA_CHATTERBOX_CFG_WEIGHT", 0.45, 0, 1) : 0.5, 0, 1),
     hasCustomTemperature: Boolean(rawTemp),
     hasCustomExaggeration: Boolean(rawExagg),
     hasCustomCfgWeight: Boolean(rawCfg),
@@ -53,6 +65,12 @@ export function getDeepInfraStatus() {
     temperature: config.temperature,
     exaggeration: config.exaggeration,
     cfgWeight: config.cfgWeight,
+    topP: config.topP, minP: config.minP, topK: config.topK,
+    repetitionPenalty: config.repetitionPenalty, seed: config.seed,
+    serviceTier: config.serviceTier, failFast: config.failFast,
+    requestTimeoutMs: config.requestTimeoutMs,
+    shortTemperature: config.shortTemperature, shortExaggeration: config.shortExaggeration,
+    shortCfgWeight: config.shortCfgWeight,
     audioCacheEnabled: Boolean(config.cacheDir)
   };
 }
@@ -67,8 +85,18 @@ function clampNumber(value: string | undefined, fallback: number, minimum: numbe
   return Number.isFinite(parsed) ? Math.max(minimum, Math.min(maximum, parsed)) : fallback;
 }
 
-function parseOptionalNumber(value: string | undefined) {
-  if (!value) return undefined;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : undefined;
+function configuredNumber(name: string, fallback: number, minimum: number, maximum: number, integer = false) {
+  const raw = getEnv(name);
+  if (raw === undefined) return fallback;
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed) || parsed < minimum || parsed > maximum || (integer && !Number.isInteger(parsed))) {
+    throw new TTSConfigError(`${name} must be ${integer ? "an integer" : "a number"} between ${minimum} and ${maximum}.`);
+  }
+  return parsed;
+}
+
+function configuredChoice(name: string, fallback: string, allowed: string[]) {
+  const value = getEnv(name) ?? fallback;
+  if (!allowed.includes(value)) throw new TTSConfigError(`${name} must be one of: ${allowed.join(", ")}.`);
+  return value;
 }

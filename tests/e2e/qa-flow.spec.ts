@@ -20,11 +20,19 @@ function fixtureWordId() {
 }
 
 function fixtureFeedbackDate() {
-  return new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const past = new Date(Date.now() - 48 * 60 * 60 * 1000);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(past);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
 }
 
 function fixtureFeedbackHeading() {
-  return new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" })
+  return new Intl.DateTimeFormat("pt-BR", { day: "numeric", month: "long", year: "numeric", timeZone: "America/Sao_Paulo" })
     .format(new Date(`${fixtureFeedbackDate()}T12:00:00Z`));
 }
 
@@ -1039,4 +1047,133 @@ test("listening card dictates the answer in Portuguese", async ({ page }) => {
     recognition.onresult?.({ results: [{ isFinal: true, 0: { transcript: "olá" } }] });
   });
   await expect(page.getByRole("textbox", { name: "Resposta esperada em português" })).toHaveValue("olá");
+});
+
+test("new words practice completes unboxing, sentence translation, and shows celebration with cross-link", async ({ page }) => {
+  let sessionState: "none" | "preparing" | "ready" = "none";
+  const mockWords = [
+    { wordId: "w-water", senseId: "s-water", lemma: "water", translation: "água", partOfSpeech: "noun" },
+    { wordId: "w-figure", senseId: "s-figure", lemma: "figure out", translation: "compreender", partOfSpeech: "verb" }
+  ];
+  const mockSentences = [
+    { id: "sent-1", targetWordId: "w-water", sentence: "I drink cold water.", translation: "Eu bebo água fria.", audioText: "I drink cold water." },
+    { id: "sent-2", targetWordId: "w-figure", sentence: "I will figure out the puzzle.", translation: "Eu vou compreender o enigma.", audioText: "I will figure out the puzzle." }
+  ];
+
+  await page.route("**/api/practice/new-words", async (route) => {
+    if (route.request().method() === "GET") {
+      if (sessionState === "none") {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ ok: true, activeSession: null }) });
+      } else {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ok: true,
+            activeSession: {
+              sessionId: "new-words-e2e",
+              preparing: false,
+              words: mockWords,
+              sentences: mockSentences,
+              answeredSentenceIds: [],
+              nextSentenceId: "sent-1",
+              languageCode: "en",
+              languageName: "Inglês"
+            }
+          })
+        });
+      }
+      return;
+    }
+    sessionState = "preparing";
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({ ok: true, sessionId: "new-words-e2e", status: "preparing" })
+    });
+  });
+
+  await page.route("**/api/practice/new-words/judge", async (route) => {
+    const body = route.request().postDataJSON() as { userTranslation?: string };
+    await route.fulfill({
+      status: 201,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        attempt: {
+          judgment: {
+            verdict: "correct",
+            feedback: "Excelente tradução!",
+            correctedTranslation: body.userTranslation ?? ""
+          },
+          senseCreated: false
+        }
+      })
+    });
+  });
+
+  await page.route("**/api/practice/new-words/complete", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        ok: true,
+        score: 100,
+        wordCount: 2,
+        sentenceCount: 2,
+        correctSentences: 2,
+        newSensesAdded: 0,
+        words: mockWords
+      })
+    });
+  });
+
+  await page.goto("/palavras/novas");
+  await expect(page.getByRole("heading", { name: "Palavras novas" })).toBeVisible();
+
+  await page.getByRole("button", { name: /Começar com/ }).click();
+
+  await expect(page.getByRole("heading", { name: "Novas palavras!" })).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText("0/2 cartas reveladas")).toBeVisible();
+
+  const card1 = page.getByRole("button", { name: /Carta 1/ });
+  await card1.click();
+  await expect(page.getByText("1/2 cartas reveladas")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "water" })).toBeVisible();
+
+  const card2 = page.getByRole("button", { name: /Carta 2/ });
+  await card2.click();
+  await expect(page.getByText("2/2 cartas reveladas")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "figure out" })).toBeVisible();
+
+  const startPracticeBtn = page.getByRole("button", { name: "Começar a praticar!" });
+  await expect(startPracticeBtn).toBeVisible();
+  await startPracticeBtn.click();
+
+  await expect(page.getByText("Traduza para o português")).toBeVisible();
+  await expect(page.getByText("water · água")).toBeVisible();
+  const input = page.getByPlaceholder("Digite sua tradução");
+  await input.fill("Eu bebo água fria.");
+  await page.getByRole("button", { name: "Traduzir" }).click();
+
+  await expect(page.getByText("Tradução correta!")).toBeVisible();
+  await page.getByRole("button", { name: "Avançar para a próxima frase" }).click();
+
+  await expect(page.getByText("figure out · compreender")).toBeVisible();
+  await input.fill("Eu vou compreender o enigma.");
+  await page.getByRole("button", { name: "Traduzir" }).click();
+  await expect(page.getByText("Tradução correta!")).toBeVisible();
+  await page.getByRole("button", { name: "Avançar para a próxima frase" }).click();
+
+  await expect(page.getByText("2 palavras adotadas!")).toBeVisible();
+  await expect(page.getByText(/Energia máxima/)).toBeVisible();
+  await expect(page.locator(".word-adoption-energy").first()).toBeVisible();
+  await expect(page.getByText("water")).toBeVisible();
+  await expect(page.getByText("figure out")).toBeVisible();
+
+  await expect(page.getByRole("link", { name: /Testar 2 palavras em uma conversa/ })).toHaveAttribute(
+    "href",
+    "/chat?huntWordIds=w-water,w-figure"
+  );
+  await expect(page.getByRole("button", { name: "Revisar em cards" })).toBeVisible();
 });

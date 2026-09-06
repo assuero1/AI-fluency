@@ -54,8 +54,21 @@ async function findQaUser() {
   return row;
 }
 
+function dateKeyInTimeZone(value, timeZone = "America/Sao_Paulo") {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(value);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
 const past = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
 const user = await findQaUser();
+const timeZone = user.fields?.timezone || "America/Sao_Paulo";
+const pastDateKey = dateKeyInTimeZone(new Date(past), timeZone);
 created.TEABLE_USERS_TABLE_ID = [user.id];
 saveManifest();
 const profile = await create("TEABLE_LANGUAGE_PROFILES_TABLE_ID", {
@@ -203,10 +216,10 @@ await create("TEABLE_WORD_OCCURRENCES_TABLE_ID", {
   created_at: past
 });
 await create("TEABLE_DAILY_FEEDBACKS_TABLE_ID", {
-  Name: past.slice(0, 10),
+  Name: pastDateKey,
   user_id: user.id,
   language_profile_id: profile.id,
-  date: past.slice(0, 10),
+  date: pastDateKey,
   strengths: "QA fixture strength",
   weaknesses: "QA fixture weakness",
   recommended_focus: "QA fixture focus",

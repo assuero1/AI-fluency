@@ -143,6 +143,32 @@ export async function extractAudioBuffer(
   return audioBuffer;
 }
 
+export function buildChatterboxPayload(input: string, options?: SynthesisRequestOptions) {
+  const config = getDeepInfraConfig();
+  const lang = normalizeSpeechLanguage(options?.languageCode);
+  const text = sanitizeTextForChatterbox(input, lang);
+  const voice = options?.voice || config.voicesByLanguage[lang] || config.defaultVoice;
+  // Idiomas sem espaços não devem ser confundidos com palavras isoladas.
+  const short = !["ja", "zh"].includes(lang) && text.split(/\s+/).filter(Boolean).length <= 2;
+  const cfgVal = short ? config.shortCfgWeight : config.cfgWeight;
+  return {
+    text,
+    language_id: lang,
+    language: lang,
+    response_format: (options?.format || config.outputFormat).toLowerCase(),
+    ...(voice && voice !== "default" ? { voice_id: voice } : {}),
+    ...(options?.speed && Number.isFinite(options.speed) ? { speed: options.speed } : {}),
+    temperature: short ? config.shortTemperature : config.temperature,
+    exaggeration: short ? config.shortExaggeration : config.exaggeration,
+    cfg: cfgVal,
+    cfg_weight: cfgVal,
+    top_p: config.topP, min_p: config.minP, top_k: config.topK,
+    repetition_penalty: config.repetitionPenalty,
+    ...(config.seed !== undefined ? { seed: config.seed } : {}),
+    service_tier: config.serviceTier, fail_fast: config.failFast
+  };
+}
+
 export async function testDeepInfraConnection(): Promise<TTSConnectionTestResult> {
   const config = getDeepInfraConfig();
 
@@ -157,13 +183,7 @@ export async function testDeepInfraConnection(): Promise<TTSConnectionTestResult
       Authorization: `Bearer ${config.apiKey}`,
       "Content-Type": "application/json"
     },
-    body: JSON.stringify({
-      text: "Hello, let's practice today.",
-      language_id: "en",
-      language: "en",
-      response_format: config.outputFormat,
-      ...(config.defaultVoice && config.defaultVoice !== "default" ? { voice_id: config.defaultVoice } : {})
-    }),
+    body: JSON.stringify(buildChatterboxPayload("Hello, let's practice today.", { languageCode: "en" })),
     cache: "no-store",
     signal: AbortSignal.timeout(15_000)
   });
@@ -214,46 +234,7 @@ export async function synthesizeDeepInfraSpeech(
   const voice = options?.voice || config.voicesByLanguage[lang] || config.defaultVoice || "";
   const outputFormat = (options?.format || config.outputFormat).toLowerCase();
 
-  const sanitizedText = sanitizeTextForChatterbox(text, lang);
-
-  const payload: Record<string, unknown> = {
-    text: sanitizedText,
-    language_id: lang,
-    language: lang,
-    response_format: outputFormat
-  };
-
-  if (voice && voice !== "default") {
-    payload.voice_id = voice;
-  }
-  if (options?.speed && Number.isFinite(options.speed)) {
-    payload.speed = options.speed;
-  }
-  const wordTokens = sanitizedText.split(/\s+/).filter(Boolean);
-  const isShortUtterance = wordTokens.length <= 2;
-
-  const effectiveTemperature = config.hasCustomTemperature
-    ? config.temperature
-    : (isShortUtterance ? 0.50 : config.temperature);
-
-  const effectiveExaggeration = config.hasCustomExaggeration
-    ? config.exaggeration
-    : (isShortUtterance ? 0.22 : config.exaggeration);
-
-  const effectiveCfg = config.hasCustomCfgWeight
-    ? config.cfgWeight
-    : (isShortUtterance ? 0.50 : config.cfgWeight);
-
-  if (effectiveTemperature !== undefined) {
-    payload.temperature = effectiveTemperature;
-  }
-  if (effectiveExaggeration !== undefined) {
-    payload.exaggeration = effectiveExaggeration;
-  }
-  if (effectiveCfg !== undefined) {
-    payload.cfg = effectiveCfg;
-    payload.cfg_weight = effectiveCfg;
-  }
+  const payload = buildChatterboxPayload(text, options);
 
   const endpoint = `${trimSlash(config.baseUrl)}/v1/inference/${config.model}`;
   const response = await fetch(endpoint, {
@@ -264,7 +245,7 @@ export async function synthesizeDeepInfraSpeech(
     },
     body: JSON.stringify(payload),
     cache: "no-store",
-    signal: AbortSignal.timeout(35_000)
+    signal: AbortSignal.timeout(config.requestTimeoutMs)
   });
 
   const contentType = response.headers.get("content-type") ?? "";
@@ -320,47 +301,7 @@ export async function streamDeepInfraSpeech(
   const voice = options?.voice || config.voicesByLanguage[lang] || config.defaultVoice || "";
   const outputFormat = (options?.format || config.outputFormat).toLowerCase();
 
-  const sanitizedText = sanitizeTextForChatterbox(text, lang);
-
-  const payload: Record<string, unknown> = {
-    text: sanitizedText,
-    language_id: lang,
-    language: lang,
-    response_format: outputFormat,
-    stream: true
-  };
-
-  if (voice && voice !== "default") {
-    payload.voice_id = voice;
-  }
-  if (options?.speed && Number.isFinite(options.speed)) {
-    payload.speed = options.speed;
-  }
-  const wordTokens = sanitizedText.split(/\s+/).filter(Boolean);
-  const isShortUtterance = wordTokens.length <= 2;
-
-  const effectiveTemperature = config.hasCustomTemperature
-    ? config.temperature
-    : (isShortUtterance ? 0.50 : config.temperature);
-
-  const effectiveExaggeration = config.hasCustomExaggeration
-    ? config.exaggeration
-    : (isShortUtterance ? 0.22 : config.exaggeration);
-
-  const effectiveCfg = config.hasCustomCfgWeight
-    ? config.cfgWeight
-    : (isShortUtterance ? 0.50 : config.cfgWeight);
-
-  if (effectiveTemperature !== undefined) {
-    payload.temperature = effectiveTemperature;
-  }
-  if (effectiveExaggeration !== undefined) {
-    payload.exaggeration = effectiveExaggeration;
-  }
-  if (effectiveCfg !== undefined) {
-    payload.cfg = effectiveCfg;
-    payload.cfg_weight = effectiveCfg;
-  }
+  const payload = { ...buildChatterboxPayload(text, options), stream: true };
 
   const endpoint = `${trimSlash(config.baseUrl)}/v1/inference/${config.model}`;
   const response = await fetch(endpoint, {
@@ -371,7 +312,7 @@ export async function streamDeepInfraSpeech(
     },
     body: JSON.stringify(payload),
     cache: "no-store",
-    signal: AbortSignal.timeout(35_000)
+    signal: AbortSignal.timeout(config.requestTimeoutMs)
   });
 
   const contentType = response.headers.get("content-type") ?? "";
