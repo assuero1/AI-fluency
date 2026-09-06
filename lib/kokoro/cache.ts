@@ -185,16 +185,17 @@ export async function prepareCaptionedSpeech(input: string, options?: SynthesisR
   const cached = await getCachedSpeech(audioId);
   if (cached) {
     const metadata = await readMetadata(cacheConfig.cacheDir, audioId);
-    // Aceita até `words: []` (voz sem timestamps no servidor): evita re-sintetizar
-    // a cada pedido; o cliente degrada para o player legado com o áudio em cache.
-    if (metadata?.words) {
-      return { ...cached, words: metadata.words, cached: true };
-    }
-    // Áudio antigo em cache sem o campo `words` → re-sintetiza para obtê-lo.
+    return { ...cached, words: metadata?.words ?? [], cached: true };
   }
 
   const existing = captionedInFlight.get(audioId);
   if (existing) return existing;
+
+  const simpleInFlight = inFlight.get(audioId);
+  if (simpleInFlight) {
+    const simple = await simpleInFlight;
+    return { ...simple, words: simple.words ?? [] };
+  }
 
   const task = synthesizeCaptionedSpeech(request, audioId);
   captionedInFlight.set(audioId, task);
@@ -265,6 +266,12 @@ export async function getOrCreateCachedSpeech(input: string, options?: Synthesis
 
   const current = inFlight.get(audioId);
   if (current) return current;
+
+  const captionedTask = captionedInFlight.get(audioId);
+  if (captionedTask) {
+    const result = await captionedTask;
+    return { ...result, cached: false };
+  }
 
   const task = createCachedSpeech({ audioId, ...request });
   inFlight.set(audioId, task);
@@ -469,7 +476,7 @@ async function createCachedSpeech(input: { audioId: string; text: string; voice:
     speed: input.speed,
     createdAt: new Date().toISOString(),
     bytes: result.audioBuffer.byteLength,
-    ...(provider.type === "deepinfra" || result.words ? { words: result.words ?? [] } : {})
+    words: result.words ?? []
   };
   const filePath = path.join(config.cacheDir, metadata.fileName);
   const metadataPath = path.join(config.cacheDir, `${input.audioId}.json`);
@@ -497,12 +504,16 @@ export function createAudioId(text: string, voice: string, outputFormat: string,
   const payload = provider === "kokoro"
     ? { version: 2, text: text.normalize("NFC"), voice, outputFormat, speed }
     : {
-      version: 4, provider, language: normLang,
+      version: 5, provider, language: normLang,
       text: sanitizeTextForChatterbox(text.normalize("NFC"), normLang), voice, outputFormat, speed,
       model: config?.model, temperature: config?.temperature,
       exaggeration: config?.exaggeration, cfg: config?.cfgWeight,
       customTemperature: config?.hasCustomTemperature,
-      customExaggeration: config?.hasCustomExaggeration, customCfg: config?.hasCustomCfgWeight
+      customExaggeration: config?.hasCustomExaggeration, customCfg: config?.hasCustomCfgWeight,
+      topP: config?.topP, minP: config?.minP, topK: config?.topK,
+      repetitionPenalty: config?.repetitionPenalty, seed: config?.seed,
+      shortTemperature: config?.shortTemperature, shortExaggeration: config?.shortExaggeration,
+      shortCfgWeight: config?.shortCfgWeight
     };
   return createHash("sha256")
     .update(JSON.stringify(payload))

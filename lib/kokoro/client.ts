@@ -119,7 +119,49 @@ export type CaptionedSpeech = {
   words: WordTimestamp[];
 };
 
-export async function captionedSpeech(input: string, options?: { voice?: string; format?: string; speed?: number }): Promise<CaptionedSpeech> {
+function resolveKokoroLangCode(languageCode?: string, voice?: string): string | undefined {
+  if (voice && /^[a-z]_/i.test(voice)) {
+    return voice.charAt(0).toLowerCase();
+  }
+  const lang = languageCode?.toLowerCase().slice(0, 2);
+  switch (lang) {
+    case "en": return "a";
+    case "pt": return "p";
+    case "es": return "e";
+    case "fr": return "f";
+    case "it": return "i";
+    case "ja": return "j";
+    case "zh": return "z";
+    case "hi": return "h";
+    default: return undefined;
+  }
+}
+
+function sanitizeTimestamps(raw: unknown): WordTimestamp[] {
+  if (!Array.isArray(raw)) return [];
+  const words: WordTimestamp[] = [];
+  for (const item of raw) {
+    if (
+      item &&
+      typeof item === "object" &&
+      typeof (item as Record<string, unknown>).word === "string" &&
+      Number.isFinite((item as Record<string, unknown>).start_time) &&
+      Number.isFinite((item as Record<string, unknown>).end_time)
+    ) {
+      words.push({
+        word: (item as Record<string, unknown>).word as string,
+        start_time: (item as Record<string, unknown>).start_time as number,
+        end_time: (item as Record<string, unknown>).end_time as number
+      });
+    }
+  }
+  return words;
+}
+
+export async function captionedSpeech(
+  input: string,
+  options?: { voice?: string; format?: string; speed?: number; languageCode?: string }
+): Promise<CaptionedSpeech> {
   const config = getKokoroConfig();
 
   if (!config.baseUrl) throw new KokoroConfigError("KOKORO_BASE_URL is not configured.");
@@ -134,60 +176,127 @@ export async function captionedSpeech(input: string, options?: { voice?: string;
   }
 
   const baseUrl = trimSlash(config.baseUrl);
-  const response = await fetch(`${baseUrl}/dev/captioned_speech`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.apiKey}`,
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      model: "kokoro",
-      voice: request.voice,
-      input: request.text,
-      response_format: request.outputFormat,
-      speed: request.speed,
-      return_timestamps: true
-    }),
-    cache: "no-store",
-    signal: AbortSignal.timeout(60_000)
-  });
+  const langCode = resolveKokoroLangCode(request.languageCode, request.voice);
 
-  const contentType = response.headers.get("content-type") ?? `audio/${request.outputFormat}`;
+  const payload: Record<string, unknown> = {
+    model: "kokoro",
+    voice: request.voice,
+    input: request.text,
+    response_format: request.outputFormat,
+    speed: request.speed,
+    return_timestamps: true,
+    stream: false
+  };
+  if (langCode) payload.lang_code = langCode;
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/dev/captioned_speech`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${config.apiKey}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(payload),
+      cache: "no-store",
+      signal: AbortSignal.timeout(60_000)
+    });
+  } catch (networkError) {
+    // Falha de rede no endpoint dev: tenta síntese direta no endpoint estável /v1/audio/speech
+    try {
+      const fallback = await synthesizeSpeech(input, options);
+      return {
+        ok: true,
+        contentType: fallback.contentType,
+        outputFormat: fallback.outputFormat,
+        voice: fallback.voice,
+        audioBuffer: fallback.audioBuffer,
+        words: []
+      };
+    } catch {
+      throw networkError;
+    }
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
 
   if (!response.ok) {
-    const body = contentType.includes("application/json") ? await response.json().catch(() => null) : await response.text();
-    throw new KokoroRequestError(`Kokoro captioned request failed: ${response.status}`, response.status, body);
+    // Se o endpoint de legendas retornar erro (ex.: 404 por versão não-dev ou 500 no alinhador),
+    // tenta a síntese padrão estável antes de abortar a experiência do usuário.
+    try {
+      const fallback = await synthesizeSpeech(input, options);
+      return {
+        ok: true,
+        contentType: fallback.contentType,
+        outputFormat: fallback.outputFormat,
+        voice: fallback.voice,
+        audioBuffer: fallback.audioBuffer,
+        words: []
+      };
+    } catch {
+      const body = contentType.includes("application/json") ? await response.json().catch(() => null) : await response.text();
+      throw new KokoroRequestError(`Kokoro captioned request failed: ${response.status}`, response.status, body);
+    }
   }
 
+  // Contrato 1: Resposta em JSON com áudio em base64 e timestamps embutidos (upstream recente)
+  if (contentType.includes("application/json")) {
+    try {
+      const data = (await response.json()) as {
+        audio?: string;
+        audio_format?: string;
+        timestamps?: unknown;
+      };
+      if (typeof data.audio === "string") {
+        return {
+          ok: true,
+          contentType: `audio/${data.audio_format ?? request.outputFormat}`,
+          outputFormat: data.audio_format ?? request.outputFormat,
+          voice: request.voice,
+          audioBuffer: Buffer.from(data.audio, "base64"),
+          words: sanitizeTimestamps(data.timestamps)
+        };
+      }
+    } catch {
+      // JSON corrompido: fallback para síntese direta
+      const fallback = await synthesizeSpeech(input, options);
+      return {
+        ok: true,
+        contentType: fallback.contentType,
+        outputFormat: fallback.outputFormat,
+        voice: fallback.voice,
+        audioBuffer: fallback.audioBuffer,
+        words: []
+      };
+    }
+  }
+
+  // Contrato 2: Resposta em áudio binário direto (formato atual da VPS com x-timestamps-path)
+  const arrayBuffer = await response.arrayBuffer();
   const timestampsPath = response.headers.get("x-timestamps-path");
-  if (!timestampsPath) {
-    throw new KokoroRequestError("Kokoro captioned response is missing the timestamps path.", 502);
-  }
 
-  const [arrayBuffer, timestampsResponse] = await Promise.all([
-    response.arrayBuffer(),
-    fetch(`${baseUrl}/dev/timestamps/${encodeURIComponent(timestampsPath)}`, {
-      headers: { Authorization: `Bearer ${config.apiKey}` },
-      cache: "no-store",
-      signal: AbortSignal.timeout(30_000)
-    })
-  ]);
-
-  if (!timestampsResponse.ok) {
-    throw new KokoroRequestError(`Kokoro timestamps request failed: ${timestampsResponse.status}`, timestampsResponse.status);
-  }
-
-  const words = (await timestampsResponse.json()) as WordTimestamp[];
-  if (
-    !Array.isArray(words) ||
-    words.some((entry) => typeof entry?.word !== "string" || !Number.isFinite(entry.start_time) || !Number.isFinite(entry.end_time))
-  ) {
-    throw new KokoroRequestError("Kokoro captioned response has invalid timestamps.", 502);
+  let words: WordTimestamp[] = [];
+  if (timestampsPath) {
+    try {
+      const timestampsResponse = await fetch(`${baseUrl}/dev/timestamps/${encodeURIComponent(timestampsPath)}`, {
+        headers: { Authorization: `Bearer ${config.apiKey}` },
+        cache: "no-store",
+        signal: AbortSignal.timeout(15_000)
+      });
+      if (timestampsResponse.ok) {
+        const rawJson = await timestampsResponse.json().catch(() => null);
+        words = sanitizeTimestamps(rawJson);
+      }
+    } catch {
+      // Se a busca de timestamps falhar ou o JSON na VPS estiver corrompido/truncado,
+      // NUNCA rejeita o áudio já baixado com sucesso; degrada graciosamente para words: [].
+      words = [];
+    }
   }
 
   return {
     ok: true,
-    contentType,
+    contentType: contentType || `audio/${request.outputFormat}`,
     outputFormat: request.outputFormat,
     voice: request.voice,
     audioBuffer: Buffer.from(arrayBuffer),

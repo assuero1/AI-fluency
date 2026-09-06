@@ -167,8 +167,11 @@ export class ProgressiveAudio {
       this.prefetchNext(index);
       const wait = msUntilAudioRouteRestored();
       if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
-      if (this.disposed || generation !== this.generation) return;
-      audio.currentTime = time;
+      if (time > 0) {
+        try {
+          audio.currentTime = time;
+        } catch { /* Ignora se metadados ainda não estiverem disponíveis */ }
+      }
       for (let attempt = 0; attempt < 2; attempt++) {
         try { await audio.play(); break; }
         catch (error) {

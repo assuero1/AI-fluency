@@ -50,8 +50,21 @@ export function requestCaptionedSpeech(text: string, languageCode: string | unde
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ text, languageCode })
   }).then(async (response) => {
+    if (!response.ok) {
+      // Fallback para síntese direta se a rota de legendas falhar
+      const fallback = await fetch("/api/voice/synthesize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text, languageCode })
+      });
+      const fbData = (await fallback.json()) as { ok?: boolean; audioUrl?: string; words?: CaptionedWord[]; error?: string };
+      if (!fallback.ok || !fbData.ok || !fbData.audioUrl) {
+        throw new Error(fbData.error ?? "Audio unavailable.");
+      }
+      return { audioUrl: fbData.audioUrl, words: Array.isArray(fbData.words) ? fbData.words : [] };
+    }
     const data = (await response.json()) as { ok?: boolean; audioUrl?: string; words?: CaptionedWord[]; error?: string };
-    if (!response.ok || !data.ok || !data.audioUrl) throw new Error(data.error ?? "Audio unavailable.");
+    if (!data.ok || !data.audioUrl) throw new Error(data.error ?? "Audio unavailable.");
     return { audioUrl: data.audioUrl, words: Array.isArray(data.words) ? data.words : [] };
   }).catch((error) => {
     if (captionedRequests.get(key) === request) captionedRequests.delete(key);

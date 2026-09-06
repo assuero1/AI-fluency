@@ -9,7 +9,15 @@
  * TLS handshake já estejam resolvidos quando a primeira requisição de áudio
  * chegar — eliminando ~100 ms de latência na conexão fria.
  */
+import { after } from "next/server";
+import { warmKokoroLanguage } from "@/lib/kokoro/cache";
+
 export function GET() {
+  try {
+    after(() => warmKokoroLanguage("en"));
+  } catch {
+    // Fallback se after() não estiver ativo no ambiente de execução
+  }
   return new Response(null, {
     status: 204,
     headers: {

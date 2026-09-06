@@ -62,4 +62,35 @@ describe("splitIntoSentences", () => {
       "आप कैसे हैं?"
     ]);
   });
+
+  it("does not incorrectly split on common abbreviations and initials", () => {
+    expect(splitIntoSentences("Dr. Smith visited Washington, D.C. yesterday. He was happy.")).toEqual([
+      "Dr. Smith visited Washington, D.C. yesterday.",
+      "He was happy."
+    ]);
+    expect(splitIntoSentences("Please contact Mr. Bean or Prof. Charles.")).toEqual([
+      "Please contact Mr. Bean or Prof. Charles."
+    ]);
+    expect(splitIntoSentences("We need apples, oranges, etc. for the salad. Good luck!")).toEqual([
+      "We need apples, oranges, etc. for the salad.",
+      "Good luck!"
+    ]);
+  });
+
+  it("does not split on decimal numbers", () => {
+    expect(splitIntoSentences("The price is $3.14 per unit. Version 2.0 is out!")).toEqual([
+      "The price is $3.14 per unit.",
+      "Version 2.0 is out!"
+    ]);
+  });
+
+  it("splits overly long sentences at natural clause boundaries", () => {
+    const longSentence = "Learning a foreign language requires consistent daily practice; however, it is equally important to listen to native speakers, because immersion accelerates your listening comprehension and vocabulary retention significantly.";
+    const result = splitIntoSentences(longSentence);
+    expect(result.length).toBeGreaterThan(1);
+    expect(result.join(" ").replace(/\s+/g, " ").trim()).toBe(longSentence.replace(/\s+/g, " ").trim());
+    for (const chunk of result) {
+      expect(chunk.length).toBeLessThanOrEqual(180);
+    }
+  });
 });

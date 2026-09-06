@@ -11,18 +11,41 @@ const WORDS: WordTimestamp[] = [
   { word: ".", start_time: 0.75, end_time: 0.825 }
 ];
 
-function mockKokoroFetch(options?: { captionedStatus?: number; captionedContentType?: string; timestampsPath?: string | null; words?: unknown }) {
+function mockKokoroFetch(options?: {
+  captionedStatus?: number;
+  captionedContentType?: string;
+  timestampsPath?: string | null;
+  words?: unknown;
+  speechStatus?: number;
+  jsonCaptioned?: { audio: string; audio_format?: string; timestamps?: unknown };
+}) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
     if (url.includes("/dev/captioned_speech")) {
+      if (options?.jsonCaptioned) {
+        return new Response(JSON.stringify(options.jsonCaptioned), {
+          status: options?.captionedStatus ?? 200,
+          headers: { "content-type": "application/json" }
+        });
+      }
       const headers: Record<string, string> = { "content-type": options?.captionedContentType ?? "audio/mpeg" };
-      if (options?.timestampsPath !== null) headers["x-timestamps-path"] = options?.timestampsPath ?? "tmp123.json";
+      if (options?.timestampsPath !== null && options?.timestampsPath !== undefined) {
+        headers["x-timestamps-path"] = options.timestampsPath;
+      } else if (options?.timestampsPath === undefined) {
+        headers["x-timestamps-path"] = "tmp123.json";
+      }
       return new Response(new Uint8Array([0x49, 0x44, 0x33]), { status: options?.captionedStatus ?? 200, headers });
     }
     if (url.includes("/dev/timestamps/")) {
-      return new Response(JSON.stringify(options?.words ?? WORDS), {
+      return new Response(typeof options?.words === "string" ? options.words : JSON.stringify(options?.words ?? WORDS), {
         status: 200,
         headers: { "content-type": "application/json" }
+      });
+    }
+    if (url.includes("/v1/audio/speech")) {
+      return new Response(new Uint8Array([0x49, 0x44, 0x33]), {
+        status: options?.speechStatus ?? 200,
+        headers: { "content-type": "audio/mpeg" }
       });
     }
     throw new Error(`unexpected fetch: ${url}`);
@@ -45,7 +68,7 @@ describe("captionedSpeech client", () => {
     vi.stubEnv("KOKORO_API_KEY", "sk-test");
     vi.stubEnv("KOKORO_DEFAULT_VOICE", "af_heart");
     vi.stubEnv("KOKORO_OUTPUT_FORMAT", "mp3");
-    vi.stubEnv("KOKORO_SPEED", "1.08");
+    vi.stubEnv("KOKORO_SPEED", "1.0");
     vi.stubEnv("KOKORO_VOICE_EN", "af_heart");
     vi.stubEnv("KOKORO_VOICE_ES", "ef_dora");
     vi.stubEnv("KOKORO_VOICE_FR", "ff_siwis");
@@ -58,7 +81,7 @@ describe("captionedSpeech client", () => {
     vi.unstubAllGlobals();
   });
 
-  it("returns audio buffer and word timestamps on success", async () => {
+  it("returns audio buffer and word timestamps on success (binary + timestamps header)", async () => {
     const fetchMock = mockKokoroFetch();
     const result = await captionedSpeech("Hello there.", { voice: "af_heart" });
 
@@ -76,19 +99,46 @@ describe("captionedSpeech client", () => {
     expect(String(timestampsCall[0])).toBe("https://kokoro.test/dev/timestamps/tmp123.json");
   });
 
-  it("throws KokoroRequestError when the upstream captioned request fails", async () => {
-    mockKokoroFetch({ captionedStatus: 500, captionedContentType: "text/plain" });
-    await expect(captionedSpeech("Hello", { voice: "af_heart" })).rejects.toMatchObject({ status: 500 });
+  it("supports JSON response with base64 audio and timestamps (upstream Kokoro-FastAPI contract)", async () => {
+    mockKokoroFetch({
+      jsonCaptioned: {
+        audio: Buffer.from([0x49, 0x44, 0x33]).toString("base64"),
+        audio_format: "mp3",
+        timestamps: WORDS
+      }
+    });
+    const result = await captionedSpeech("Hello there.", { voice: "af_heart" });
+
+    expect(result.audioBuffer).toEqual(Buffer.from([0x49, 0x44, 0x33]));
+    expect(result.words).toEqual(WORDS);
+    expect(result.contentType).toBe("audio/mp3");
+    expect(result.voice).toBe("af_heart");
   });
 
-  it("throws when the captioned response has no timestamps path", async () => {
+  it("gracefully returns audio with empty words when timestamps path is missing", async () => {
     mockKokoroFetch({ timestampsPath: null });
-    await expect(captionedSpeech("Hello", { voice: "af_heart" })).rejects.toMatchObject({ status: 502 });
+    const result = await captionedSpeech("Hello", { voice: "af_heart" });
+    expect(result.audioBuffer).toEqual(Buffer.from([0x49, 0x44, 0x33]));
+    expect(result.words).toEqual([]);
   });
 
-  it("throws when the timestamps payload has an invalid shape", async () => {
+  it("gracefully returns audio with empty words when timestamps payload is corrupted or invalid", async () => {
     mockKokoroFetch({ words: { not: "an array" } });
-    await expect(captionedSpeech("Hello", { voice: "af_heart" })).rejects.toMatchObject({ status: 502 });
+    const result = await captionedSpeech("Hello", { voice: "af_heart" });
+    expect(result.audioBuffer).toEqual(Buffer.from([0x49, 0x44, 0x33]));
+    expect(result.words).toEqual([]);
+  });
+
+  it("falls back to /v1/audio/speech when /dev/captioned_speech fails with 500", async () => {
+    mockKokoroFetch({ captionedStatus: 500, speechStatus: 200 });
+    const result = await captionedSpeech("Hello", { voice: "af_heart" });
+    expect(result.audioBuffer).toEqual(Buffer.from([0x49, 0x44, 0x33]));
+    expect(result.words).toEqual([]);
+  });
+
+  it("throws KokoroRequestError when both captioned and fallback speech endpoints fail", async () => {
+    mockKokoroFetch({ captionedStatus: 500, speechStatus: 500 });
+    await expect(captionedSpeech("Hello", { voice: "af_heart" })).rejects.toMatchObject({ status: 500 });
   });
 
   it("throws KokoroConfigError when Kokoro is not configured", async () => {

@@ -20,7 +20,7 @@ export function getKokoroConfig() {
     defaultVoice,
     voicesByLanguage,
     outputFormat,
-    speed: clampNumber(getEnv("KOKORO_SPEED"), 1.08, 0.25, 4),
+    speed: clampNumber(getEnv("KOKORO_SPEED"), 1.0, 0.25, 4),
     allowedVoices: parseList(getEnv("KOKORO_ALLOWED_VOICES"), Object.values(voicesByLanguage)),
     allowedFormats: parseList(getEnv("KOKORO_ALLOWED_FORMATS"), [outputFormat]).map((value) => value.toLowerCase()),
     cacheDir: getEnv("AUDIO_CACHE_DIR") ?? ".audio-cache",
