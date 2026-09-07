@@ -2,6 +2,7 @@ import { request as httpRequest } from "node:http";
 import { connect as connectHttp2 } from "node:http2";
 import { request as httpsRequest } from "node:https";
 import { Readable } from "node:stream";
+import { normalizeKokoroAudio } from "./audio-integrity";
 import { getKokoroConfig } from "./config";
 import { resolveSynthesisRequest, SynthesisValidationError } from "./validation";
 
@@ -94,13 +95,14 @@ export async function synthesizeSpeech(input: string, options?: { voice?: string
   }
 
   const arrayBuffer = await response.arrayBuffer();
+  const normalized = normalizeKokoroAudio(Buffer.from(arrayBuffer), contentType, request.outputFormat);
 
   return {
     ok: true,
-    contentType,
+    contentType: normalized.contentType,
     outputFormat: request.outputFormat,
     voice: request.voice,
-    audioBuffer: Buffer.from(arrayBuffer)
+    audioBuffer: normalized.audio
   };
 }
 
@@ -248,12 +250,14 @@ export async function captionedSpeech(
         timestamps?: unknown;
       };
       if (typeof data.audio === "string") {
+        const outputFormat = data.audio_format ?? request.outputFormat;
+        const normalized = normalizeKokoroAudio(Buffer.from(data.audio, "base64"), `audio/${outputFormat}`, outputFormat);
         return {
           ok: true,
-          contentType: `audio/${data.audio_format ?? request.outputFormat}`,
-          outputFormat: data.audio_format ?? request.outputFormat,
+          contentType: normalized.contentType,
+          outputFormat,
           voice: request.voice,
-          audioBuffer: Buffer.from(data.audio, "base64"),
+          audioBuffer: normalized.audio,
           words: sanitizeTimestamps(data.timestamps)
         };
       }
@@ -273,6 +277,11 @@ export async function captionedSpeech(
 
   // Contrato 2: Resposta em áudio binário direto (formato atual da VPS com x-timestamps-path)
   const arrayBuffer = await response.arrayBuffer();
+  const normalized = normalizeKokoroAudio(
+    Buffer.from(arrayBuffer),
+    contentType || `audio/${request.outputFormat}`,
+    request.outputFormat
+  );
   const timestampsPath = response.headers.get("x-timestamps-path");
 
   let words: WordTimestamp[] = [];
@@ -296,10 +305,10 @@ export async function captionedSpeech(
 
   return {
     ok: true,
-    contentType: contentType || `audio/${request.outputFormat}`,
+    contentType: normalized.contentType,
     outputFormat: request.outputFormat,
     voice: request.voice,
-    audioBuffer: Buffer.from(arrayBuffer),
+    audioBuffer: normalized.audio,
     words
   };
 }

@@ -8,6 +8,7 @@ import { getDeepInfraConfig } from "@/lib/tts/deepinfra/config";
 import { sanitizeTextForChatterbox } from "@/lib/tts/deepinfra/client";
 import { getActiveTTSProvider } from "@/lib/tts/factory";
 import type { SynthesisRequestOptions } from "@/lib/tts/types";
+import { needsBufferedKokoroNormalization, normalizeKokoroAudio } from "./audio-integrity";
 import { KokoroRequestError, type WordTimestamp } from "./client";
 import { getKokoroConfig } from "./config";
 import { resolveSynthesisRequest, SynthesisValidationError } from "./validation";
@@ -325,9 +326,10 @@ export async function readCachedAudio(audioId: string) {
       await removeCachedFiles(cacheDir, metadata).catch(() => undefined);
       return null;
     }
-    const audio = await readFile(filePath);
+    const storedAudio = await readFile(filePath);
+    const normalized = normalizeKokoroAudio(storedAudio, metadata.contentType, metadata.outputFormat);
     await utimes(filePath, new Date(), new Date()).catch(() => undefined);
-    return { audio, contentType: metadata.contentType, fileName: metadata.fileName };
+    return { audio: normalized.audio, contentType: normalized.contentType, fileName: metadata.fileName };
   } catch {
     return null;
   }
@@ -380,16 +382,32 @@ export async function streamPendingAudio(audioId: string) {
     };
   }
 
+  let playbackSource = result.audioStream;
+  let responseContentType = result.contentType;
+  // Para Opus precisamos conhecer o último fluxo lógico antes de enviar bytes:
+  // a VPS duplica a fala em fluxos Ogg encadeados até em textos curtos.
+  if (provider.type === "kokoro" && needsBufferedKokoroNormalization(result.contentType, result.outputFormat)) {
+    const buffered = Buffer.from(await new Response(result.audioStream).arrayBuffer());
+    const normalized = normalizeKokoroAudio(buffered, result.contentType, result.outputFormat);
+    responseContentType = normalized.contentType;
+    playbackSource = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(normalized.audio));
+        controller.close();
+      }
+    });
+  }
+
   // The pending record is dropped only after the provider accepted the request, so a
   // failed synthesis leaves the same audio URL retryable until it expires.
   pendingSpeech.delete(audioId);
   await rm(path.join(cacheDir, `${audioId}.pending.json`), { force: true }).catch(() => undefined);
-  const [playbackStream, cacheStream] = result.audioStream.tee();
-  void persistStreamedAudio(audioId, pending, cacheStream, result.contentType).catch(() => undefined);
+  const [playbackStream, cacheStream] = playbackSource.tee();
+  void persistStreamedAudio(audioId, pending, cacheStream, responseContentType).catch(() => undefined);
   return {
     audioStream: playbackStream,
-    contentType: result.contentType,
-    fileName: `${audioId}.${extensionFor(result.outputFormat, result.contentType)}`
+    contentType: responseContentType,
+    fileName: `${audioId}.${extensionFor(result.outputFormat, responseContentType)}`
   };
 }
 
@@ -434,12 +452,14 @@ async function persistStreamedAudio(
   contentType: string
 ) {
   const config = getKokoroConfig();
-  const audioBuffer = Buffer.from(await new Response(stream).arrayBuffer());
+  const storedBuffer = Buffer.from(await new Response(stream).arrayBuffer());
+  const normalized = normalizeKokoroAudio(storedBuffer, contentType, input.outputFormat);
+  const audioBuffer = normalized.audio;
   await mkdir(config.cacheDir, { recursive: true });
   const metadata: CachedAudioMetadata = {
     id: audioId,
-    fileName: `${audioId}.${extensionFor(input.outputFormat, contentType)}`,
-    contentType,
+    fileName: `${audioId}.${extensionFor(input.outputFormat, normalized.contentType)}`,
+    contentType: normalized.contentType,
     outputFormat: input.outputFormat,
     voice: input.voice,
     speed: input.speed,
@@ -502,7 +522,7 @@ export function createAudioId(text: string, voice: string, outputFormat: string,
   const normLang = normalizeSpeechLanguage(languageCode);
   const config = provider === "deepinfra" ? getDeepInfraConfig() : null;
   const payload = provider === "kokoro"
-    ? { version: 2, text: text.normalize("NFC"), voice, outputFormat, speed }
+    ? { version: 3, text: text.normalize("NFC"), voice, outputFormat, speed }
     : {
       version: 5, provider, language: normLang,
       text: sanitizeTextForChatterbox(text.normalize("NFC"), normLang), voice, outputFormat, speed,

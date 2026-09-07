@@ -17,6 +17,7 @@ function mockKokoroFetch(options?: {
   timestampsPath?: string | null;
   words?: unknown;
   speechStatus?: number;
+  captionedAudio?: Uint8Array;
   jsonCaptioned?: { audio: string; audio_format?: string; timestamps?: unknown };
 }) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -34,7 +35,10 @@ function mockKokoroFetch(options?: {
       } else if (options?.timestampsPath === undefined) {
         headers["x-timestamps-path"] = "tmp123.json";
       }
-      return new Response(new Uint8Array([0x49, 0x44, 0x33]), { status: options?.captionedStatus ?? 200, headers });
+      const captionedBody = options?.captionedAudio
+        ? new Uint8Array(options.captionedAudio)
+        : new Uint8Array([0x49, 0x44, 0x33]);
+      return new Response(captionedBody, { status: options?.captionedStatus ?? 200, headers });
     }
     if (url.includes("/dev/timestamps/")) {
       return new Response(typeof options?.words === "string" ? options.words : JSON.stringify(options?.words ?? WORDS), {
@@ -113,6 +117,34 @@ describe("captionedSpeech client", () => {
     expect(result.words).toEqual(WORDS);
     expect(result.contentType).toBe("audio/mp3");
     expect(result.voice).toBe("af_heart");
+  });
+
+  it("keeps only the final Ogg/Opus stream returned by the Kokoro endpoint", async () => {
+    const oggPage = (flags: number, payload: string) => {
+      const bytes = Buffer.from(payload, "ascii");
+      const header = Buffer.alloc(28);
+      header.write("OggS", 0, "ascii");
+      header[5] = flags;
+      header[26] = 1;
+      header[27] = bytes.byteLength;
+      return Buffer.concat([header, bytes]);
+    };
+    const stream = (label: string) => Buffer.concat([
+      oggPage(0x02, `OpusHead${label}`),
+      oggPage(0x00, "OpusTags"),
+      oggPage(0x04, `audio-${label}`)
+    ]);
+    const complete = stream("complete");
+    mockKokoroFetch({
+      captionedContentType: "audio/opus",
+      captionedAudio: Buffer.concat([stream("partial"), complete])
+    });
+    vi.stubEnv("KOKORO_OUTPUT_FORMAT", "opus");
+
+    const result = await captionedSpeech("Hello there.", { voice: "af_heart" });
+
+    expect(result.audioBuffer).toEqual(complete);
+    expect(result.contentType).toBe("audio/ogg");
   });
 
   it("gracefully returns audio with empty words when timestamps path is missing", async () => {
