@@ -568,7 +568,7 @@ export function createAudioId(text: string, voice: string, outputFormat: string,
   } else {
     const config = getDeepInfraKokoroConfig();
     payload = {
-      cacheVersion: "deepinfra-kokoro-v1",
+      cacheVersion: "deepinfra-kokoro-v2",
       provider: providerType,
       language: normLang,
       text: normalizedText,

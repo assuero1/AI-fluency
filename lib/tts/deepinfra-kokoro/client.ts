@@ -67,11 +67,10 @@ export function buildDeepInfraKokoroPayload(input: string, options?: SynthesisRe
 
   return {
     text,
-    language_id: language,
-    language,
-    response_format: outputFormat,
-    ...(voice && voice !== "default" ? { voice_id: voice } : {}),
-    ...(options?.speed && Number.isFinite(options.speed) ? { speed: options.speed } : { speed: config.speed })
+    ...(voice && voice !== "default" ? { preset_voice: [voice] } : {}),
+    output_format: outputFormat,
+    ...(options?.speed && Number.isFinite(options.speed) ? { speed: options.speed } : { speed: config.speed }),
+    service_tier: config.serviceTier
   };
 }
 
@@ -152,7 +151,7 @@ export async function synthesizeDeepInfraKokoroSpeech(
     ok: true,
     contentType: finalContentType,
     outputFormat,
-    voice: payload.voice_id || config.defaultVoice || "default",
+    voice: payload.preset_voice?.[0] || config.defaultVoice || "default",
     audioBuffer
   };
 }
@@ -208,7 +207,7 @@ export async function streamDeepInfraKokoroSpeech(
       audioStream: response.body,
       contentType: finalContentType,
       outputFormat,
-      voice: payload.voice_id || config.defaultVoice || "default",
+      voice: payload.preset_voice?.[0] || config.defaultVoice || "default",
       speed: options?.speed ?? config.speed
     };
   }
@@ -223,7 +222,7 @@ export async function streamDeepInfraKokoroSpeech(
     }),
     contentType: finalContentType,
     outputFormat,
-    voice: payload.voice_id || config.defaultVoice || "default",
+    voice: payload.preset_voice?.[0] || config.defaultVoice || "default",
     speed: options?.speed ?? config.speed
   };
 }

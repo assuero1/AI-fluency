@@ -36,7 +36,7 @@ export class DeepInfraKokoroTTSProvider implements TTSProvider {
         supportsWordTimestamps: false,
         requiresBufferedNormalization: false
       },
-      cacheVersion: "di-kokoro-v1"
+      cacheVersion: "di-kokoro-v2"
     };
   }
 
