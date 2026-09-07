@@ -153,8 +153,7 @@ export async function synthesizeDeepInfraKokoroSpeech(
     contentType: finalContentType,
     outputFormat,
     voice: payload.voice_id || config.defaultVoice || "default",
-    audioBuffer,
-    words
+    audioBuffer
   };
 }
 
