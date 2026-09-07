@@ -1,5 +1,11 @@
-import { captionedSpeech, streamSpeech, synthesizeSpeech, testKokoroConnection } from "@/lib/kokoro/client";
-import { getKokoroConfig, getKokoroStatus } from "@/lib/kokoro/config";
+import {
+  captionedDeepInfraKokoroSpeech,
+  streamDeepInfraKokoroSpeech,
+  synthesizeDeepInfraKokoroSpeech,
+  testDeepInfraKokoroConnection
+} from "@/lib/tts/deepinfra-kokoro/client";
+import { getDeepInfraKokoroConfig } from "@/lib/tts/deepinfra-kokoro/config";
+import { getDeepInfraKokoroStatus } from "@/lib/tts/deepinfra-kokoro/config";
 import { selectKokoroVoice } from "@/lib/kokoro/voices";
 import type {
   CaptionedSpeechResult,
@@ -7,45 +13,39 @@ import type {
   SynthesizedSpeechResult,
   SynthesisRequestOptions,
   TTSConnectionTestResult,
-  TTSProviderDescriptor,
   TTSProvider,
+  TTSProviderDescriptor,
   TTSStatus
 } from "@/lib/tts/types";
 
-export class KokoroTTSProvider implements TTSProvider {
-  readonly type = "kokoro-vps" as const;
+export class DeepInfraKokoroTTSProvider implements TTSProvider {
+  readonly type = "deepinfra-kokoro" as const;
 
   get model() {
-    return "kokoro";
+    return getDeepInfraKokoroConfig().model;
   }
 
   get descriptor(): TTSProviderDescriptor {
+    const config = getDeepInfraKokoroConfig();
     return {
       id: this.type,
-      vendor: "self-hosted",
-      model: this.model,
+      vendor: "deepinfra",
+      model: config.model,
       capabilities: {
         supportsStreaming: true,
-        supportsWordTimestamps: true,
-        requiresBufferedNormalization: true
+        supportsWordTimestamps: false,
+        requiresBufferedNormalization: false
       },
-      cacheVersion: "kokoro-vps-v1"
+      cacheVersion: "di-kokoro-v1"
     };
   }
 
   async synthesizeSpeech(input: string, options?: SynthesisRequestOptions): Promise<SynthesizedSpeechResult> {
-    const result = await synthesizeSpeech(input, options);
-    return {
-      ok: true,
-      contentType: result.contentType,
-      outputFormat: result.outputFormat,
-      voice: result.voice,
-      audioBuffer: result.audioBuffer
-    };
+    return synthesizeDeepInfraKokoroSpeech(input, options);
   }
 
   async captionedSpeech(input: string, options?: SynthesisRequestOptions): Promise<CaptionedSpeechResult> {
-    const result = await captionedSpeech(input, options);
+    const result = await captionedDeepInfraKokoroSpeech(input, options);
     return {
       ok: true,
       contentType: result.contentType,
@@ -57,7 +57,7 @@ export class KokoroTTSProvider implements TTSProvider {
   }
 
   async streamSpeech(input: string, options?: SynthesisRequestOptions): Promise<StreamedSpeechResult> {
-    const result = await streamSpeech(input, options);
+    const result = await streamDeepInfraKokoroSpeech(input, options);
     return {
       audioStream: result.audioStream,
       contentType: result.contentType,
@@ -68,7 +68,7 @@ export class KokoroTTSProvider implements TTSProvider {
   }
 
   async testConnection(): Promise<TTSConnectionTestResult> {
-    const result = await testKokoroConnection();
+    const result = await testDeepInfraKokoroConnection();
     return {
       ok: true,
       provider: this.type,
@@ -79,42 +79,50 @@ export class KokoroTTSProvider implements TTSProvider {
   }
 
   getStatus(): TTSStatus {
-    const status = getKokoroStatus();
+    const status = getDeepInfraKokoroStatus();
     return {
       provider: this.type,
       configured: status.configured,
-      model: this.model,
+      model: status.model,
       apiKeyMasked: status.apiKeyMasked,
       defaultVoice: status.defaultVoice,
       outputFormat: status.outputFormat,
       audioCacheEnabled: status.audioCacheEnabled,
       providerDetails: {
-        baseUrlConfigured: status.baseUrlConfigured,
-        apiKeyConfigured: status.apiKeyConfigured,
-        voicesByLanguage: status.voicesByLanguage
+        baseUrl: status.baseUrl,
+        model: status.model,
+        serviceTier: status.serviceTier,
+        voicesByLanguage: status.voicesByLanguage,
+        speed: status.speed
       }
     };
   }
 
   resolveVoice(languageCode?: string): string {
-    const config = getKokoroConfig();
+    const config = getDeepInfraKokoroConfig();
     return selectKokoroVoice(languageCode, config.voicesByLanguage, config.defaultVoice);
   }
 
   getSynthesisConfig() {
-    return getKokoroConfig();
+    const config = getDeepInfraKokoroConfig();
+    return {
+      defaultVoice: config.defaultVoice,
+      outputFormat: config.outputFormat,
+      speed: config.speed,
+      allowedVoices: Object.values(config.voicesByLanguage),
+      allowedFormats: [config.outputFormat]
+    };
   }
 
   getSpeed(): number {
-    return getKokoroConfig().speed;
+    return getDeepInfraKokoroConfig().speed;
   }
 
   getOutputFormat(): string {
-    return getKokoroConfig().outputFormat;
+    return getDeepInfraKokoroConfig().outputFormat;
   }
 
   isConfigured(): boolean {
-    const config = getKokoroConfig();
-    return Boolean(config.baseUrl && config.apiKey);
+    return Boolean(getDeepInfraKokoroStatus().configured);
   }
 }

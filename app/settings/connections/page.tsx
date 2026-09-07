@@ -61,6 +61,17 @@ function ConnectionCard({
 
 export default async function ConnectionsPage() {
   const status = await getConnectionStatus();
+  const ttsProvider = status.tts?.provider;
+  const ttsStatusLabel = ttsProvider === "kokoro-vps"
+    ? "Kokoro — VPS própria"
+    : ttsProvider === "deepinfra-kokoro"
+      ? "Kokoro — DeepInfra"
+      : "Chatterbox — DeepInfra";
+  const ttsMeta = ttsProvider === "kokoro-vps"
+    ? "VPS de voz (URL, API key e voz padrão)"
+    : ttsProvider === "deepinfra-kokoro"
+      ? `DeepInfra (${status.tts?.model ?? "modelo não definido"})`
+      : `Chatterbox DeepInfra (${status.tts?.model ?? "chatterbox"})`;
 
   return (
     <AppShell activeNav="perfil" section="neutral">
@@ -101,13 +112,13 @@ export default async function ConnectionsPage() {
           testEndpoint="/api/settings/test-supabase"
         />
         <ConnectionCard
-          title={status.tts?.provider === "deepinfra" ? "Chatterbox voz" : "Kokoro voz"}
-          meta={status.tts?.provider === "deepinfra" ? `DeepInfra (${status.tts.model})` : "VPS (Base URL, API key e voz padrão)"}
+          title={ttsStatusLabel}
+          meta={ttsMeta}
           icon={Mic}
           tone="warning"
           connected={status.tts?.configured ?? status.kokoro.configured}
           lines={[
-            { label: "Provedor", value: status.tts?.provider === "deepinfra" ? "DeepInfra (Chatterbox)" : "Kokoro (VPS)" },
+            { label: "Provedor", value: ttsStatusLabel },
             { label: "API key", value: (status.tts?.apiKeyMasked ?? status.kokoro.apiKeyMasked) ?? "não configurada" },
             { label: "Voz", value: status.tts?.defaultVoice || status.kokoro.defaultVoice },
             { label: "Formato", value: status.tts?.outputFormat || status.kokoro.outputFormat }

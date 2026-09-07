@@ -1,7 +1,7 @@
 import { TTSConfigError } from "@/lib/tts/types";
 import { getEnv, getFirstEnv, maskSecret } from "@/lib/env";
 
-export function getDeepInfraConfig() {
+export function getDeepInfraChatterboxConfig() {
   const defaultVoice = getEnv("DEEPINFRA_CHATTERBOX_DEFAULT_VOICE") ?? "";
   const outputFormat = (getEnv("DEEPINFRA_CHATTERBOX_OUTPUT_FORMAT") ?? "mp3").toLowerCase();
   const voicesByLanguage: Record<string, string> = {
@@ -50,8 +50,10 @@ export function getDeepInfraConfig() {
   };
 }
 
+export const getDeepInfraConfig = getDeepInfraChatterboxConfig;
+
 export function getDeepInfraStatus() {
-  const config = getDeepInfraConfig();
+  const config = getDeepInfraChatterboxConfig();
   return {
     configured: Boolean(config.apiKey),
     apiKeyConfigured: Boolean(config.apiKey),
@@ -73,6 +75,10 @@ export function getDeepInfraStatus() {
     shortCfgWeight: config.shortCfgWeight,
     audioCacheEnabled: Boolean(config.cacheDir)
   };
+}
+
+export function getDeepInfraChatterboxStatus() {
+  return getDeepInfraStatus();
 }
 
 function parsePositiveNumber(value: string | undefined, fallback: number) {

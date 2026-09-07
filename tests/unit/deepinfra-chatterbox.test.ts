@@ -50,7 +50,7 @@ describe("DeepInfra Chatterbox client", () => {
 
     const result = await testDeepInfraConnection();
     expect(result.ok).toBe(true);
-    expect(result.provider).toBe("deepinfra");
+    expect(result.provider).toBe("deepinfra-chatterbox");
     expect(result.outputFormat).toBe("mp3");
   });
 
@@ -63,7 +63,7 @@ describe("DeepInfra Chatterbox client", () => {
 
     const result = await testDeepInfraConnection();
     expect(result.ok).toBe(true);
-    expect(result.provider).toBe("deepinfra");
+    expect(result.provider).toBe("deepinfra-chatterbox");
     expect(result.outputFormat).toBe("mp3");
   });
 

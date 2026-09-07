@@ -205,7 +205,7 @@ export async function testDeepInfraConnection(): Promise<TTSConnectionTestResult
 
   return {
     ok: true,
-    provider: "deepinfra",
+    provider: "deepinfra-chatterbox",
     contentType: `audio/${config.outputFormat}`,
     voice: config.defaultVoice || "default",
     outputFormat: config.outputFormat
@@ -351,4 +351,3 @@ export async function streamDeepInfraSpeech(
     speed: options?.speed
   };
 }
-

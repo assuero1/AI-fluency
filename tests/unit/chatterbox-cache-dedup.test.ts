@@ -8,7 +8,7 @@ let directory: string;
 beforeEach(async () => {
   directory = await mkdtemp(path.join(tmpdir(), "chatterbox-dedupe-"));
   vi.stubEnv("AUDIO_CACHE_DIR", directory);
-  vi.stubEnv("TTS_PROVIDER", "deepinfra");
+  vi.stubEnv("TTS_PROVIDER", "deepinfra-chatterbox");
   vi.stubEnv("DEEPINFRA_API_KEY", "test-only");
 });
 afterEach(async () => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); await rm(directory, { recursive: true, force: true }); });
@@ -41,9 +41,9 @@ describe("one Chatterbox asset for speech and captions", () => {
   });
 
   it("changes the cache identity when model or prosody changes, but normalizes equivalent speech", () => {
-    const id = () => createAudioId("Hello", "default", "mp3", 1, "deepinfra", "en");
+    const id = () => createAudioId("Hello", "default", "mp3", 1, "deepinfra-chatterbox", "en");
     const original = id();
-    expect(original).toBe(createAudioId("Hello.", "default", "mp3", 1, "deepinfra", "en"));
+    expect(original).toBe(createAudioId("Hello.", "default", "mp3", 1, "deepinfra-chatterbox", "en"));
     vi.stubEnv("DEEPINFRA_CHATTERBOX_MODEL", "test/model-v2");
     expect(id()).not.toBe(original);
     const model = id();

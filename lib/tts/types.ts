@@ -1,4 +1,18 @@
-export type TTSProviderType = "kokoro" | "deepinfra";
+export type TTSProviderType = "kokoro-vps" | "deepinfra-kokoro" | "deepinfra-chatterbox";
+
+export type TTSProviderCapability = {
+  supportsStreaming: boolean;
+  supportsWordTimestamps: boolean;
+  requiresBufferedNormalization: boolean;
+};
+
+export type TTSProviderDescriptor = {
+  id: TTSProviderType;
+  vendor: "deepinfra" | "self-hosted";
+  model: string;
+  capabilities: TTSProviderCapability;
+  cacheVersion: string;
+};
 
 export class TTSConfigError extends Error {
   status = 503;
@@ -84,6 +98,7 @@ export type StreamedSpeechResult = {
 export interface TTSProvider {
   readonly type: TTSProviderType;
   readonly model: string;
+  readonly descriptor: TTSProviderDescriptor;
   synthesizeSpeech(input: string, options?: SynthesisRequestOptions): Promise<SynthesizedSpeechResult>;
   captionedSpeech(input: string, options?: SynthesisRequestOptions): Promise<CaptionedSpeechResult>;
   streamSpeech?(input: string, options?: SynthesisRequestOptions): Promise<StreamedSpeechResult>;
@@ -95,4 +110,3 @@ export interface TTSProvider {
   getOutputFormat(): string;
   isConfigured(): boolean;
 }
-

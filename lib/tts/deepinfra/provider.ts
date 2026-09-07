@@ -1,4 +1,15 @@
-import { normalizeSpeechLanguage } from "@/lib/kokoro/voices";
+import {
+  getDeepInfraChatterboxConfig,
+  getDeepInfraChatterboxStatus,
+  getDeepInfraStatus
+} from "@/lib/tts/deepinfra/config";
+import {
+  captionedDeepInfraSpeech,
+  streamDeepInfraSpeech,
+  synthesizeDeepInfraSpeech,
+  testDeepInfraConnection
+} from "@/lib/tts/deepinfra/client";
+import { selectKokoroVoice } from "@/lib/kokoro/voices";
 import type {
   CaptionedSpeechResult,
   StreamedSpeechResult,
@@ -6,21 +17,30 @@ import type {
   SynthesisRequestOptions,
   TTSConnectionTestResult,
   TTSProvider,
+  TTSProviderDescriptor,
   TTSStatus
 } from "@/lib/tts/types";
-import {
-  captionedDeepInfraSpeech,
-  streamDeepInfraSpeech,
-  synthesizeDeepInfraSpeech,
-  testDeepInfraConnection
-} from "./client";
-import { getDeepInfraConfig, getDeepInfraStatus } from "./config";
 
 export class DeepInfraTTSProvider implements TTSProvider {
-  readonly type = "deepinfra" as const;
+  readonly type = "deepinfra-chatterbox" as const;
 
-  get model(): string {
-    return getDeepInfraConfig().model;
+  get model() {
+    return getDeepInfraChatterboxConfig().model;
+  }
+
+  get descriptor(): TTSProviderDescriptor {
+    const config = getDeepInfraChatterboxConfig();
+    return {
+      id: this.type,
+      vendor: "deepinfra",
+      model: config.model,
+      capabilities: {
+        supportsStreaming: true,
+        supportsWordTimestamps: true,
+        requiresBufferedNormalization: false
+      },
+      cacheVersion: "di-chatterbox-v1"
+    };
   }
 
   async synthesizeSpeech(input: string, options?: SynthesisRequestOptions): Promise<SynthesizedSpeechResult> {
@@ -28,21 +48,43 @@ export class DeepInfraTTSProvider implements TTSProvider {
   }
 
   async captionedSpeech(input: string, options?: SynthesisRequestOptions): Promise<CaptionedSpeechResult> {
-    return captionedDeepInfraSpeech(input, options);
+    const result = await captionedDeepInfraSpeech(input, options);
+    return {
+      ok: true,
+      contentType: result.contentType,
+      outputFormat: result.outputFormat,
+      voice: result.voice,
+      audioBuffer: result.audioBuffer,
+      words: result.words
+    };
   }
 
   async streamSpeech(input: string, options?: SynthesisRequestOptions): Promise<StreamedSpeechResult> {
-    return streamDeepInfraSpeech(input, options);
+    const result = await streamDeepInfraSpeech(input, options);
+    return {
+      audioStream: result.audioStream,
+      contentType: result.contentType,
+      outputFormat: result.outputFormat,
+      voice: result.voice,
+      speed: result.speed
+    };
   }
 
   async testConnection(): Promise<TTSConnectionTestResult> {
-    return testDeepInfraConnection();
+    const result = await testDeepInfraConnection();
+    return {
+      ok: true,
+      provider: this.type,
+      contentType: result.contentType,
+      voice: result.voice,
+      outputFormat: result.outputFormat
+    };
   }
 
   getStatus(): TTSStatus {
-    const status = getDeepInfraStatus();
+    const status = getDeepInfraChatterboxStatus();
     return {
-      provider: "deepinfra",
+      provider: this.type,
       configured: status.configured,
       model: status.model,
       apiKeyMasked: status.apiKeyMasked,
@@ -51,41 +93,39 @@ export class DeepInfraTTSProvider implements TTSProvider {
       audioCacheEnabled: status.audioCacheEnabled,
       providerDetails: {
         baseUrl: status.baseUrl,
-        apiKeyConfigured: status.apiKeyConfigured,
-        voicesByLanguage: status.voicesByLanguage
+        model: status.model,
+        serviceTier: status.serviceTier,
+        voicesByLanguage: status.voicesByLanguage,
+        speed: status.speed
       }
     };
   }
 
   resolveVoice(languageCode?: string): string {
-    const config = getDeepInfraConfig();
-    const lang = normalizeSpeechLanguage(languageCode);
-    return config.voicesByLanguage[lang] || config.defaultVoice || "default";
+    const config = getDeepInfraChatterboxConfig();
+    return selectKokoroVoice(languageCode, config.voicesByLanguage, config.defaultVoice);
   }
 
   getSynthesisConfig() {
-    const config = getDeepInfraConfig();
-    const configuredVoices = Object.values(config.voicesByLanguage).filter(Boolean);
-    const allowedVoices = Array.from(new Set(["default", "", config.defaultVoice, ...configuredVoices]));
+    const config = getDeepInfraChatterboxConfig();
     return {
-      defaultVoice: config.defaultVoice || "default",
+      defaultVoice: config.defaultVoice,
       outputFormat: config.outputFormat,
       speed: config.speed,
-      allowedVoices,
-      allowedFormats: ["mp3", "wav", "opus"]
+      allowedVoices: Object.values(config.voicesByLanguage),
+      allowedFormats: [config.outputFormat]
     };
   }
 
   getSpeed(): number {
-    return getDeepInfraConfig().speed;
+    return getDeepInfraChatterboxConfig().speed;
   }
 
   getOutputFormat(): string {
-    return getDeepInfraConfig().outputFormat;
+    return getDeepInfraChatterboxConfig().outputFormat;
   }
 
   isConfigured(): boolean {
-    const config = getDeepInfraConfig();
-    return Boolean(config.apiKey);
+    return getDeepInfraStatus().configured;
   }
 }

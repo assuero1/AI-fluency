@@ -5,9 +5,10 @@ import { mkdir, readdir, readFile, rename, rm, stat, utimes, writeFile } from "n
 import path from "node:path";
 import { splitIntoSentences } from "@/lib/learning/sentences";
 import { getDeepInfraConfig } from "@/lib/tts/deepinfra/config";
+import { getDeepInfraKokoroConfig } from "@/lib/tts/deepinfra-kokoro/config";
 import { sanitizeTextForChatterbox } from "@/lib/tts/deepinfra/client";
 import { getActiveTTSProvider } from "@/lib/tts/factory";
-import type { SynthesisRequestOptions } from "@/lib/tts/types";
+import type { TTSProviderType, SynthesisRequestOptions } from "@/lib/tts/types";
 import { needsBufferedKokoroNormalization, normalizeKokoroAudio } from "./audio-integrity";
 import { KokoroRequestError, type WordTimestamp } from "./client";
 import { getKokoroConfig } from "./config";
@@ -166,9 +167,9 @@ export async function prepareCachedSpeech(input: string, options?: SynthesisRequ
 
 export async function prepareCaptionedSpeech(input: string, options?: SynthesisRequestOptions): Promise<CaptionedSpeechResult> {
   const provider = getActiveTTSProvider();
-  // Chatterbox entrega o mesmo áudio com ou sem pedido de legendas. Uma
-  // ausência explícita de timestamps nunca deve provocar outra inferência.
-  if (provider.type === "deepinfra") {
+  // Alguns provedores externos repetem o áudio sem alterar o contrato de
+  // legendas e não vale a pena disparar uma nova síntese sem necessidade.
+  if (!provider.descriptor.capabilities.supportsWordTimestamps) {
     const result = await getOrCreateCachedSpeech(input, options);
     return { ...result, words: result.words ?? [] };
   }
@@ -386,7 +387,7 @@ export async function streamPendingAudio(audioId: string) {
   let responseContentType = result.contentType;
   // Para Opus precisamos conhecer o último fluxo lógico antes de enviar bytes:
   // a VPS duplica a fala em fluxos Ogg encadeados até em textos curtos.
-  if (provider.type === "kokoro" && needsBufferedKokoroNormalization(result.contentType, result.outputFormat)) {
+  if (provider.descriptor.capabilities.requiresBufferedNormalization && needsBufferedKokoroNormalization(result.contentType, result.outputFormat)) {
     const buffered = Buffer.from(await new Response(result.audioStream).arrayBuffer());
     const normalized = normalizeKokoroAudio(buffered, result.contentType, result.outputFormat);
     responseContentType = normalized.contentType;
@@ -518,23 +519,67 @@ async function createCachedSpeech(input: { audioId: string; text: string; voice:
   };
 }
 
-export function createAudioId(text: string, voice: string, outputFormat: string, speed = 1, provider = "kokoro", languageCode?: string) {
+function normalizeAudioProviderForCache(provider: TTSProviderType | "kokoro" | "deepinfra" | "chatterbox") {
+  const normalized = provider === "kokoro" ? "kokoro-vps" :
+    provider === "deepinfra" || provider === "chatterbox" ? "deepinfra-chatterbox" : provider;
+  return normalized;
+}
+
+export function createAudioId(text: string, voice: string, outputFormat: string, speed = 1, provider: TTSProviderType | "kokoro" | "deepinfra" | "chatterbox" = "kokoro-vps", languageCode?: string) {
+  const providerType = normalizeAudioProviderForCache(provider);
   const normLang = normalizeSpeechLanguage(languageCode);
-  const config = provider === "deepinfra" ? getDeepInfraConfig() : null;
-  const payload = provider === "kokoro"
-    ? { version: 3, text: text.normalize("NFC"), voice, outputFormat, speed }
-    : {
-      version: 5, provider, language: normLang,
-      text: sanitizeTextForChatterbox(text.normalize("NFC"), normLang), voice, outputFormat, speed,
-      model: config?.model, temperature: config?.temperature,
-      exaggeration: config?.exaggeration, cfg: config?.cfgWeight,
-      customTemperature: config?.hasCustomTemperature,
-      customExaggeration: config?.hasCustomExaggeration, customCfg: config?.hasCustomCfgWeight,
-      topP: config?.topP, minP: config?.minP, topK: config?.topK,
-      repetitionPenalty: config?.repetitionPenalty, seed: config?.seed,
-      shortTemperature: config?.shortTemperature, shortExaggeration: config?.shortExaggeration,
-      shortCfgWeight: config?.shortCfgWeight
+  const normalizedText = text.normalize("NFC");
+  let payload: object;
+  if (providerType === "kokoro-vps") {
+    payload = {
+      cacheVersion: "kokoro-vps-v1",
+      provider: providerType,
+      text: normalizedText,
+      voice,
+      outputFormat,
+      speed
     };
+  } else if (providerType === "deepinfra-chatterbox") {
+    const config = getDeepInfraConfig();
+    payload = {
+      cacheVersion: "deepinfra-chatterbox-v1",
+      provider: providerType,
+      language: normLang,
+      text: sanitizeTextForChatterbox(normalizedText, normLang),
+      voice,
+      outputFormat,
+      speed,
+      model: config.model,
+      temperature: config.temperature,
+      exaggeration: config.exaggeration,
+      cfg: config.cfgWeight,
+      customTemperature: config.hasCustomTemperature,
+      customExaggeration: config.hasCustomExaggeration,
+      customCfg: config.hasCustomCfgWeight,
+      topP: config.topP,
+      minP: config.minP,
+      topK: config.topK,
+      repetitionPenalty: config.repetitionPenalty,
+      seed: config.seed,
+      shortTemperature: config.shortTemperature,
+      shortExaggeration: config.shortExaggeration,
+      shortCfgWeight: config.shortCfgWeight
+    };
+  } else {
+    const config = getDeepInfraKokoroConfig();
+    payload = {
+      cacheVersion: "deepinfra-kokoro-v1",
+      provider: providerType,
+      language: normLang,
+      text: normalizedText,
+      voice,
+      outputFormat,
+      speed,
+      model: config.model,
+      serviceTier: config.serviceTier
+    };
+  }
+
   return createHash("sha256")
     .update(JSON.stringify(payload))
     .digest("hex");

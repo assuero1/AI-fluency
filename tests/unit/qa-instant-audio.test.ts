@@ -16,8 +16,10 @@ describe("QA: Instant Audio Playback & DeepInfra Chatterbox Streaming", () => {
     vi.stubEnv("DEEPINFRA_BASE_URL", "https://api.deepinfra.test");
     vi.stubEnv("DEEPINFRA_CHATTERBOX_MODEL", "ResembleAI/chatterbox-multilingual");
     vi.stubEnv("DEEPINFRA_CHATTERBOX_OUTPUT_FORMAT", "mp3");
+    vi.stubEnv("DEEPINFRA_CHATTERBOX_DEFAULT_VOICE", "default");
+    vi.stubEnv("DEEPINFRA_CHATTERBOX_VOICE_EN", "default");
     vi.stubEnv("AUDIO_CACHE_DIR", cacheDir);
-    vi.stubEnv("TTS_PROVIDER", "deepinfra");
+    vi.stubEnv("TTS_PROVIDER", "deepinfra-chatterbox");
   });
 
   afterEach(() => {
@@ -124,7 +126,7 @@ describe("QA: Instant Audio Playback & DeepInfra Chatterbox Streaming", () => {
       const { writeFile } = await import("node:fs/promises");
 
       const text = "Pending streaming audio test.";
-      const audioId = createAudioId(text, "default", "mp3", 1, "deepinfra", "en");
+      const audioId = createAudioId(text, "default", "mp3", 1, "deepinfra-chatterbox", "en");
 
       // Cria o arquivo de pending no disco
       const pendingData = {

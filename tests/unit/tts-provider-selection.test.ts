@@ -32,43 +32,61 @@ describe("TTS Provider Selection and Cache Isolation", () => {
     rmSync(cacheDir, { recursive: true, force: true });
   });
 
-  it("defaults to kokoro when TTS_PROVIDER is undefined", () => {
+  it("defaults to kokoro-vps when TTS_PROVIDER is undefined", () => {
     vi.stubEnv("TTS_PROVIDER", "");
-    expect(getActiveTTSProviderType()).toBe("kokoro");
-    expect(getActiveTTSProvider().type).toBe("kokoro");
+    expect(getActiveTTSProviderType()).toBe("kokoro-vps");
+    expect(getActiveTTSProvider().type).toBe("kokoro-vps");
   });
 
-  it("selects deepinfra when TTS_PROVIDER=deepinfra or chatterbox", () => {
+  it("selects deepinfra-chatterbox when TTS_PROVIDER is deepinfra, chatterbox or deepinfra-chatterbox", () => {
     vi.stubEnv("TTS_PROVIDER", "deepinfra");
-    expect(getActiveTTSProviderType()).toBe("deepinfra");
-    expect(getActiveTTSProvider().type).toBe("deepinfra");
+    expect(getActiveTTSProviderType()).toBe("deepinfra-chatterbox");
+    expect(getActiveTTSProvider().type).toBe("deepinfra-chatterbox");
 
     vi.stubEnv("TTS_PROVIDER", "chatterbox");
-    expect(getActiveTTSProviderType()).toBe("deepinfra");
+    expect(getActiveTTSProviderType()).toBe("deepinfra-chatterbox");
+
+    vi.stubEnv("TTS_PROVIDER", "deepinfra-chatterbox");
+    expect(getActiveTTSProviderType()).toBe("deepinfra-chatterbox");
+    expect(getActiveTTSProvider().type).toBe("deepinfra-chatterbox");
   });
 
-  it("segregates audioId cache hashes between kokoro and deepinfra", () => {
+  it("selects deepinfra-kokoro when TTS_PROVIDER=deepinfra-kokoro", () => {
+    vi.stubEnv("TTS_PROVIDER", "deepinfra-kokoro");
+    expect(getActiveTTSProviderType()).toBe("deepinfra-kokoro");
+    expect(getActiveTTSProvider().type).toBe("deepinfra-kokoro");
+  });
+
+  it("segregates audioId cache hashes between providers", () => {
     const text = "Hello, world!";
     const voice = "af_heart";
     const format = "mp3";
     const speed = 1.0;
 
     const kokoroId = createAudioId(text, voice, format, speed, "kokoro");
-    const deepInfraId = createAudioId(text, voice, format, speed, "deepinfra");
+    const deepInfraChatterboxId = createAudioId(text, voice, format, speed, "deepinfra");
+    const deepInfraKokoroId = createAudioId(text, voice, format, speed, "deepinfra-kokoro");
 
-    expect(kokoroId).not.toBe(deepInfraId);
+    expect(kokoroId).not.toBe(deepInfraChatterboxId);
+    expect(kokoroId).not.toBe(deepInfraKokoroId);
+    expect(deepInfraChatterboxId).not.toBe(deepInfraKokoroId);
     expect(kokoroId).toMatch(/^[a-f0-9]{64}$/);
-    expect(deepInfraId).toMatch(/^[a-f0-9]{64}$/);
+    expect(deepInfraChatterboxId).toMatch(/^[a-f0-9]{64}$/);
+    expect(deepInfraKokoroId).toMatch(/^[a-f0-9]{64}$/);
 
     // Kokoro default matches legacy call without provider arg
     const legacyKokoroId = createAudioId(text, voice, format, speed);
     expect(legacyKokoroId).toBe(kokoroId);
 
     // DeepInfra differentiates languages with the same text and voice
-    const deepInfraPt = createAudioId(text, voice, format, speed, "deepinfra", "pt");
-    const deepInfraEs = createAudioId(text, voice, format, speed, "deepinfra", "es");
-    expect(deepInfraPt).not.toBe(deepInfraEs);
-    expect(deepInfraPt).not.toBe(deepInfraId);
+    const deepInfraChatterboxPt = createAudioId(text, voice, format, speed, "deepinfra", "pt");
+    const deepInfraChatterboxEs = createAudioId(text, voice, format, speed, "deepinfra", "es");
+    const deepInfraKokoroPt = createAudioId(text, voice, format, speed, "deepinfra-kokoro", "pt");
+    const deepInfraKokoroEs = createAudioId(text, voice, format, speed, "deepinfra-kokoro", "es");
+
+    expect(deepInfraChatterboxPt).not.toBe(deepInfraChatterboxEs);
+    expect(deepInfraChatterboxPt).not.toBe(deepInfraKokoroPt);
+    expect(deepInfraKokoroPt).not.toBe(deepInfraKokoroEs);
   });
 
   it("getTTSStatus returns correct provider details", () => {
@@ -77,7 +95,7 @@ describe("TTS Provider Selection and Cache Isolation", () => {
     vi.stubEnv("DEEPINFRA_CHATTERBOX_MODEL", "ResembleAI/chatterbox-multilingual");
 
     const status = getTTSStatus();
-    expect(status.provider).toBe("deepinfra");
+    expect(status.provider).toBe("deepinfra-chatterbox");
     expect(status.configured).toBe(true);
     expect(status.model).toBe("ResembleAI/chatterbox-multilingual");
     expect(status.apiKeyMasked).toBe("tes...5678");
@@ -96,7 +114,7 @@ describe("TTS Provider Selection and Cache Isolation", () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as { ok: boolean; provider: string };
     expect(body.ok).toBe(true);
-    expect(body.provider).toBe("deepinfra");
+    expect(body.provider).toBe("deepinfra-chatterbox");
   });
 
   it("POST /api/voice/synthesize works with deepinfra provider", async () => {
